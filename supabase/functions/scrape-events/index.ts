@@ -7,6 +7,54 @@ const corsHeaders = {
 
 const RA_GRAPHQL_URL = 'https://ra.co/graphql';
 
+// Simple in-memory rate limiting (resets on cold start)
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 30; // 30 requests per minute per IP
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const record = rateLimitMap.get(ip);
+  
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+  
+  if (record.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return true;
+  }
+  
+  record.count++;
+  return false;
+}
+
+// Validate date format and range
+function validateDate(dateStr: string): string | null {
+  // Check format YYYY-MM-DD
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(dateStr)) {
+    return null;
+  }
+  
+  // Parse and validate it's a real date
+  const date = new Date(dateStr + 'T00:00:00Z');
+  if (isNaN(date.getTime())) {
+    return null;
+  }
+  
+  // Validate reasonable range (within 1 year past/future)
+  const now = new Date();
+  const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+  const oneYearAhead = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
+  
+  if (date < oneYearAgo || date > oneYearAhead) {
+    return null;
+  }
+  
+  return dateStr;
+}
+
 interface EventData {
   id: string;
   listingDate: string;
@@ -82,7 +130,7 @@ async function fetchEventsFromRA(listingDate: string): Promise<EventData[]> {
     page: 1,
   };
 
-  console.log(`Fetching events for date: ${listingDate}`);
+  console.log(`[INFO] Fetching events for date: ${listingDate}`);
 
   const response = await fetch(RA_GRAPHQL_URL, {
     method: 'POST',
@@ -96,21 +144,23 @@ async function fetchEventsFromRA(listingDate: string): Promise<EventData[]> {
   });
 
   if (!response.ok) {
-    console.error(`RA API returned status: ${response.status}`);
+    // Log internally but don't expose to client
+    console.error(`[INTERNAL] API returned status: ${response.status}`);
     const text = await response.text();
-    console.error(`Response body: ${text}`);
-    throw new Error(`RA API error: ${response.status}`);
+    console.error(`[INTERNAL] Response body: ${text}`);
+    throw new Error('UPSTREAM_ERROR');
   }
 
   const data = await response.json();
   
   if (data.errors) {
-    console.error('GraphQL errors:', JSON.stringify(data.errors));
-    throw new Error('GraphQL query failed: ' + data.errors[0]?.message);
+    // Log internally but don't expose to client
+    console.error('[INTERNAL] GraphQL errors:', JSON.stringify(data.errors));
+    throw new Error('QUERY_ERROR');
   }
 
   const events = data.data?.eventListings?.data || [];
-  console.log(`Found ${events.length} events`);
+  console.log(`[INFO] Found ${events.length} events`);
   return events;
 }
 
@@ -157,18 +207,47 @@ serve(async (req) => {
   }
 
   try {
+    // Rate limiting by IP
+    const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
+                     req.headers.get('cf-connecting-ip') || 
+                     'unknown';
+    
+    if (isRateLimited(clientIP)) {
+      console.warn(`[RATE_LIMIT] IP ${clientIP} exceeded rate limit`);
+      return new Response(
+        JSON.stringify({ error: 'Too many requests. Please try again later.' }),
+        { 
+          status: 429, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '60' } 
+        }
+      );
+    }
+
     const url = new URL(req.url);
 
-    let date = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
+    // Get date from query params or body
+    let rawDate = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
 
     if (req.method === 'POST') {
       const body = await req.json().catch(() => ({}));
       if (body && typeof body === 'object' && 'date' in body && typeof (body as any).date === 'string') {
-        date = (body as any).date;
+        rawDate = (body as any).date;
       }
     }
 
-    console.log(`Processing request for date: ${date}`);
+    // Validate date format and range
+    const date = validateDate(rawDate);
+    if (!date) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid date format. Use YYYY-MM-DD within one year of today.' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    console.log(`[INFO] Processing request for date: ${date}, IP: ${clientIP}`);
 
     const rawEvents = await fetchEventsFromRA(date);
     const events = rawEvents.map(transformEvent).sort((a, b) => b.attending - a.attending);
@@ -188,10 +267,12 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error('Error in scrape-events function:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    // Log detailed error internally
+    console.error('[INTERNAL] Error in scrape-events function:', error instanceof Error ? error.stack : error);
+    
+    // Return generic error to client
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: 'Unable to fetch events. Please try again later.' }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
