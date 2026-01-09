@@ -50,7 +50,9 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
               "flex flex-col items-center flex-1 py-1.5 rounded-md transition-smooth",
               isSelected
                 ? "bg-primary text-primary-foreground"
-                : "bg-card hover:bg-accent",
+                : isWeekend
+                  ? "bg-accent/50 hover:bg-accent"
+                  : "bg-card hover:bg-accent",
               isWeekend && !isSelected && "text-muted-foreground"
             )}
           >
