@@ -1,4 +1,4 @@
-import { format, addDays, isSameDay, isToday, isTomorrow } from "date-fns";
+import { format, addDays, isSameDay, isToday, isTomorrow, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
 import { usePrefetchEvents } from "@/hooks/useEvents";
@@ -13,8 +13,13 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   const prefetchEvents = usePrefetchEvents();
   const today = new Date();
   
-  // Generate 14 days starting from today
-  const dates = Array.from({ length: 14 }, (_, i) => addDays(today, i));
+  // Calculate days from today to selected date
+  const daysToSelected = differenceInDays(selectedDate, today);
+  
+  // Generate dates: always include today through at least 14 days, 
+  // but extend if selected date is further out
+  const daysToShow = Math.max(14, daysToSelected + 1);
+  const dates = Array.from({ length: daysToShow }, (_, i) => addDays(today, i));
 
   const getDateLabel = (date: Date) => {
     if (isToday(date)) return "Today";
