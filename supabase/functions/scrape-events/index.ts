@@ -32,8 +32,8 @@ interface EventData {
 
 async function fetchEventsFromRA(listingDate: string): Promise<EventData[]> {
   const query = `
-    query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $pageSize: Int, $page: Int, $sort: FilterSortInput) {
-      eventListings(filters: $filters, pageSize: $pageSize, page: $page, sort: $sort) {
+    query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $pageSize: Int, $page: Int) {
+      eventListings(filters: $filters, pageSize: $pageSize, page: $page) {
         data {
           id
           listingDate
@@ -80,9 +80,6 @@ async function fetchEventsFromRA(listingDate: string): Promise<EventData[]> {
     },
     pageSize: 50,
     page: 1,
-    sort: {
-      attending: { priority: 1, order: "DESCENDING" },
-    },
   };
 
   console.log(`Fetching events for date: ${listingDate}`);
@@ -119,12 +116,19 @@ async function fetchEventsFromRA(listingDate: string): Promise<EventData[]> {
 
 function transformEvent(item: EventData) {
   const event = item.event;
-  const imageUrl = event.flyerFront 
-    ? event.flyerFront.startsWith('http') 
-      ? event.flyerFront 
-      : `https://images.ra.co/${event.flyerFront}`
-    : event.images?.[0]?.filename 
-      ? `https://images.ra.co/${event.images[0].filename}`
+
+  const normalizeImage = (src: string) => {
+    const s = src.trim();
+    if (s.startsWith('http')) return s;
+    if (s.startsWith('//')) return `https:${s}`;
+    if (s.includes('images.ra.co/')) return `https://${s.replace(/^https?:\/\//, '').replace(/^\/+/, '')}`;
+    return `https://images.ra.co/${s.replace(/^\/+/, '')}`;
+  };
+
+  const imageUrl = event.flyerFront
+    ? normalizeImage(event.flyerFront)
+    : event.images?.[0]?.filename
+      ? normalizeImage(event.images[0].filename)
       : null;
 
   return {
@@ -154,15 +158,20 @@ serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const dateParam = url.searchParams.get('date');
-    
-    // Default to today if no date provided
-    const date = dateParam || new Date().toISOString().split('T')[0];
-    
+
+    let date = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
+
+    if (req.method === 'POST') {
+      const body = await req.json().catch(() => ({}));
+      if (body && typeof body === 'object' && 'date' in body && typeof (body as any).date === 'string') {
+        date = (body as any).date;
+      }
+    }
+
     console.log(`Processing request for date: ${date}`);
-    
+
     const rawEvents = await fetchEventsFromRA(date);
-    const events = rawEvents.map(transformEvent);
+    const events = rawEvents.map(transformEvent).sort((a, b) => b.attending - a.attending);
 
     return new Response(
       JSON.stringify({ 
