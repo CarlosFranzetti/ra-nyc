@@ -1,6 +1,7 @@
 import { format, addDays, isSameDay, isToday, isTomorrow } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useRef, useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { usePrefetchEvents } from "@/hooks/useEvents";
 
 interface DatePickerProps {
   selectedDate: Date;
@@ -9,6 +10,7 @@ interface DatePickerProps {
 
 export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prefetchEvents = usePrefetchEvents();
   const today = new Date();
   
   // Generate 14 days starting from today
@@ -28,6 +30,9 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
       scrollRef.current.scrollLeft = selectedIndex * itemWidth - 20;
     }
   }, []);
+  const handlePrefetch = (date: Date) => {
+    prefetchEvents(format(date, "yyyy-MM-dd"));
+  };
 
   return (
     <div className="relative">
@@ -44,6 +49,8 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
             <button
               key={date.toISOString()}
               onClick={() => onDateChange(date)}
+              onTouchStart={() => handlePrefetch(date)}
+              onMouseEnter={() => handlePrefetch(date)}
               className={cn(
                 "flex flex-col items-center min-w-[40px] py-1.5 px-2 rounded-md transition-smooth",
                 isSelected
