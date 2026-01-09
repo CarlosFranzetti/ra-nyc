@@ -1,6 +1,5 @@
 import { format, addDays, isSameDay, isToday, isTomorrow, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef } from "react";
 import { usePrefetchEvents } from "@/hooks/useEvents";
 
 interface DatePickerProps {
@@ -9,18 +8,21 @@ interface DatePickerProps {
 }
 
 export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
   const prefetchEvents = usePrefetchEvents();
   const today = new Date();
   const yesterday = addDays(today, -1);
   
-  // Calculate days from yesterday to selected date
-  const daysToSelected = differenceInDays(selectedDate, yesterday);
+  // Calculate the start date based on selected date
+  const daysFromYesterday = differenceInDays(selectedDate, yesterday);
   
-  // Generate dates: start from yesterday, include at least 15 days (yesterday + 14 forward),
-  // but extend if selected date is further out
-  const daysToShow = Math.max(15, daysToSelected + 1);
-  const dates = Array.from({ length: daysToShow }, (_, i) => addDays(yesterday, i));
+  // Always show 9 dates, centered around today when possible
+  let startDate = yesterday;
+  if (daysFromYesterday >= 9) {
+    // Selected date is beyond default range, shift window
+    startDate = addDays(selectedDate, -4);
+  }
+  
+  const dates = Array.from({ length: 9 }, (_, i) => addDays(startDate, i));
 
   const getDateLabel = (date: Date) => {
     if (isToday(date)) return "Today";
@@ -28,59 +30,45 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
     return format(date, "EEE");
   };
 
-  // Scroll to selected date on mount
-  useEffect(() => {
-    const selectedIndex = dates.findIndex(d => isSameDay(d, selectedDate));
-    if (scrollRef.current && selectedIndex > 0) {
-      const itemWidth = 44;
-      scrollRef.current.scrollLeft = selectedIndex * itemWidth - 20;
-    }
-  }, []);
   const handlePrefetch = (date: Date) => {
     prefetchEvents(format(date, "yyyy-MM-dd"));
   };
 
   return (
-    <div className="relative">
-      <div 
-        ref={scrollRef}
-        className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide pl-0 pr-3"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-      >
-        {dates.map((date) => {
-          const isSelected = isSameDay(date, selectedDate);
-          const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-          
-          return (
-            <button
-              key={date.toISOString()}
-              onClick={() => onDateChange(date)}
-              onTouchStart={() => handlePrefetch(date)}
-              onMouseEnter={() => handlePrefetch(date)}
-              className={cn(
-                "flex flex-col items-center min-w-[40px] py-1.5 px-2 rounded-md transition-smooth",
-                isSelected
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-card hover:bg-accent",
-                isWeekend && !isSelected && "text-muted-foreground"
-              )}
-            >
-              <span className="text-[9px] font-medium uppercase tracking-wide">
-                {getDateLabel(date)}
-              </span>
-              <span className={cn(
-                "text-sm font-semibold",
-                isSelected ? "text-primary-foreground" : "text-foreground"
-              )}>
-                {format(date, "d")}
-              </span>
-              <span className="text-[8px] uppercase tracking-wider opacity-60">
-                {format(date, "MMM")}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+    <div className="flex gap-1 justify-between">
+      {dates.map((date) => {
+        const isSelected = isSameDay(date, selectedDate);
+        const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+        
+        return (
+          <button
+            key={date.toISOString()}
+            onClick={() => onDateChange(date)}
+            onTouchStart={() => handlePrefetch(date)}
+            onMouseEnter={() => handlePrefetch(date)}
+            className={cn(
+              "flex flex-col items-center flex-1 py-1.5 rounded-md transition-smooth",
+              isSelected
+                ? "bg-primary text-primary-foreground"
+                : "bg-card hover:bg-accent",
+              isWeekend && !isSelected && "text-muted-foreground"
+            )}
+          >
+            <span className="text-[9px] font-medium uppercase tracking-wide">
+              {getDateLabel(date)}
+            </span>
+            <span className={cn(
+              "text-sm font-semibold",
+              isSelected ? "text-primary-foreground" : "text-foreground"
+            )}>
+              {format(date, "d")}
+            </span>
+            <span className="text-[8px] uppercase tracking-wider opacity-60">
+              {format(date, "MMM")}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
