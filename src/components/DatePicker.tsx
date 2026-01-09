@@ -47,25 +47,25 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
             onTouchStart={() => handlePrefetch(date)}
             onMouseEnter={() => handlePrefetch(date)}
             className={cn(
-              "flex flex-col items-center flex-1 py-1.5 rounded-md transition-smooth",
+              "flex flex-col items-center flex-1 py-1 rounded-md transition-all duration-150 border border-border/30",
               isSelected
-                ? "bg-primary text-primary-foreground"
+                ? "bg-primary text-primary-foreground border-primary"
                 : isWeekend
                   ? "bg-accent/50 hover:bg-accent"
                   : "bg-card hover:bg-accent",
               isWeekend && !isSelected && "text-muted-foreground"
             )}
           >
-            <span className="text-[9px] font-medium uppercase tracking-wide">
+            <span className="text-[8px] font-medium uppercase tracking-wide">
               {getDateLabel(date)}
             </span>
             <span className={cn(
-              "text-sm font-semibold",
+              "text-xs font-semibold",
               isSelected ? "text-primary-foreground" : "text-foreground"
             )}>
               {format(date, "d")}
             </span>
-            <span className="text-[8px] uppercase tracking-wider opacity-60">
+            <span className="text-[7px] uppercase tracking-wider opacity-60">
               {format(date, "MMM")}
             </span>
           </button>
