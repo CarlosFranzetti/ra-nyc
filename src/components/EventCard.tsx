@@ -1,5 +1,5 @@
 import { format, parseISO } from "date-fns";
-import { Users, ExternalLink, MapPin, Clock } from "lucide-react";
+import { Users, MapPin, Clock } from "lucide-react";
 import type { Event } from "@/types/event";
 
 interface EventCardProps {
@@ -10,14 +10,12 @@ export function EventCard({ event }: EventCardProps) {
   const formatTime = (time: string) => {
     if (!time) return "";
 
-    // RA often returns ISO strings like 2026-01-08T21:00:00.000
     if (time.includes("T")) {
       const d = parseISO(time);
       if (Number.isNaN(d.getTime())) return "";
       return format(d, "h:mma").toLowerCase().replace(":00", "");
     }
 
-    // Fallback for HH:mm
     const [hours, minutes = "00"] = time.split(":");
     const h = Number.parseInt(hours, 10);
     if (Number.isNaN(h)) return "";
@@ -35,19 +33,19 @@ export function EventCard({ event }: EventCardProps) {
       rel="noopener noreferrer"
       className="block group"
     >
-      <article className="bg-card rounded-xl overflow-hidden transition-smooth hover:bg-accent border border-border/50">
-        {/* Image */}
-        <div className="relative aspect-[16/9] bg-muted overflow-hidden">
+      <article className="flex gap-3 bg-card rounded-lg overflow-hidden transition-smooth hover:bg-accent border border-border/50 p-2">
+        {/* Thumbnail */}
+        <div className="relative w-24 h-24 flex-shrink-0 rounded-md overflow-hidden bg-muted">
           {event.imageUrl ? (
             <img
               src={event.imageUrl}
               alt={event.title}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              className="w-full h-full object-cover"
               loading="lazy"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-background">
-              <span className="text-4xl font-bold text-muted-foreground/20">
+              <span className="text-xl font-bold text-muted-foreground/30">
                 {event.venue.name.charAt(0)}
               </span>
             </div>
@@ -55,52 +53,43 @@ export function EventCard({ event }: EventCardProps) {
           
           {/* RA Pick Badge */}
           {event.isPick && (
-            <div className="absolute top-3 left-3 bg-primary text-primary-foreground text-xs font-semibold px-2 py-1 rounded">
-              RA PICK
+            <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] font-semibold px-1.5 py-0.5 rounded">
+              PICK
             </div>
           )}
-
-          {/* Attending count */}
-          <div className="absolute bottom-3 right-3 flex items-center gap-1.5 bg-background/80 backdrop-blur-sm text-foreground text-xs font-medium px-2 py-1 rounded-full">
-            <Users className="w-3 h-3" />
-            <span>{event.attending.toLocaleString()}</span>
-          </div>
         </div>
 
         {/* Content */}
-        <div className="p-4">
+        <div className="flex-1 min-w-0 py-0.5">
           {/* Title */}
-          <h3 className="font-semibold text-foreground leading-tight line-clamp-2 group-hover:text-primary transition-colors">
+          <h3 className="text-sm font-semibold text-foreground leading-tight line-clamp-2 group-hover:text-primary transition-colors">
             {event.title}
           </h3>
 
           {/* Venue & Time */}
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5" />
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            <span className="flex items-center gap-0.5">
+              <MapPin className="w-3 h-3" />
               {event.venue.name}
             </span>
-            <span className="flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" />
+            <span className="flex items-center gap-0.5">
+              <Clock className="w-3 h-3" />
               {formatTime(event.startTime)}
-              {event.endTime && ` – ${formatTime(event.endTime)}`}
             </span>
           </div>
 
           {/* Artists */}
           {event.artists.length > 0 && (
-            <div className="mt-3">
-              <p className="text-sm text-muted-foreground line-clamp-2">
-                {event.artists.slice(0, 5).join(" · ")}
-                {event.artists.length > 5 && ` +${event.artists.length - 5} more`}
-              </p>
-            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground line-clamp-1">
+              {event.artists.slice(0, 3).join(" · ")}
+              {event.artists.length > 3 && ` +${event.artists.length - 3}`}
+            </p>
           )}
 
-          {/* External link indicator */}
-          <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-            <ExternalLink className="w-3 h-3" />
-            <span>Open on RA</span>
+          {/* Attending */}
+          <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
+            <Users className="w-3 h-3" />
+            <span>{event.attending.toLocaleString()} going</span>
           </div>
         </div>
       </article>

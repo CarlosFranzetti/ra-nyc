@@ -23,7 +23,7 @@ const Index = () => {
       <Header selectedDate={selectedDate} onDateChange={setSelectedDate} />
       
       {/* Date Picker */}
-      <div className="py-4 border-b border-border/50">
+      <div className="py-2 border-b border-border/50">
         <DatePicker 
           selectedDate={selectedDate} 
           onDateChange={setSelectedDate} 
@@ -31,20 +31,20 @@ const Index = () => {
       </div>
 
       {/* Event Count */}
-      <div className="px-4 py-3 min-h-[40px]">
+      <div className="px-3 py-2">
         {data && data.count > 0 && (
-          <p className="text-sm text-muted-foreground">
-            {data.count} event{data.count !== 1 ? 's' : ''} on {format(selectedDate, "EEEE, MMMM d")}
+          <p className="text-xs text-muted-foreground">
+            {data.count} event{data.count !== 1 ? 's' : ''} · {format(selectedDate, "EEE, MMM d")}
           </p>
         )}
       </div>
 
       {/* Events List */}
-      <main className="px-4 pb-8">
+      <main className="px-3 pb-6">
         <div className={`transition-opacity duration-200 ${isFetching && !showSkeletons ? 'opacity-50' : 'opacity-100'}`}>
           {showSkeletons ? (
-            <div className="space-y-4">
-              {[...Array(3)].map((_, i) => (
+            <div className="space-y-2">
+              {[...Array(5)].map((_, i) => (
                 <EventSkeleton key={i} />
               ))}
             </div>
@@ -53,7 +53,7 @@ const Index = () => {
           ) : !showEvents ? (
             <EmptyState date={dateString} />
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-2">
               {data?.events.map((event) => (
                 <EventCard key={event.id} event={event} />
               ))}
