@@ -2,15 +2,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function EventSkeleton() {
   return (
-    <div className="bg-card rounded-xl overflow-hidden border border-border/50">
-      <Skeleton className="aspect-[16/9] w-full" />
-      <div className="p-4 space-y-3">
-        <Skeleton className="h-5 w-3/4" />
-        <div className="flex gap-3">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-4 w-20" />
-        </div>
-        <Skeleton className="h-4 w-full" />
+    <div className="flex gap-3 bg-card rounded-lg overflow-hidden border border-border/50 p-2">
+      <Skeleton className="w-24 h-24 rounded-md flex-shrink-0" />
+      <div className="flex-1 py-0.5 space-y-2">
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="h-3 w-1/2" />
+        <Skeleton className="h-3 w-2/3" />
       </div>
     </div>
   );

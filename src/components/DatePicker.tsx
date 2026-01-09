@@ -1,6 +1,5 @@
 import { format, addDays, isSameDay, isToday, isTomorrow } from "date-fns";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useRef, useEffect } from "react";
 
 interface DatePickerProps {
@@ -17,7 +16,7 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
 
   const getDateLabel = (date: Date) => {
     if (isToday(date)) return "Today";
-    if (isTomorrow(date)) return "Tomorrow";
+    if (isTomorrow(date)) return "Tmrw";
     return format(date, "EEE");
   };
 
@@ -25,8 +24,8 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   useEffect(() => {
     const selectedIndex = dates.findIndex(d => isSameDay(d, selectedDate));
     if (scrollRef.current && selectedIndex > 0) {
-      const itemWidth = 64; // Approximate width of each date item
-      scrollRef.current.scrollLeft = selectedIndex * itemWidth - 32;
+      const itemWidth = 44;
+      scrollRef.current.scrollLeft = selectedIndex * itemWidth - 20;
     }
   }, []);
 
@@ -34,7 +33,7 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
     <div className="relative">
       <div 
         ref={scrollRef}
-        className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide px-4"
+        className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide px-3"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {dates.map((date) => {
@@ -46,23 +45,23 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
               key={date.toISOString()}
               onClick={() => onDateChange(date)}
               className={cn(
-                "flex flex-col items-center min-w-[56px] py-2 px-3 rounded-lg transition-smooth",
+                "flex flex-col items-center min-w-[40px] py-1.5 px-2 rounded-md transition-smooth",
                 isSelected
                   ? "bg-primary text-primary-foreground"
                   : "bg-card hover:bg-accent",
                 isWeekend && !isSelected && "text-muted-foreground"
               )}
             >
-              <span className="text-xs font-medium uppercase tracking-wide">
+              <span className="text-[9px] font-medium uppercase tracking-wide">
                 {getDateLabel(date)}
               </span>
               <span className={cn(
-                "text-lg font-semibold mt-0.5",
+                "text-sm font-semibold",
                 isSelected ? "text-primary-foreground" : "text-foreground"
               )}>
                 {format(date, "d")}
               </span>
-              <span className="text-[10px] uppercase tracking-wider opacity-60">
+              <span className="text-[8px] uppercase tracking-wider opacity-60">
                 {format(date, "MMM")}
               </span>
             </button>
