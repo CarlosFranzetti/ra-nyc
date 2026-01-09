@@ -1,9 +1,34 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+// Allowed origins for CORS - restrict to your domains
+const ALLOWED_ORIGINS = [
+  'http://localhost:8080',
+  'http://localhost:8081',
+  'http://localhost:5173',
+  // Production domains - add your deployed domain here
+];
+
+// Check if origin is from a Lovable preview/staging domain
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  
+  // Allow exact matches
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  
+  // Allow Lovable preview/staging domains
+  if (origin.endsWith('.lovable.app') || origin.endsWith('.lovableproject.com')) return true;
+  
+  return false;
+}
+
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  const allowedOrigin = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Credentials': 'true',
+  };
+}
 
 const RA_GRAPHQL_URL = 'https://ra.co/graphql';
 
@@ -202,11 +227,29 @@ function transformEvent(item: EventData) {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // Validate API key - require Supabase anon key
+    const apiKey = req.headers.get('apikey');
+    const expectedKey = Deno.env.get('SUPABASE_ANON_KEY');
+    
+    if (!apiKey || apiKey !== expectedKey) {
+      console.warn(`[AUTH] Invalid or missing API key from origin: ${origin}`);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     // Rate limiting by IP
     const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
                      req.headers.get('cf-connecting-ip') || 
