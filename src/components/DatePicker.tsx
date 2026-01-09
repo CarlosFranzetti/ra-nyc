@@ -12,14 +12,15 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prefetchEvents = usePrefetchEvents();
   const today = new Date();
+  const yesterday = addDays(today, -1);
   
-  // Calculate days from today to selected date
-  const daysToSelected = differenceInDays(selectedDate, today);
+  // Calculate days from yesterday to selected date
+  const daysToSelected = differenceInDays(selectedDate, yesterday);
   
-  // Generate dates: always include today through at least 14 days, 
+  // Generate dates: start from yesterday, include at least 15 days (yesterday + 14 forward),
   // but extend if selected date is further out
-  const daysToShow = Math.max(14, daysToSelected + 1);
-  const dates = Array.from({ length: daysToShow }, (_, i) => addDays(today, i));
+  const daysToShow = Math.max(15, daysToSelected + 1);
+  const dates = Array.from({ length: daysToShow }, (_, i) => addDays(yesterday, i));
 
   const getDateLabel = (date: Date) => {
     if (isToday(date)) return "Today";
