@@ -12,11 +12,9 @@ const Index = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const dateString = format(selectedDate, "yyyy-MM-dd");
   
-  const { data, isLoading, isError, refetch, isFetching } = useEvents(dateString);
+  const { data, isError, refetch, isFetching } = useEvents(dateString);
 
-  // Show skeletons only on first load, not when switching dates
-  const showSkeletons = isLoading && !data;
-  const showEvents = data?.events && data.events.length > 0;
+  const hasEvents = data?.events && data.events.length > 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -41,20 +39,18 @@ const Index = () => {
 
       {/* Events List */}
       <main className="px-3 pb-6">
-        <div className={`transition-opacity duration-200 ${isFetching && !showSkeletons ? 'opacity-50' : 'opacity-100'}`}>
-          {showSkeletons ? (
+        <div className={`transition-opacity duration-150 ${isFetching ? 'opacity-60' : 'opacity-100'}`}>
+          {isError ? (
+            <ErrorState onRetry={() => refetch()} />
+          ) : !hasEvents ? (
             <div className="space-y-2">
-              {[...Array(5)].map((_, i) => (
+              {[...Array(6)].map((_, i) => (
                 <EventSkeleton key={i} />
               ))}
             </div>
-          ) : isError ? (
-            <ErrorState onRetry={() => refetch()} />
-          ) : !showEvents ? (
-            <EmptyState date={dateString} />
           ) : (
             <div className="space-y-2">
-              {data?.events.map((event) => (
+              {data.events.map((event) => (
                 <EventCard key={event.id} event={event} />
               ))}
             </div>
