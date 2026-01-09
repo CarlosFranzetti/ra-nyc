@@ -7,64 +7,59 @@ const corsHeaders = {
 
 const RA_GRAPHQL_URL = 'https://ra.co/graphql';
 
-interface EventListing {
+interface EventData {
   id: string;
-  title: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  contentUrl: string;
-  images: { filename: string }[];
-  venue: {
-    name: string;
-    area: { name: string };
+  listingDate: string;
+  event: {
+    id: string;
+    title: string;
+    attending: number;
+    date: string;
+    startTime: string;
+    endTime: string;
+    contentUrl: string;
+    flyerFront: string | null;
+    images: { id: string; filename: string; alt: string }[];
+    venue: {
+      id: string;
+      name: string;
+      contentUrl: string;
+    } | null;
+    artists: { id: string; name: string }[];
+    pick: { blurb: string } | null;
   };
-  artists: { name: string }[];
-  attending: number;
-  interestedCount: number;
-  pick: { blurb: string } | null;
 }
 
-async function fetchEventsFromRA(listingDate: string): Promise<EventListing[]> {
+async function fetchEventsFromRA(listingDate: string): Promise<EventData[]> {
   const query = `
-    query GET_DEFAULT_EVENTS_LISTING(
-      $indices: [IndexType!]
-      $pageSize: Int
-      $page: Int
-      $listingDate: FilterDate
-      $filterOptions: FilterOptions
-      $sortOrder: SortOrder
-    ) {
-      listing(
-        indices: $indices
-        pageSize: $pageSize
-        page: $page
-        listingDate: $listingDate
-        filterOptions: $filterOptions
-        sortOrder: $sortOrder
-      ) {
+    query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $pageSize: Int, $page: Int, $sort: FilterSortInput) {
+      eventListings(filters: $filters, pageSize: $pageSize, page: $page, sort: $sort) {
         data {
-          ... on Event {
+          id
+          listingDate
+          event {
             id
             title
+            attending
             date
             startTime
             endTime
             contentUrl
+            flyerFront
             images {
+              id
               filename
+              alt
             }
             venue {
+              id
               name
-              area {
-                name
-              }
+              contentUrl
             }
             artists {
+              id
               name
             }
-            attending
-            interestedCount
             pick {
               blurb
             }
@@ -76,17 +71,18 @@ async function fetchEventsFromRA(listingDate: string): Promise<EventListing[]> {
   `;
 
   const variables = {
-    indices: ["EVENT"],
+    filters: {
+      areas: { eq: 34 }, // Berlin area code
+      listingDate: {
+        gte: listingDate,
+        lte: listingDate,
+      },
+    },
     pageSize: 50,
     page: 1,
-    listingDate: {
-      gte: listingDate,
-      lte: listingDate,
+    sort: {
+      attending: { priority: 1, order: "DESCENDING" },
     },
-    filterOptions: {
-      areas: { eq: 34 }, // Berlin area code
-    },
-    sortOrder: "ASCENDING",
   };
 
   console.log(`Fetching events for date: ${listingDate}`);
@@ -95,14 +91,17 @@ async function fetchEventsFromRA(listingDate: string): Promise<EventListing[]> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Referer': 'https://ra.co/events/de/berlin',
+      'Origin': 'https://ra.co',
     },
     body: JSON.stringify({ query, variables }),
   });
 
   if (!response.ok) {
     console.error(`RA API returned status: ${response.status}`);
+    const text = await response.text();
+    console.error(`Response body: ${text}`);
     throw new Error(`RA API error: ${response.status}`);
   }
 
@@ -110,33 +109,39 @@ async function fetchEventsFromRA(listingDate: string): Promise<EventListing[]> {
   
   if (data.errors) {
     console.error('GraphQL errors:', JSON.stringify(data.errors));
-    throw new Error('GraphQL query failed');
+    throw new Error('GraphQL query failed: ' + data.errors[0]?.message);
   }
 
-  console.log(`Found ${data.data?.listing?.data?.length || 0} events`);
-  return data.data?.listing?.data || [];
+  const events = data.data?.eventListings?.data || [];
+  console.log(`Found ${events.length} events`);
+  return events;
 }
 
-function transformEvent(event: EventListing) {
-  const imageUrl = event.images?.[0]?.filename 
-    ? `https://images.ra.co/${event.images[0].filename}`
-    : null;
+function transformEvent(item: EventData) {
+  const event = item.event;
+  const imageUrl = event.flyerFront 
+    ? event.flyerFront.startsWith('http') 
+      ? event.flyerFront 
+      : `https://images.ra.co/${event.flyerFront}`
+    : event.images?.[0]?.filename 
+      ? `https://images.ra.co/${event.images[0].filename}`
+      : null;
 
   return {
     id: event.id,
     title: event.title,
     date: event.date,
-    startTime: event.startTime,
-    endTime: event.endTime,
+    startTime: event.startTime || '',
+    endTime: event.endTime || '',
     url: `https://ra.co${event.contentUrl}`,
     imageUrl,
     venue: {
       name: event.venue?.name || 'TBA',
-      area: event.venue?.area?.name || 'Berlin',
+      area: 'Berlin',
     },
     artists: event.artists?.map(a => a.name) || [],
     attending: event.attending || 0,
-    interested: event.interestedCount || 0,
+    interested: 0,
     isPick: !!event.pick,
     pickBlurb: event.pick?.blurb || null,
   };
@@ -159,9 +164,6 @@ serve(async (req) => {
     const rawEvents = await fetchEventsFromRA(date);
     const events = rawEvents.map(transformEvent);
 
-    // Sort by attending count (popularity)
-    events.sort((a, b) => b.attending - a.attending);
-
     return new Response(
       JSON.stringify({ 
         date, 
@@ -172,7 +174,7 @@ serve(async (req) => {
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json',
-          'Cache-Control': 'public, max-age=300', // Cache for 5 minutes
+          'Cache-Control': 'public, max-age=300',
         } 
       }
     );
