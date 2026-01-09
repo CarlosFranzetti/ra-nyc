@@ -15,6 +15,9 @@ export function useEvents(date: string) {
       return data;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep cached data for 10 minutes
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData, // Keep showing old data while fetching new
     retry: 2,
   });
 }
