@@ -72,7 +72,7 @@ async function fetchEventsFromRA(listingDate: string): Promise<EventData[]> {
 
   const variables = {
     filters: {
-      areas: { eq: 34 }, // Berlin area code
+      areas: { eq: 8 }, // NYC area code
       listingDate: {
         gte: listingDate,
         lte: listingDate,
@@ -92,7 +92,7 @@ async function fetchEventsFromRA(listingDate: string): Promise<EventData[]> {
     headers: {
       'Content-Type': 'application/json',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Referer': 'https://ra.co/events/de/berlin',
+      'Referer': 'https://ra.co/events/us/newyork',
       'Origin': 'https://ra.co',
     },
     body: JSON.stringify({ query, variables }),
@@ -137,7 +137,7 @@ function transformEvent(item: EventData) {
     imageUrl,
     venue: {
       name: event.venue?.name || 'TBA',
-      area: 'Berlin',
+      area: 'New York',
     },
     artists: event.artists?.map(a => a.name) || [],
     attending: event.attending || 0,
