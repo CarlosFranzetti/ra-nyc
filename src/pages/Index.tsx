@@ -12,11 +12,15 @@ const Index = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const dateString = format(selectedDate, "yyyy-MM-dd");
   
-  const { data, isLoading, isError, refetch } = useEvents(dateString);
+  const { data, isLoading, isError, refetch, isFetching } = useEvents(dateString);
+
+  // Show skeletons only on first load, not when switching dates
+  const showSkeletons = isLoading && !data;
+  const showEvents = data?.events && data.events.length > 0;
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header selectedDate={selectedDate} onDateChange={setSelectedDate} />
       
       {/* Date Picker */}
       <div className="py-4 border-b border-border/50">
@@ -27,33 +31,35 @@ const Index = () => {
       </div>
 
       {/* Event Count */}
-      {data && data.count > 0 && (
-        <div className="px-4 py-3">
+      <div className="px-4 py-3 min-h-[40px]">
+        {data && data.count > 0 && (
           <p className="text-sm text-muted-foreground">
             {data.count} event{data.count !== 1 ? 's' : ''} on {format(selectedDate, "EEEE, MMMM d")}
           </p>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Events List */}
       <main className="px-4 pb-8">
-        {isLoading ? (
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <EventSkeleton key={i} />
-            ))}
-          </div>
-        ) : isError ? (
-          <ErrorState onRetry={() => refetch()} />
-        ) : data?.events.length === 0 ? (
-          <EmptyState date={dateString} />
-        ) : (
-          <div className="space-y-4">
-            {data?.events.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
-          </div>
-        )}
+        <div className={`transition-opacity duration-200 ${isFetching && !showSkeletons ? 'opacity-50' : 'opacity-100'}`}>
+          {showSkeletons ? (
+            <div className="space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <EventSkeleton key={i} />
+              ))}
+            </div>
+          ) : isError ? (
+            <ErrorState onRetry={() => refetch()} />
+          ) : !showEvents ? (
+            <EmptyState date={dateString} />
+          ) : (
+            <div className="space-y-4">
+              {data?.events.map((event) => (
+                <EventCard key={event.id} event={event} />
+              ))}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
