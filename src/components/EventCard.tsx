@@ -4,9 +4,10 @@ import type { Event } from "@/types/event";
 
 interface EventCardProps {
   event: Event;
+  onSelect: (event: Event) => void;
 }
 
-export function EventCard({ event }: EventCardProps) {
+export function EventCard({ event, onSelect }: EventCardProps) {
   const formatTime = (time: string) => {
     if (!time) return "";
 
@@ -27,11 +28,9 @@ export function EventCard({ event }: EventCardProps) {
   };
 
   return (
-    <a
-      href={event.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="block group"
+    <button
+      onClick={() => onSelect(event)}
+      className="block w-full text-left group"
     >
       <article className="flex gap-3 bg-card rounded-lg overflow-hidden transition-smooth hover:bg-accent border border-border/50 p-2">
         {/* Thumbnail */}
@@ -93,6 +92,6 @@ export function EventCard({ event }: EventCardProps) {
           </div>
         </div>
       </article>
-    </a>
+    </button>
   );
 }

@@ -6,18 +6,25 @@ import { EventCard } from "@/components/EventCard";
 import { EventSkeleton } from "@/components/EventSkeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { EventDetailsSheet } from "@/components/EventDetailsSheet";
 import { useEvents } from "@/hooks/useEvents";
+import type { Event } from "@/types/event";
 
 const Index = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const dateString = format(selectedDate, "yyyy-MM-dd");
   
   const { data, isLoading, isError, refetch, isFetching } = useEvents(dateString);
 
-  // Always show skeletons on first load, show previous data while fetching new
-  const showSkeletons = isLoading && !data;
   const hasEvents = data?.events && data.events.length > 0;
   const showEmptyState = data && data.events && data.events.length === 0;
+
+  const handleEventSelect = (event: Event) => {
+    setSelectedEvent(event);
+    setSheetOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -42,7 +49,7 @@ const Index = () => {
 
       {/* Events List */}
       <main className="px-3 pb-6">
-        <div className={`transition-opacity duration-150 ${isFetching && !showSkeletons ? 'opacity-60' : 'opacity-100'}`}>
+        <div className={`transition-opacity duration-150 ${isFetching && !isLoading ? 'opacity-60' : 'opacity-100'}`}>
           {isError ? (
             <ErrorState onRetry={() => refetch()} />
           ) : showEmptyState ? (
@@ -50,7 +57,7 @@ const Index = () => {
           ) : hasEvents ? (
             <div className="space-y-2">
               {data.events.map((event) => (
-                <EventCard key={event.id} event={event} />
+                <EventCard key={event.id} event={event} onSelect={handleEventSelect} />
               ))}
             </div>
           ) : (
@@ -62,6 +69,13 @@ const Index = () => {
           )}
         </div>
       </main>
+
+      {/* Event Details Sheet */}
+      <EventDetailsSheet
+        event={selectedEvent}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
     </div>
   );
 };
