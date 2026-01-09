@@ -1,6 +1,5 @@
 import { CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
-import raLogo from "@/assets/ra-logo.svg";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -18,10 +17,7 @@ export function Header({ selectedDate, onDateChange }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
       <div className="px-4 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <img src={raLogo} alt="RA" className="w-8 h-8" />
-          <h1 className="text-xl font-bold tracking-tight">NYC</h1>
-        </div>
+        <h1 className="text-xl font-bold tracking-tight">RA NYC Events</h1>
         <Popover>
           <PopoverTrigger asChild>
             <Button
