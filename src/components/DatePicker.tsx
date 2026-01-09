@@ -15,14 +15,14 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   // Calculate the start date based on selected date
   const daysFromYesterday = differenceInDays(selectedDate, yesterday);
   
-  // Always show 9 dates, centered around today when possible
+  // Always show 8 dates, centered around today when possible
   let startDate = yesterday;
-  if (daysFromYesterday >= 9) {
+  if (daysFromYesterday >= 8) {
     // Selected date is beyond default range, shift window
     startDate = addDays(selectedDate, -4);
   }
   
-  const dates = Array.from({ length: 9 }, (_, i) => addDays(startDate, i));
+  const dates = Array.from({ length: 8 }, (_, i) => addDays(startDate, i));
 
   const getDateLabel = (date: Date) => {
     if (isToday(date)) return "Today";
