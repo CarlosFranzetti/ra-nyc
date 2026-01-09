@@ -44,7 +44,7 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
     <div className="relative">
       <div 
         ref={scrollRef}
-        className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide px-3"
+        className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide pl-0 pr-3"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {dates.map((date) => {
