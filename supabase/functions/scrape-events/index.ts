@@ -235,16 +235,13 @@ serve(async (req) => {
   }
 
   try {
-    // Validate API key - require Supabase anon key
-    const apiKey = req.headers.get('apikey');
-    const expectedKey = Deno.env.get('SUPABASE_ANON_KEY');
-    
-    if (!apiKey || apiKey !== expectedKey) {
-      console.warn(`[AUTH] Invalid or missing API key from origin: ${origin}`);
+    // Verify request is from an allowed origin (CORS already restricts this, but double-check)
+    if (!isAllowedOrigin(origin)) {
+      console.warn(`[CORS] Rejected request from disallowed origin: ${origin}`);
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Forbidden' }),
         { 
-          status: 401, 
+          status: 403, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
