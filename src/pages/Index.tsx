@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Header } from "@/components/Header";
 import { DatePicker } from "@/components/DatePicker";
@@ -7,6 +7,7 @@ import { EventSkeleton } from "@/components/EventSkeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { EventDetailsSheet } from "@/components/EventDetailsSheet";
+import { SplashScreen } from "@/components/SplashScreen";
 import { useEvents } from "@/hooks/useEvents";
 import type { Event } from "@/types/event";
 
@@ -14,9 +15,18 @@ const Index = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const dateString = format(selectedDate, "yyyy-MM-dd");
   
   const { data, isLoading, isError, refetch, isFetching } = useEvents(dateString);
+
+  // Hide splash once initial data loads
+  useEffect(() => {
+    if (!isLoading && data) {
+      const timer = setTimeout(() => setShowSplash(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, data]);
 
   const hasEvents = data?.events && data.events.length > 0;
   const showEmptyState = data && data.events && data.events.length === 0;
@@ -27,7 +37,9 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <>
+      <SplashScreen isVisible={showSplash} />
+      <div className="min-h-screen bg-background">
       <Header selectedDate={selectedDate} onDateChange={setSelectedDate} />
       
       {/* Date Picker */}
@@ -76,7 +88,8 @@ const Index = () => {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
       />
-    </div>
+      </div>
+    </>
   );
 };
 
