@@ -1,7 +1,6 @@
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { Users, ExternalLink, MapPin, Clock } from "lucide-react";
 import type { Event } from "@/types/event";
-import { cn } from "@/lib/utils";
 
 interface EventCardProps {
   event: Event;
@@ -10,9 +9,23 @@ interface EventCardProps {
 export function EventCard({ event }: EventCardProps) {
   const formatTime = (time: string) => {
     if (!time) return "";
-    const [hours, minutes] = time.split(":");
-    const h = parseInt(hours);
-    return `${h > 12 ? h - 12 : h}${minutes !== "00" ? `:${minutes}` : ""}${h >= 12 ? "pm" : "am"}`;
+
+    // RA often returns ISO strings like 2026-01-08T21:00:00.000
+    if (time.includes("T")) {
+      const d = parseISO(time);
+      if (Number.isNaN(d.getTime())) return "";
+      return format(d, "h:mma").toLowerCase().replace(":00", "");
+    }
+
+    // Fallback for HH:mm
+    const [hours, minutes = "00"] = time.split(":");
+    const h = Number.parseInt(hours, 10);
+    if (Number.isNaN(h)) return "";
+
+    const suffix = h >= 12 ? "pm" : "am";
+    const hour12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+    const mins = minutes === "00" ? "" : `:${minutes}`;
+    return `${hour12}${mins}${suffix}`;
   };
 
   return (

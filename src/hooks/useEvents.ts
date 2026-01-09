@@ -6,29 +6,13 @@ export function useEvents(date: string) {
   return useQuery({
     queryKey: ["events", date],
     queryFn: async (): Promise<EventsResponse> => {
-      const { data, error } = await supabase.functions.invoke("scrape-events", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: null,
+      const { data, error } = await supabase.functions.invoke<EventsResponse>("scrape-events", {
+        body: { date },
       });
 
-      // Since we can't pass query params through invoke, we'll call it differently
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scrape-events?date=${date}`,
-        {
-          headers: {
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch events");
-      }
-
-      return response.json();
+      if (error) throw error;
+      if (!data) throw new Error("No data returned");
+      return data;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 2,
