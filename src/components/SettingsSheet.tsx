@@ -15,9 +15,10 @@ interface OptionButtonProps {
   onClick: () => void;
   label: string;
   description?: string;
+  color?: string;
 }
 
-function OptionButton({ active, onClick, label, description }: OptionButtonProps) {
+function OptionButton({ active, onClick, label, description, color }: OptionButtonProps) {
   return (
     <button
       onClick={onClick}
@@ -28,9 +29,17 @@ function OptionButton({ active, onClick, label, description }: OptionButtonProps
           : "border-border/50 bg-card hover:bg-accent text-muted-foreground hover:text-foreground"
       )}
     >
-      <span className="text-sm font-medium">{label}</span>
+      <div className="flex items-center gap-2">
+        {color && (
+          <div 
+            className="w-3 h-3 rounded-full" 
+            style={{ background: color }}
+          />
+        )}
+        <span className="text-sm font-medium">{label}</span>
+      </div>
       {description && (
-        <span className="text-xs opacity-70 mt-0.5">{description}</span>
+        <span className="text-xs opacity-60 mt-0.5">{description}</span>
       )}
     </button>
   );
@@ -39,15 +48,23 @@ function OptionButton({ active, onClick, label, description }: OptionButtonProps
 interface OptionGroupProps {
   title: string;
   children: React.ReactNode;
+  columns?: 2 | 3 | 4;
 }
 
-function OptionGroup({ title, children }: OptionGroupProps) {
+function OptionGroup({ title, children, columns = 2 }: OptionGroupProps) {
   return (
     <div className="space-y-2">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
         {title}
       </h3>
-      <div className="grid grid-cols-2 gap-2">{children}</div>
+      <div className={cn(
+        "grid gap-2",
+        columns === 2 && "grid-cols-2",
+        columns === 3 && "grid-cols-3",
+        columns === 4 && "grid-cols-4"
+      )}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -64,30 +81,29 @@ export function SettingsSheet() {
     setNavStyle,
   } = useTheme();
 
-  const colorOptions: { value: ColorTheme; label: string; desc: string }[] = [
-    { value: "monochrome", label: "Monochrome", desc: "Pure black & white" },
-    { value: "neon", label: "Neon", desc: "Cyan accent" },
-    { value: "warm", label: "Warm", desc: "Amber tones" },
-    { value: "light", label: "Light", desc: "Light mode" },
+  const colorOptions: { value: ColorTheme; label: string; color: string }[] = [
+    { value: "neon", label: "Neon", color: "hsl(185 100% 50%)" },
+    { value: "vapor", label: "Vapor", color: "hsl(320 100% 60%)" },
+    { value: "matrix", label: "Matrix", color: "hsl(120 100% 45%)" },
+    { value: "sunset", label: "Sunset", color: "hsl(25 100% 55%)" },
   ];
 
   const densityOptions: { value: LayoutDensity; label: string; desc: string }[] = [
-    { value: "compact", label: "Compact", desc: "Default spacing" },
-    { value: "ultra-compact", label: "Ultra", desc: "Maximum density" },
-    { value: "relaxed", label: "Relaxed", desc: "More breathing room" },
+    { value: "tight", label: "Tight", desc: "Dense layout" },
+    { value: "default", label: "Default", desc: "Balanced" },
+    { value: "airy", label: "Airy", desc: "Spacious" },
   ];
 
   const fontOptions: { value: Typography; label: string; desc: string }[] = [
-    { value: "default", label: "Default", desc: "System fonts" },
-    { value: "techno", label: "Techno", desc: "Space Grotesk" },
-    { value: "editorial", label: "Editorial", desc: "Playfair + Inter" },
+    { value: "system", label: "System", desc: "Clean & native" },
+    { value: "mono", label: "Mono", desc: "JetBrains Mono" },
+    { value: "display", label: "Display", desc: "Bold headlines" },
   ];
 
   const navOptions: { value: NavStyle; label: string; desc: string }[] = [
-    { value: "default", label: "Header", desc: "Calendar in header" },
-    { value: "bottom-nav", label: "Bottom Nav", desc: "Tab bar" },
-    { value: "fab", label: "FAB", desc: "Floating button" },
-    { value: "swipe", label: "Swipe", desc: "Gesture nav" },
+    { value: "standard", label: "Standard", desc: "Header icons" },
+    { value: "tabs", label: "Tabs", desc: "Bottom bar" },
+    { value: "minimal", label: "Minimal", desc: "Swipe only" },
   ];
 
   return (
@@ -107,19 +123,31 @@ export function SettingsSheet() {
         </SheetHeader>
         
         <div className="mt-6 space-y-6">
-          <OptionGroup title="Color Theme">
+          <OptionGroup title="Theme" columns={4}>
             {colorOptions.map((opt) => (
-              <OptionButton
+              <button
                 key={opt.value}
-                active={colorTheme === opt.value}
                 onClick={() => setColorTheme(opt.value)}
-                label={opt.label}
-                description={opt.desc}
-              />
+                className={cn(
+                  "flex flex-col items-center gap-1.5 p-2 rounded-lg border transition-all",
+                  colorTheme === opt.value
+                    ? "border-primary bg-primary/10"
+                    : "border-border/50 bg-card hover:bg-accent"
+                )}
+              >
+                <div 
+                  className={cn(
+                    "w-6 h-6 rounded-full",
+                    colorTheme === opt.value && "ring-2 ring-offset-2 ring-offset-background ring-primary"
+                  )}
+                  style={{ background: opt.color }}
+                />
+                <span className="text-[10px] font-medium">{opt.label}</span>
+              </button>
             ))}
           </OptionGroup>
 
-          <OptionGroup title="Layout Density">
+          <OptionGroup title="Density" columns={3}>
             {densityOptions.map((opt) => (
               <OptionButton
                 key={opt.value}
@@ -131,7 +159,7 @@ export function SettingsSheet() {
             ))}
           </OptionGroup>
 
-          <OptionGroup title="Typography">
+          <OptionGroup title="Typography" columns={3}>
             {fontOptions.map((opt) => (
               <OptionButton
                 key={opt.value}
@@ -143,7 +171,7 @@ export function SettingsSheet() {
             ))}
           </OptionGroup>
 
-          <OptionGroup title="Navigation">
+          <OptionGroup title="Navigation" columns={3}>
             {navOptions.map((opt) => (
               <OptionButton
                 key={opt.value}
