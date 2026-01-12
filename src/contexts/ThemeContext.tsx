@@ -20,7 +20,7 @@ interface ThemeContextType extends ThemeSettings {
 }
 
 const defaultSettings: ThemeSettings = {
-  colorTheme: "neon",
+  colorTheme: "sunset",
   layoutDensity: "default",
   typography: "system",
   navStyle: "standard",
