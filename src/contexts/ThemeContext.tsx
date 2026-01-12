@@ -1,9 +1,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
-export type ColorTheme = "monochrome" | "neon" | "warm" | "light";
-export type LayoutDensity = "compact" | "ultra-compact" | "relaxed";
-export type Typography = "default" | "techno" | "editorial";
-export type NavStyle = "default" | "bottom-nav" | "swipe" | "fab";
+export type ColorTheme = "neon" | "vapor" | "matrix" | "sunset";
+export type LayoutDensity = "default" | "tight" | "airy";
+export type Typography = "system" | "mono" | "display";
+export type NavStyle = "standard" | "tabs" | "minimal";
 
 interface ThemeSettings {
   colorTheme: ColorTheme;
@@ -20,10 +20,10 @@ interface ThemeContextType extends ThemeSettings {
 }
 
 const defaultSettings: ThemeSettings = {
-  colorTheme: "monochrome",
-  layoutDensity: "compact",
-  typography: "default",
-  navStyle: "default",
+  colorTheme: "neon",
+  layoutDensity: "default",
+  typography: "system",
+  navStyle: "standard",
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -31,25 +31,43 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<ThemeSettings>(() => {
     const saved = localStorage.getItem("ra-theme-settings");
-    return saved ? JSON.parse(saved) : defaultSettings;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Validate that saved values are still valid options
+        const validColors = ["neon", "vapor", "matrix", "sunset"];
+        const validDensity = ["default", "tight", "airy"];
+        const validTypo = ["system", "mono", "display"];
+        const validNav = ["standard", "tabs", "minimal"];
+        
+        return {
+          colorTheme: validColors.includes(parsed.colorTheme) ? parsed.colorTheme : "neon",
+          layoutDensity: validDensity.includes(parsed.layoutDensity) ? parsed.layoutDensity : "default",
+          typography: validTypo.includes(parsed.typography) ? parsed.typography : "system",
+          navStyle: validNav.includes(parsed.navStyle) ? parsed.navStyle : "standard",
+        };
+      } catch {
+        return defaultSettings;
+      }
+    }
+    return defaultSettings;
   });
 
   useEffect(() => {
     localStorage.setItem("ra-theme-settings", JSON.stringify(settings));
     
-    // Apply classes to root
     const root = document.documentElement;
     
     // Color theme
-    root.classList.remove("theme-monochrome", "theme-neon", "theme-warm", "theme-light");
+    root.classList.remove("theme-neon", "theme-vapor", "theme-matrix", "theme-sunset");
     root.classList.add(`theme-${settings.colorTheme}`);
     
     // Layout density
-    root.classList.remove("density-compact", "density-ultra-compact", "density-relaxed");
+    root.classList.remove("density-default", "density-tight", "density-airy");
     root.classList.add(`density-${settings.layoutDensity}`);
     
     // Typography
-    root.classList.remove("font-default", "font-techno", "font-editorial");
+    root.classList.remove("font-system", "font-mono", "font-display");
     root.classList.add(`font-${settings.typography}`);
   }, [settings]);
 

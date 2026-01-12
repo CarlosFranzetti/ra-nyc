@@ -17,7 +17,7 @@ interface HeaderProps {
 
 export function Header({ selectedDate, onDateChange }: HeaderProps) {
   const { navStyle } = useTheme();
-  const showCalendarInHeader = navStyle === "default" || navStyle === "swipe";
+  const showCalendarInHeader = navStyle === "standard" || navStyle === "minimal";
 
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
