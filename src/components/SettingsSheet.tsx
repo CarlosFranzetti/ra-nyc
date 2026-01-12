@@ -7,7 +7,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { useTheme, ColorTheme, LayoutDensity, Typography, NavStyle } from "@/contexts/ThemeContext";
+import { useTheme, ColorTheme, LayoutDensity, Typography } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 
 interface OptionButtonProps {
@@ -77,8 +77,6 @@ export function SettingsSheet() {
     setLayoutDensity,
     typography,
     setTypography,
-    navStyle,
-    setNavStyle,
   } = useTheme();
 
   const colorOptions: { value: ColorTheme; label: string; color: string }[] = [
@@ -100,11 +98,6 @@ export function SettingsSheet() {
     { value: "display", label: "Display", desc: "Bold headlines" },
   ];
 
-  const navOptions: { value: NavStyle; label: string; desc: string }[] = [
-    { value: "standard", label: "Standard", desc: "Header icons" },
-    { value: "tabs", label: "Tabs", desc: "Bottom bar" },
-    { value: "minimal", label: "Minimal", desc: "Swipe only" },
-  ];
 
   return (
     <Sheet>
@@ -171,17 +164,6 @@ export function SettingsSheet() {
             ))}
           </OptionGroup>
 
-          <OptionGroup title="Navigation" columns={3}>
-            {navOptions.map((opt) => (
-              <OptionButton
-                key={opt.value}
-                active={navStyle === opt.value}
-                onClick={() => setNavStyle(opt.value)}
-                label={opt.label}
-                description={opt.desc}
-              />
-            ))}
-          </OptionGroup>
         </div>
       </SheetContent>
     </Sheet>
