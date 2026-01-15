@@ -19,11 +19,10 @@ interface ThemeContextType extends ThemeSettings {
   setNavStyle: (style: NavStyle) => void;
 }
 
-const defaultSettings: ThemeSettings = {
-  colorTheme: "sunset",
-  layoutDensity: "default",
-  typography: "system",
-  navStyle: "standard",
+const colorThemes: ColorTheme[] = ["neon", "vapor", "matrix", "sunset"];
+
+const getRandomColorTheme = (): ColorTheme => {
+  return colorThemes[Math.floor(Math.random() * colorThemes.length)];
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -34,23 +33,32 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Validate that saved values are still valid options
-        const validColors = ["neon", "vapor", "matrix", "sunset"];
         const validDensity = ["default", "tight", "airy"];
         const validTypo = ["system", "mono", "display"];
         const validNav = ["standard", "tabs", "minimal"];
         
+        // Always pick a random color theme on startup
         return {
-          colorTheme: validColors.includes(parsed.colorTheme) ? parsed.colorTheme : "neon",
+          colorTheme: getRandomColorTheme(),
           layoutDensity: validDensity.includes(parsed.layoutDensity) ? parsed.layoutDensity : "default",
           typography: validTypo.includes(parsed.typography) ? parsed.typography : "system",
           navStyle: validNav.includes(parsed.navStyle) ? parsed.navStyle : "standard",
         };
       } catch {
-        return defaultSettings;
+        return {
+          colorTheme: getRandomColorTheme(),
+          layoutDensity: "default",
+          typography: "system",
+          navStyle: "standard",
+        };
       }
     }
-    return defaultSettings;
+    return {
+      colorTheme: getRandomColorTheme(),
+      layoutDensity: "default",
+      typography: "system",
+      navStyle: "standard",
+    };
   });
 
   useEffect(() => {

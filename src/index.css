@@ -55,47 +55,47 @@
   /* Matrix Theme - Terminal Green */
   .theme-matrix {
     --background: 120 20% 3%;
-    --foreground: 120 30% 90%;
+    --foreground: 120 50% 92%;
     --card: 120 20% 6%;
-    --card-foreground: 120 30% 90%;
+    --card-foreground: 120 50% 92%;
     --popover: 120 20% 6%;
-    --popover-foreground: 120 30% 90%;
-    --primary: 120 100% 45%;
+    --popover-foreground: 120 50% 92%;
+    --primary: 120 100% 50%;
     --primary-foreground: 120 20% 3%;
     --secondary: 120 15% 12%;
-    --secondary-foreground: 120 30% 90%;
+    --secondary-foreground: 120 50% 92%;
     --muted: 120 15% 14%;
-    --muted-foreground: 120 20% 50%;
+    --muted-foreground: 120 40% 60%;
     --accent: 120 40% 12%;
-    --accent-foreground: 120 100% 60%;
+    --accent-foreground: 120 100% 65%;
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 98%;
     --border: 120 25% 16%;
     --input: 120 15% 16%;
-    --ring: 120 100% 45%;
+    --ring: 120 100% 50%;
   }
 
-  /* Sunset Theme - Orange to Purple */
+  /* Sunset Theme - Orange Neon */
   .theme-sunset {
     --background: 15 20% 5%;
-    --foreground: 30 30% 95%;
+    --foreground: 35 60% 96%;
     --card: 15 20% 8%;
-    --card-foreground: 30 30% 95%;
+    --card-foreground: 35 60% 96%;
     --popover: 15 20% 8%;
-    --popover-foreground: 30 30% 95%;
-    --primary: 25 100% 55%;
+    --popover-foreground: 35 60% 96%;
+    --primary: 30 100% 55%;
     --primary-foreground: 15 20% 5%;
     --secondary: 15 20% 12%;
-    --secondary-foreground: 30 30% 95%;
+    --secondary-foreground: 35 60% 96%;
     --muted: 15 20% 15%;
-    --muted-foreground: 25 25% 55%;
+    --muted-foreground: 30 50% 60%;
     --accent: 280 30% 15%;
-    --accent-foreground: 25 100% 70%;
+    --accent-foreground: 30 100% 65%;
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 98%;
-    --border: 25 25% 18%;
+    --border: 30 30% 20%;
     --input: 15 20% 18%;
-    --ring: 25 100% 55%;
+    --ring: 30 100% 55%;
   }
 
   /* Typography variants */
