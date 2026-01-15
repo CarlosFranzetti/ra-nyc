@@ -32,7 +32,7 @@ export function EventCard({ event, onSelect }: EventCardProps) {
       onClick={() => onSelect(event)}
       className="block w-full text-left group"
     >
-      <article className="flex gap-3 bg-card rounded-lg overflow-hidden transition-smooth hover:bg-accent border border-border/50 p-2">
+      <article className="flex gap-3 bg-card rounded-lg overflow-hidden transition-all duration-200 hover:bg-accent border border-border/50 p-2 glow-primary-hover">
         {/* Thumbnail */}
         <div className="relative w-24 h-24 flex-shrink-0 rounded-md overflow-hidden bg-muted">
           {event.imageUrl ? (
@@ -52,7 +52,7 @@ export function EventCard({ event, onSelect }: EventCardProps) {
           
           {/* RA Pick Badge */}
           {event.isPick && (
-            <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] font-semibold px-1.5 py-0.5 rounded">
+            <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] font-semibold px-1.5 py-0.5 rounded glow-primary-sm text-glow">
               PICK
             </div>
           )}
