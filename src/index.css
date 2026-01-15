@@ -27,6 +27,8 @@
     --input: 200 15% 18%;
     --ring: 185 100% 50%;
     --radius: 0.5rem;
+    --glow-color: 185 100% 50%;
+    --glow-intensity: 0.4;
   }
 
   /* Vapor Theme - Pink/Magenta Vaporwave */
@@ -50,6 +52,8 @@
     --border: 320 25% 20%;
     --input: 280 20% 18%;
     --ring: 320 100% 60%;
+    --glow-color: 320 100% 60%;
+    --glow-intensity: 0.35;
   }
 
   /* Matrix Theme - Terminal Green */
@@ -73,6 +77,8 @@
     --border: 120 25% 16%;
     --input: 120 15% 16%;
     --ring: 120 100% 50%;
+    --glow-color: 120 100% 50%;
+    --glow-intensity: 0.35;
   }
 
   /* Sunset Theme - Orange Neon */
@@ -96,6 +102,8 @@
     --border: 30 30% 20%;
     --input: 15 20% 18%;
     --ring: 30 100% 55%;
+    --glow-color: 30 100% 55%;
+    --glow-intensity: 0.4;
   }
 
   /* Typography variants */
@@ -177,6 +185,115 @@
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Theme transition - smooth color changes */
+*, *::before, *::after {
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Glow effects */
+.glow-primary {
+  box-shadow: 0 0 20px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 40px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+}
+
+.glow-primary-sm {
+  box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.4));
+}
+
+.glow-primary-hover:hover {
+  box-shadow: 0 0 15px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 30px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+}
+
+.text-glow {
+  text-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity)),
+               0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+}
+
+/* Animation keyframes */
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-slide-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity));
+  }
+  50% {
+    box-shadow: 0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 1.5)),
+                0 0 30px hsl(var(--glow-color) / var(--glow-intensity));
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Animation classes */
+.animate-fade-slide-in {
+  animation: fade-slide-in 0.3s ease-out forwards;
+}
+
+.animate-fade-slide-out {
+  animation: fade-slide-out 0.2s ease-in forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Staggered animations for lists */
+.stagger-animation > * {
+  opacity: 0;
+  animation: fade-slide-in 0.3s ease-out forwards;
+}
+
+.stagger-animation > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-animation > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-animation > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-animation > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-animation > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-animation > *:nth-child(6) { animation-delay: 250ms; }
+.stagger-animation > *:nth-child(7) { animation-delay: 300ms; }
+.stagger-animation > *:nth-child(8) { animation-delay: 350ms; }
+.stagger-animation > *:nth-child(n+9) { animation-delay: 400ms; }
+
+/* Enhanced skeleton loading */
+.skeleton-glow {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--glow-color) / 0.1) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
 /* Bottom nav spacing */
 .has-bottom-nav {
   padding-bottom: 72px;
@@ -193,4 +310,5 @@
   height: 5px;
   background: hsl(var(--primary) / 0.4);
   border-radius: 3px;
+  box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity));
 }

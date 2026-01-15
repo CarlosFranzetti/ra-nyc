@@ -47,9 +47,9 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
             onTouchStart={() => handlePrefetch(date)}
             onMouseEnter={() => handlePrefetch(date)}
             className={cn(
-              "flex flex-col items-center flex-1 py-1 rounded-md transition-all duration-150 border border-border/30",
+              "flex flex-col items-center flex-1 py-1 rounded-md transition-all duration-200 border border-border/30",
               isSelected
-                ? "bg-primary text-primary-foreground border-primary"
+                ? "bg-primary text-primary-foreground border-primary glow-primary-sm"
                 : isWeekend
                   ? "bg-accent/50 hover:bg-accent"
                   : "bg-card hover:bg-accent",

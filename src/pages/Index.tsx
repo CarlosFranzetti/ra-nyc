@@ -26,11 +26,17 @@ const Index = () => {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [dateKey, setDateKey] = useState(0);
   const { navStyle, layoutDensity } = useTheme();
   const dateString = format(selectedDate, "yyyy-MM-dd");
   const touchStartX = useRef<number | null>(null);
   
   const { data, isLoading, isError, refetch, isFetching } = useEvents(dateString);
+
+  // Trigger animation on date change
+  useEffect(() => {
+    setDateKey(prev => prev + 1);
+  }, [dateString]);
 
   // Hide splash once initial data loads
   useEffect(() => {
@@ -125,13 +131,13 @@ const Index = () => {
             ) : showEmptyState ? (
               <EmptyState date={dateString} />
             ) : hasEvents ? (
-              <div className={spacingClass}>
+              <div key={dateKey} className={cn(spacingClass, "stagger-animation")}>
                 {data.events.map((event) => (
                   <EventCard key={event.id} event={event} onSelect={handleEventSelect} />
                 ))}
               </div>
             ) : (
-              <div className={spacingClass}>
+              <div className={cn(spacingClass, "stagger-animation")}>
                 {[...Array(6)].map((_, i) => (
                   <EventSkeleton key={i} />
                 ))}
