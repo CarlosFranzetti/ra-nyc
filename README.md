@@ -4,13 +4,17 @@ A quick and simple browser for browsing Resident Advisor NYC events.
 
 ## 🚀 Deployment
 
-Ready to deploy? Check out our comprehensive [**DEPLOYMENT.md**](./DEPLOYMENT.md) guide for step-by-step instructions on deploying to:
+Ready to deploy? We've got you covered with guides for multiple platforms:
 
+- **[QUICK-DEPLOY.md](./QUICK-DEPLOY.md)** - Fast deployment in 2-5 minutes ⚡
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Comprehensive guide with detailed instructions 📚
+
+### Supported Platforms:
 - **Vercel** (Recommended) - Zero-config deployment with excellent performance
 - **Netlify** - Simple setup with great features
 - **GitHub Pages** - Free hosting for public repositories
 
-The deployment guide includes complete instructions, configuration files, and troubleshooting tips for each platform.
+All configuration files are included in the repository for seamless deployment.
 
 ## Getting Started
 
