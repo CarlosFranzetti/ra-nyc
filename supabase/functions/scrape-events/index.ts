@@ -29,22 +29,24 @@ function isAllowedOrigin(origin: string | null): boolean {
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
-  let allowedOrigin = origin;
+  // Use the origin if it's allowed, otherwise use a safe fallback
+  let allowedOrigin: string;
   
-  if (!isAllowedOrigin(origin)) {
-    // In production with no localhost origins, use the requesting origin if it's from Lovable
-    // Otherwise use Supabase URL if available, or the first allowed origin, or wildcard
-    if (ALLOWED_ORIGINS.length > 0) {
-      allowedOrigin = ALLOWED_ORIGINS[0];
-    } else if (SUPABASE_PROJECT_URL) {
-      allowedOrigin = SUPABASE_PROJECT_URL;
-    } else {
-      allowedOrigin = '*'; // Last resort fallback
-    }
+  if (isAllowedOrigin(origin)) {
+    allowedOrigin = origin!;
+  } else if (ALLOWED_ORIGINS.length > 0) {
+    // Development: use first localhost origin
+    allowedOrigin = ALLOWED_ORIGINS[0];
+  } else if (SUPABASE_PROJECT_URL) {
+    // Production: use Supabase URL if available
+    allowedOrigin = SUPABASE_PROJECT_URL;
+  } else {
+    // Last resort fallback
+    allowedOrigin = '*';
   }
   
   return {
-    'Access-Control-Allow-Origin': allowedOrigin!,
+    'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Credentials': 'true',
   };
@@ -64,6 +66,19 @@ const UPSTASH_REDIS_REST_TOKEN = Deno.env.get('UPSTASH_REDIS_REST_TOKEN');
 // In-memory fallback for rate limiting (when Redis is not configured)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
+// Lua script for atomic rate limiting in Redis
+// Increments the counter and sets expiry only on first request (when counter == 1)
+const REDIS_RATE_LIMIT_SCRIPT = `
+  local key = KEYS[1]
+  local max_requests = tonumber(ARGV[1])
+  local window = tonumber(ARGV[2])
+  local current = redis.call('INCR', key)
+  if current == 1 then
+    redis.call('EXPIRE', key, window)
+  end
+  return current
+`;
+
 // Redis-based rate limiting using Upstash REST API
 async function checkRateLimitRedis(ip: string): Promise<boolean> {
   if (!UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_REST_TOKEN) {
@@ -74,22 +89,10 @@ async function checkRateLimitRedis(ip: string): Promise<boolean> {
   try {
     const key = `ratelimit:${ip}`;
     
-    // Use Lua script for atomic rate limit check
-    // This ensures we increment and set expiry atomically without race conditions
-    const luaScript = `
-      local key = KEYS[1]
-      local max_requests = tonumber(ARGV[1])
-      local window = tonumber(ARGV[2])
-      local current = redis.call('INCR', key)
-      if current == 1 then
-        redis.call('EXPIRE', key, window)
-      end
-      return current
-    `;
-
-    // Construct URL using encodeURIComponent for safety
-    const encodedScript = encodeURIComponent(luaScript);
-    const url = `${UPSTASH_REDIS_REST_URL}/eval/${encodedScript}/1/${key}/${RATE_LIMIT_MAX_REQUESTS}/${RATE_LIMIT_WINDOW_SECONDS}`;
+    // Construct URL with proper encoding
+    const encodedScript = encodeURIComponent(REDIS_RATE_LIMIT_SCRIPT);
+    const encodedKey = encodeURIComponent(key);
+    const url = `${UPSTASH_REDIS_REST_URL}/eval/${encodedScript}/1/${encodedKey}/${RATE_LIMIT_MAX_REQUESTS}/${RATE_LIMIT_WINDOW_SECONDS}`;
 
     const response = await fetch(url, {
       method: 'GET',
