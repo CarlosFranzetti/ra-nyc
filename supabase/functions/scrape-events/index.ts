@@ -40,7 +40,7 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
 }
 
 const RA_GRAPHQL_URL = 'https://ra.co/graphql';
-const SUPABASE_PROJECT_URL = 'https://sjskkjsluxivtovzkajb.supabase.co';
+const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || 'https://sjskkjsluxivtovzkajb.supabase.co';
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_SECONDS = 60; // 1 minute
@@ -63,19 +63,24 @@ async function checkRateLimitRedis(ip: string): Promise<boolean> {
   try {
     const key = `ratelimit:${ip}`;
     
-    // Use Redis pipeline to atomically increment and set expiry only if new
-    const pipeline = [
-      ['INCR', key],
-      ['TTL', key],
-    ];
+    // Use Lua script for atomic rate limit check
+    // This ensures we increment and set expiry atomically without race conditions
+    const luaScript = `
+      local key = KEYS[1]
+      local max_requests = tonumber(ARGV[1])
+      local window = tonumber(ARGV[2])
+      local current = redis.call('INCR', key)
+      if current == 1 then
+        redis.call('EXPIRE', key, window)
+      end
+      return current
+    `;
 
-    const response = await fetch(`${UPSTASH_REDIS_REST_URL}/pipeline`, {
-      method: 'POST',
+    const response = await fetch(`${UPSTASH_REDIS_REST_URL}/eval/${encodeURIComponent(luaScript)}/1/${key}/${RATE_LIMIT_MAX_REQUESTS}/${RATE_LIMIT_WINDOW_SECONDS}`, {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
-        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(pipeline),
     });
 
     if (!response.ok) {
@@ -83,19 +88,8 @@ async function checkRateLimitRedis(ip: string): Promise<boolean> {
       return checkRateLimitInMemory(ip);
     }
 
-    const results = await response.json();
-    const count = results[0]?.result;
-    const ttl = results[1]?.result;
-
-    // If TTL is -1, the key has no expiry, set it now
-    if (ttl === -1) {
-      await fetch(`${UPSTASH_REDIS_REST_URL}/expire/${key}/${RATE_LIMIT_WINDOW_SECONDS}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
-        },
-      });
-    }
+    const result = await response.json();
+    const count = result?.result;
 
     if (typeof count === 'number' && count > RATE_LIMIT_MAX_REQUESTS) {
       console.warn(`[RATE_LIMIT] IP ${ip} exceeded rate limit (${count}/${RATE_LIMIT_MAX_REQUESTS})`);
