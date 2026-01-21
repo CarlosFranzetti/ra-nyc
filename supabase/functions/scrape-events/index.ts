@@ -1,12 +1,19 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// Environment check
+const IS_PRODUCTION = Deno.env.get('ENVIRONMENT') === 'production' || 
+                       Deno.env.get('DENO_DEPLOYMENT_ID') !== undefined;
+
 // Allowed origins for CORS - restrict to your domains
-const ALLOWED_ORIGINS = [
+const LOCALHOST_ORIGINS = [
   'http://localhost:8080',
   'http://localhost:8081',
   'http://localhost:5173',
-  // Production domains - add your deployed domain here
 ];
+
+const ALLOWED_ORIGINS = IS_PRODUCTION 
+  ? [] // No localhost in production
+  : LOCALHOST_ORIGINS;
 
 // Check if origin is from a Lovable preview/staging domain
 function isAllowedOrigin(origin: string | null): boolean {
@@ -22,7 +29,9 @@ function isAllowedOrigin(origin: string | null): boolean {
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigin = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
+  const allowedOrigin = isAllowedOrigin(origin) 
+    ? origin! 
+    : (ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS[0] : 'https://sjskkjsluxivtovzkajb.supabase.co');
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -32,17 +41,70 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
 
 const RA_GRAPHQL_URL = 'https://ra.co/graphql';
 
-// Simple in-memory rate limiting (resets on cold start)
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_SECONDS = 60; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 30; // 30 requests per minute per IP
 
-function isRateLimited(ip: string): boolean {
+// Upstash Redis configuration (optional - falls back to in-memory if not configured)
+const UPSTASH_REDIS_REST_URL = Deno.env.get('UPSTASH_REDIS_REST_URL');
+const UPSTASH_REDIS_REST_TOKEN = Deno.env.get('UPSTASH_REDIS_REST_TOKEN');
+
+// In-memory fallback for rate limiting (when Redis is not configured)
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+// Redis-based rate limiting using Upstash REST API
+async function checkRateLimitRedis(ip: string): Promise<boolean> {
+  if (!UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_REST_TOKEN) {
+    // Fallback to in-memory rate limiting
+    return checkRateLimitInMemory(ip);
+  }
+
+  try {
+    const key = `ratelimit:${ip}`;
+    
+    // Use Redis INCR with EXPIRE for atomic rate limiting
+    const pipeline = [
+      ['INCR', key],
+      ['EXPIRE', key, RATE_LIMIT_WINDOW_SECONDS]
+    ];
+
+    const response = await fetch(`${UPSTASH_REDIS_REST_URL}/pipeline`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(pipeline),
+    });
+
+    if (!response.ok) {
+      console.error('[RATE_LIMIT] Redis request failed, falling back to in-memory');
+      return checkRateLimitInMemory(ip);
+    }
+
+    const results = await response.json();
+    const count = results[0]?.result;
+
+    if (typeof count === 'number' && count > RATE_LIMIT_MAX_REQUESTS) {
+      console.warn(`[RATE_LIMIT] IP ${ip} exceeded rate limit (${count}/${RATE_LIMIT_MAX_REQUESTS})`);
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('[RATE_LIMIT] Redis error, falling back to in-memory:', error);
+    return checkRateLimitInMemory(ip);
+  }
+}
+
+// In-memory rate limiting fallback
+function checkRateLimitInMemory(ip: string): boolean {
   const now = Date.now();
   const record = rateLimitMap.get(ip);
+  const windowMs = RATE_LIMIT_WINDOW_SECONDS * 1000;
   
   if (!record || now > record.resetTime) {
-    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    rateLimitMap.set(ip, { count: 1, resetTime: now + windowMs });
     return false;
   }
   
@@ -252,8 +314,7 @@ serve(async (req) => {
                      req.headers.get('cf-connecting-ip') || 
                      'unknown';
     
-    if (isRateLimited(clientIP)) {
-      console.warn(`[RATE_LIMIT] IP ${clientIP} exceeded rate limit`);
+    if (await checkRateLimitRedis(clientIP)) {
       return new Response(
         JSON.stringify({ error: 'Too many requests. Please try again later.' }),
         { 
