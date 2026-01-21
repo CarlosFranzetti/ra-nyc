@@ -1,48 +1,139 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// Environment check
+const IS_PRODUCTION = Deno.env.get('ENVIRONMENT') === 'production' || 
+                       Deno.env.get('DENO_DEPLOYMENT_ID') !== undefined;
+
 // Allowed origins for CORS - restrict to your domains
-const ALLOWED_ORIGINS = [
+const LOCALHOST_ORIGINS = [
   'http://localhost:8080',
   'http://localhost:8081',
   'http://localhost:5173',
-  // Production domains - add your deployed domain here
 ];
 
-// Check if origin is from a Lovable preview/staging domain
+const ALLOWED_ORIGINS = IS_PRODUCTION 
+  ? [] // No localhost in production
+  : LOCALHOST_ORIGINS;
+
+// Constants
+const RA_GRAPHQL_URL = 'https://ra.co/graphql';
+const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || Deno.env.get('SUPABASE_API_URL') || '';
+
+// Check if origin is from a Lovable preview/staging domain or configured Supabase URL
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
   
-  // Allow exact matches
+  // Allow exact matches from ALLOWED_ORIGINS list
   if (ALLOWED_ORIGINS.includes(origin)) return true;
   
   // Allow Lovable preview/staging domains
   if (origin.endsWith('.lovable.app') || origin.endsWith('.lovableproject.com')) return true;
   
+  // Allow configured Supabase project URL (important for production)
+  if (SUPABASE_PROJECT_URL && origin === SUPABASE_PROJECT_URL) return true;
+  
   return false;
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigin = isAllowedOrigin(origin) ? origin! : ALLOWED_ORIGINS[0];
+  // Use the origin if it's allowed, otherwise use a safe fallback
+  let allowedOrigin: string;
+  let allowCredentials = 'true';
+  
+  if (isAllowedOrigin(origin)) {
+    allowedOrigin = origin!;
+  } else if (ALLOWED_ORIGINS.length > 0) {
+    // Development: use first localhost origin
+    allowedOrigin = ALLOWED_ORIGINS[0];
+  } else if (SUPABASE_PROJECT_URL) {
+    // Production: use Supabase URL if available
+    allowedOrigin = SUPABASE_PROJECT_URL;
+  } else {
+    // Last resort fallback - wildcard does not allow credentials for security
+    allowedOrigin = '*';
+    allowCredentials = 'false';
+  }
+  
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Credentials': allowCredentials,
   };
 }
 
-const RA_GRAPHQL_URL = 'https://ra.co/graphql';
-
-// Simple in-memory rate limiting (resets on cold start)
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_SECONDS = 60; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 30; // 30 requests per minute per IP
 
-function isRateLimited(ip: string): boolean {
+// Upstash Redis configuration (optional - falls back to in-memory if not configured)
+const UPSTASH_REDIS_REST_URL = Deno.env.get('UPSTASH_REDIS_REST_URL');
+const UPSTASH_REDIS_REST_TOKEN = Deno.env.get('UPSTASH_REDIS_REST_TOKEN');
+
+// In-memory fallback for rate limiting (when Redis is not configured)
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+// Lua script for atomic rate limiting in Redis
+// Increments the counter and sets expiry only on first request (when counter == 1)
+const REDIS_RATE_LIMIT_SCRIPT = `local key = KEYS[1]
+local max_requests = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local current = redis.call('INCR', key)
+if current == 1 then
+  redis.call('EXPIRE', key, window)
+end
+return current`.trim();
+
+// Redis-based rate limiting using Upstash REST API
+async function checkRateLimitRedis(ip: string): Promise<boolean> {
+  if (!UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_REST_TOKEN) {
+    // Fallback to in-memory rate limiting
+    return checkRateLimitInMemory(ip);
+  }
+
+  try {
+    const key = `ratelimit:${ip}`;
+    
+    // Construct URL with proper encoding
+    const encodedScript = encodeURIComponent(REDIS_RATE_LIMIT_SCRIPT);
+    const encodedKey = encodeURIComponent(key);
+    const url = `${UPSTASH_REDIS_REST_URL}/eval/${encodedScript}/1/${encodedKey}/${RATE_LIMIT_MAX_REQUESTS}/${RATE_LIMIT_WINDOW_SECONDS}`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+      },
+    });
+
+    if (!response.ok) {
+      console.error('[RATE_LIMIT] Redis request failed, falling back to in-memory');
+      return checkRateLimitInMemory(ip);
+    }
+
+    const result = await response.json();
+    const count = result?.result;
+
+    // Block if count exceeds the limit (e.g., request #31 when limit is 30)
+    if (typeof count === 'number' && count > RATE_LIMIT_MAX_REQUESTS) {
+      console.warn(`[RATE_LIMIT] IP ${ip} exceeded rate limit (${count}/${RATE_LIMIT_MAX_REQUESTS})`);
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('[RATE_LIMIT] Redis error, falling back to in-memory:', error);
+    return checkRateLimitInMemory(ip);
+  }
+}
+
+// In-memory rate limiting fallback
+function checkRateLimitInMemory(ip: string): boolean {
   const now = Date.now();
   const record = rateLimitMap.get(ip);
+  const windowMs = RATE_LIMIT_WINDOW_SECONDS * 1000;
   
   if (!record || now > record.resetTime) {
-    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    rateLimitMap.set(ip, { count: 1, resetTime: now + windowMs });
     return false;
   }
   
@@ -235,7 +326,9 @@ serve(async (req) => {
   }
 
   try {
-    // Verify request is from an allowed origin (CORS already restricts this, but double-check)
+    // Defense-in-depth: Server-side origin validation
+    // While browsers enforce CORS, this provides additional security against
+    // non-browser clients and ensures origin check before processing
     if (!isAllowedOrigin(origin)) {
       console.warn(`[CORS] Rejected request from disallowed origin: ${origin}`);
       return new Response(
@@ -252,8 +345,7 @@ serve(async (req) => {
                      req.headers.get('cf-connecting-ip') || 
                      'unknown';
     
-    if (isRateLimited(clientIP)) {
-      console.warn(`[RATE_LIMIT] IP ${clientIP} exceeded rate limit`);
+    if (await checkRateLimitRedis(clientIP)) {
       return new Response(
         JSON.stringify({ error: 'Too many requests. Please try again later.' }),
         { 
