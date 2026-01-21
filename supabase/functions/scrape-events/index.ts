@@ -19,15 +19,18 @@ const ALLOWED_ORIGINS = IS_PRODUCTION
 const RA_GRAPHQL_URL = 'https://ra.co/graphql';
 const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || Deno.env.get('SUPABASE_API_URL') || '';
 
-// Check if origin is from a Lovable preview/staging domain
+// Check if origin is from a Lovable preview/staging domain or configured Supabase URL
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
   
-  // Allow exact matches
+  // Allow exact matches from ALLOWED_ORIGINS list
   if (ALLOWED_ORIGINS.includes(origin)) return true;
   
   // Allow Lovable preview/staging domains
   if (origin.endsWith('.lovable.app') || origin.endsWith('.lovableproject.com')) return true;
+  
+  // Allow configured Supabase project URL (important for production)
+  if (SUPABASE_PROJECT_URL && origin === SUPABASE_PROJECT_URL) return true;
   
   return false;
 }
