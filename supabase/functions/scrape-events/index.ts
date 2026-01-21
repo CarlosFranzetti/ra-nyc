@@ -35,6 +35,7 @@ function isAllowedOrigin(origin: string | null): boolean {
 function getCorsHeaders(origin: string | null): Record<string, string> {
   // Use the origin if it's allowed, otherwise use a safe fallback
   let allowedOrigin: string;
+  let allowCredentials = 'true';
   
   if (isAllowedOrigin(origin)) {
     allowedOrigin = origin!;
@@ -45,14 +46,15 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
     // Production: use Supabase URL if available
     allowedOrigin = SUPABASE_PROJECT_URL;
   } else {
-    // Last resort fallback
+    // Last resort fallback - wildcard does not allow credentials for security
     allowedOrigin = '*';
+    allowCredentials = 'false';
   }
   
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Credentials': allowCredentials,
   };
 }
 
@@ -321,7 +323,9 @@ serve(async (req) => {
   }
 
   try {
-    // Verify request is from an allowed origin (CORS already restricts this, but double-check)
+    // Defense-in-depth: Server-side origin validation
+    // While browsers enforce CORS, this provides additional security against
+    // non-browser clients and ensures origin check before processing
     if (!isAllowedOrigin(origin)) {
       console.warn(`[CORS] Rejected request from disallowed origin: ${origin}`);
       return new Response(
