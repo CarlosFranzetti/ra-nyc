@@ -15,6 +15,10 @@ const ALLOWED_ORIGINS = IS_PRODUCTION
   ? [] // No localhost in production
   : LOCALHOST_ORIGINS;
 
+// Constants
+const RA_GRAPHQL_URL = 'https://ra.co/graphql';
+const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || Deno.env.get('SUPABASE_API_URL') || '';
+
 // Check if origin is from a Lovable preview/staging domain
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
@@ -52,9 +56,6 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
-const RA_GRAPHQL_URL = 'https://ra.co/graphql';
-const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || Deno.env.get('SUPABASE_API_URL') || '';
-
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_SECONDS = 60; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 30; // 30 requests per minute per IP
@@ -68,16 +69,14 @@ const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
 // Lua script for atomic rate limiting in Redis
 // Increments the counter and sets expiry only on first request (when counter == 1)
-const REDIS_RATE_LIMIT_SCRIPT = `
-  local key = KEYS[1]
-  local max_requests = tonumber(ARGV[1])
-  local window = tonumber(ARGV[2])
-  local current = redis.call('INCR', key)
-  if current == 1 then
-    redis.call('EXPIRE', key, window)
-  end
-  return current
-`;
+const REDIS_RATE_LIMIT_SCRIPT = `local key = KEYS[1]
+local max_requests = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local current = redis.call('INCR', key)
+if current == 1 then
+  redis.call('EXPIRE', key, window)
+end
+return current`.trim();
 
 // Redis-based rate limiting using Upstash REST API
 async function checkRateLimitRedis(ip: string): Promise<boolean> {
@@ -109,6 +108,7 @@ async function checkRateLimitRedis(ip: string): Promise<boolean> {
     const result = await response.json();
     const count = result?.result;
 
+    // Block if count exceeds the limit (e.g., request #31 when limit is 30)
     if (typeof count === 'number' && count > RATE_LIMIT_MAX_REQUESTS) {
       console.warn(`[RATE_LIMIT] IP ${ip} exceeded rate limit (${count}/${RATE_LIMIT_MAX_REQUESTS})`);
       return true;
