@@ -29,18 +29,29 @@ function isAllowedOrigin(origin: string | null): boolean {
 }
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigin = isAllowedOrigin(origin) 
-    ? origin! 
-    : (ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS[0] : SUPABASE_PROJECT_URL);
+  let allowedOrigin = origin;
+  
+  if (!isAllowedOrigin(origin)) {
+    // In production with no localhost origins, use the requesting origin if it's from Lovable
+    // Otherwise use Supabase URL if available, or the first allowed origin, or wildcard
+    if (ALLOWED_ORIGINS.length > 0) {
+      allowedOrigin = ALLOWED_ORIGINS[0];
+    } else if (SUPABASE_PROJECT_URL) {
+      allowedOrigin = SUPABASE_PROJECT_URL;
+    } else {
+      allowedOrigin = '*'; // Last resort fallback
+    }
+  }
+  
   return {
-    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Origin': allowedOrigin!,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Credentials': 'true',
   };
 }
 
 const RA_GRAPHQL_URL = 'https://ra.co/graphql';
-const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || 'https://sjskkjsluxivtovzkajb.supabase.co';
+const SUPABASE_PROJECT_URL = Deno.env.get('SUPABASE_URL') || Deno.env.get('SUPABASE_API_URL') || '';
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_SECONDS = 60; // 1 minute
@@ -76,7 +87,11 @@ async function checkRateLimitRedis(ip: string): Promise<boolean> {
       return current
     `;
 
-    const response = await fetch(`${UPSTASH_REDIS_REST_URL}/eval/${encodeURIComponent(luaScript)}/1/${key}/${RATE_LIMIT_MAX_REQUESTS}/${RATE_LIMIT_WINDOW_SECONDS}`, {
+    // Construct URL using encodeURIComponent for safety
+    const encodedScript = encodeURIComponent(luaScript);
+    const url = `${UPSTASH_REDIS_REST_URL}/eval/${encodedScript}/1/${key}/${RATE_LIMIT_MAX_REQUESTS}/${RATE_LIMIT_WINDOW_SECONDS}`;
+
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
