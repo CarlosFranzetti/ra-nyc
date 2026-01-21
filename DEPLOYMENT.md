@@ -189,16 +189,19 @@ The repository includes a `netlify.toml` file with optimized settings for SPA ro
 
 #### Setup Instructions
 
-1. **Update Vite Configuration**
+1. **Update Vite Configuration (if deploying to a subdirectory)**
    
-   The repository is already configured with the correct base path in `vite.config.ts`.
-   If you need to adjust it for your GitHub username/repo, update:
+   If you're deploying to `https://username.github.io/ra-nyc/` (repository pages), you need to set the base path.
+   
+   Add this to your `vite.config.ts`:
    ```typescript
-   export default defineConfig({
+   export default defineConfig(({ mode }) => ({
      base: '/ra-nyc/', // Change this to match your repo name
      // ... rest of config
-   });
+   }));
    ```
+   
+   **Note:** If you're deploying to a custom domain or `username.github.io` (user pages), skip this step.
 
 2. **Enable GitHub Pages in Repository Settings**
    - Go to your repository on GitHub
