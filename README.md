@@ -2,6 +2,16 @@
 
 A quick and simple browser for browsing Resident Advisor NYC events.
 
+## 🚀 Deployment
+
+Ready to deploy? Check out our comprehensive [**DEPLOYMENT.md**](./DEPLOYMENT.md) guide for step-by-step instructions on deploying to:
+
+- **Vercel** (Recommended) - Zero-config deployment with excellent performance
+- **Netlify** - Simple setup with great features
+- **GitHub Pages** - Free hosting for public repositories
+
+The deployment guide includes complete instructions, configuration files, and troubleshooting tips for each platform.
+
 ## Getting Started
 
 The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
@@ -53,3 +63,14 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+- Supabase
+
+## Environment Variables
+
+This project uses Supabase for backend services. You'll need to set up environment variables:
+
+1. Copy `.env.example` to `.env`
+2. Fill in your Supabase credentials from your Supabase project dashboard
+3. Never commit your `.env` file to version control
+
+For deployment, see [DEPLOYMENT.md](./DEPLOYMENT.md) for instructions on setting environment variables for each platform.
