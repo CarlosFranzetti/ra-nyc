@@ -31,7 +31,7 @@ function isAllowedOrigin(origin: string | null): boolean {
 function getCorsHeaders(origin: string | null): Record<string, string> {
   const allowedOrigin = isAllowedOrigin(origin) 
     ? origin! 
-    : (ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS[0] : 'https://sjskkjsluxivtovzkajb.supabase.co');
+    : (ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS[0] : SUPABASE_PROJECT_URL);
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -40,6 +40,7 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
 }
 
 const RA_GRAPHQL_URL = 'https://ra.co/graphql';
+const SUPABASE_PROJECT_URL = 'https://sjskkjsluxivtovzkajb.supabase.co';
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_SECONDS = 60; // 1 minute
@@ -62,10 +63,10 @@ async function checkRateLimitRedis(ip: string): Promise<boolean> {
   try {
     const key = `ratelimit:${ip}`;
     
-    // Use Redis INCR with EXPIRE for atomic rate limiting
+    // Use Redis pipeline to atomically increment and set expiry only if new
     const pipeline = [
       ['INCR', key],
-      ['EXPIRE', key, RATE_LIMIT_WINDOW_SECONDS]
+      ['TTL', key],
     ];
 
     const response = await fetch(`${UPSTASH_REDIS_REST_URL}/pipeline`, {
@@ -84,6 +85,17 @@ async function checkRateLimitRedis(ip: string): Promise<boolean> {
 
     const results = await response.json();
     const count = results[0]?.result;
+    const ttl = results[1]?.result;
+
+    // If TTL is -1, the key has no expiry, set it now
+    if (ttl === -1) {
+      await fetch(`${UPSTASH_REDIS_REST_URL}/expire/${key}/${RATE_LIMIT_WINDOW_SECONDS}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        },
+      });
+    }
 
     if (typeof count === 'number' && count > RATE_LIMIT_MAX_REQUESTS) {
       console.warn(`[RATE_LIMIT] IP ${ip} exceeded rate limit (${count}/${RATE_LIMIT_MAX_REQUESTS})`);
