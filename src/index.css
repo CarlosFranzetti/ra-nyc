@@ -1,0 +1,314 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Neon Theme - Electric Cyan */
+  :root, .theme-neon {
+    --background: 200 15% 4%;
+    --foreground: 180 20% 95%;
+    --card: 200 15% 7%;
+    --card-foreground: 180 20% 95%;
+    --popover: 200 15% 7%;
+    --popover-foreground: 180 20% 95%;
+    --primary: 185 100% 50%;
+    --primary-foreground: 200 15% 4%;
+    --secondary: 200 15% 12%;
+    --secondary-foreground: 180 20% 95%;
+    --muted: 200 15% 15%;
+    --muted-foreground: 185 20% 55%;
+    --accent: 185 40% 12%;
+    --accent-foreground: 185 100% 70%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 185 25% 18%;
+    --input: 200 15% 18%;
+    --ring: 185 100% 50%;
+    --radius: 0.5rem;
+    --glow-color: 185 100% 50%;
+    --glow-intensity: 0.4;
+  }
+
+  /* Vapor Theme - Pink/Magenta Vaporwave */
+  .theme-vapor {
+    --background: 280 20% 4%;
+    --foreground: 300 20% 95%;
+    --card: 280 20% 7%;
+    --card-foreground: 300 20% 95%;
+    --popover: 280 20% 7%;
+    --popover-foreground: 300 20% 95%;
+    --primary: 320 100% 60%;
+    --primary-foreground: 280 20% 4%;
+    --secondary: 280 20% 12%;
+    --secondary-foreground: 300 20% 95%;
+    --muted: 280 20% 15%;
+    --muted-foreground: 320 20% 55%;
+    --accent: 320 40% 15%;
+    --accent-foreground: 320 100% 75%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 320 25% 20%;
+    --input: 280 20% 18%;
+    --ring: 320 100% 60%;
+    --glow-color: 320 100% 60%;
+    --glow-intensity: 0.35;
+  }
+
+  /* Matrix Theme - Terminal Green */
+  .theme-matrix {
+    --background: 120 20% 3%;
+    --foreground: 120 50% 92%;
+    --card: 120 20% 6%;
+    --card-foreground: 120 50% 92%;
+    --popover: 120 20% 6%;
+    --popover-foreground: 120 50% 92%;
+    --primary: 120 100% 50%;
+    --primary-foreground: 120 20% 3%;
+    --secondary: 120 15% 12%;
+    --secondary-foreground: 120 50% 92%;
+    --muted: 120 15% 14%;
+    --muted-foreground: 120 40% 60%;
+    --accent: 120 40% 12%;
+    --accent-foreground: 120 100% 65%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 120 25% 16%;
+    --input: 120 15% 16%;
+    --ring: 120 100% 50%;
+    --glow-color: 120 100% 50%;
+    --glow-intensity: 0.35;
+  }
+
+  /* Sunset Theme - Orange Neon */
+  .theme-sunset {
+    --background: 15 20% 5%;
+    --foreground: 35 60% 96%;
+    --card: 15 20% 8%;
+    --card-foreground: 35 60% 96%;
+    --popover: 15 20% 8%;
+    --popover-foreground: 35 60% 96%;
+    --primary: 30 100% 55%;
+    --primary-foreground: 15 20% 5%;
+    --secondary: 15 20% 12%;
+    --secondary-foreground: 35 60% 96%;
+    --muted: 15 20% 15%;
+    --muted-foreground: 30 50% 60%;
+    --accent: 280 30% 15%;
+    --accent-foreground: 30 100% 65%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 30 30% 20%;
+    --input: 15 20% 18%;
+    --ring: 30 100% 55%;
+    --glow-color: 30 100% 55%;
+    --glow-intensity: 0.4;
+  }
+
+  /* Typography variants */
+  .font-system {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    letter-spacing: -0.02em;
+  }
+
+  .font-display {
+    font-family: 'Outfit', system-ui, sans-serif;
+  }
+
+  .font-display h1,
+  .font-display h2,
+  .font-display h3 {
+    font-family: 'Bebas Neue', 'Impact', sans-serif;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* Density variants */
+  .density-default {
+    --spacing-unit: 1;
+  }
+
+  .density-tight {
+    --spacing-unit: 0.7;
+  }
+
+  .density-airy {
+    --spacing-unit: 1.4;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html, body {
+    background: hsl(var(--background));
+  }
+  #root {
+    min-height: 100vh;
+    background: hsl(var(--background));
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.3);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.5);
+}
+
+/* Smooth transitions */
+.transition-smooth {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Theme transition - smooth color changes */
+*, *::before, *::after {
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Glow effects */
+.glow-primary {
+  box-shadow: 0 0 20px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 40px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+}
+
+.glow-primary-sm {
+  box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.4));
+}
+
+.glow-primary-hover:hover {
+  box-shadow: 0 0 15px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 30px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+}
+
+.text-glow {
+  text-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity)),
+               0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+}
+
+/* Animation keyframes */
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-slide-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity));
+  }
+  50% {
+    box-shadow: 0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 1.5)),
+                0 0 30px hsl(var(--glow-color) / var(--glow-intensity));
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Animation classes */
+.animate-fade-slide-in {
+  animation: fade-slide-in 0.3s ease-out forwards;
+}
+
+.animate-fade-slide-out {
+  animation: fade-slide-out 0.2s ease-in forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Staggered animations for lists */
+.stagger-animation > * {
+  opacity: 0;
+  animation: fade-slide-in 0.3s ease-out forwards;
+}
+
+.stagger-animation > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-animation > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-animation > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-animation > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-animation > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-animation > *:nth-child(6) { animation-delay: 250ms; }
+.stagger-animation > *:nth-child(7) { animation-delay: 300ms; }
+.stagger-animation > *:nth-child(8) { animation-delay: 350ms; }
+.stagger-animation > *:nth-child(n+9) { animation-delay: 400ms; }
+
+/* Enhanced skeleton loading */
+.skeleton-glow {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--glow-color) / 0.1) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+/* Bottom nav spacing */
+.has-bottom-nav {
+  padding-bottom: 72px;
+}
+
+/* Minimal nav swipe indicator */
+.swipe-active::after {
+  content: '';
+  position: fixed;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 5px;
+  background: hsl(var(--primary) / 0.4);
+  border-radius: 3px;
+  box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity));
+}
