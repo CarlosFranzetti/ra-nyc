@@ -16,9 +16,19 @@ const App = () => {
   const hasSupabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
   const isConfigured = hasSupabaseUrl && hasSupabaseKey;
 
+  console.log('App.tsx - Configuration check:', {
+    hasSupabaseUrl: !!hasSupabaseUrl,
+    hasSupabaseKey: !!hasSupabaseKey,
+    isConfigured,
+    supabaseUrlPrefix: hasSupabaseUrl ? hasSupabaseUrl.substring(0, 20) + '...' : 'MISSING'
+  });
+
   if (!isConfigured) {
+    console.warn('Missing Supabase configuration, showing ConfigurationError component');
     return <ConfigurationError />;
   }
+
+  console.log('Configuration valid, rendering main app');
 
   return (
     <QueryClientProvider client={queryClient}>
