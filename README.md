@@ -1,6 +1,3 @@
-Here's a rewritten, colorful, and fun underground DJ-style README for your project:
-
-```markdown
 # 🎉🎛️ **RA-NYC** 🎛️🎉  
 🎶 *The hottest beats in the Big Apple, now at your fingertips!* 🎶  
 
