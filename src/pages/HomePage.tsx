@@ -5,7 +5,8 @@ import { useRAEvents } from "@/hooks/useRAEvents";
 
 export default function HomePage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const { data: events, isLoading, error } = useRAEvents(selectedDate);
+  const { data: events, isLoading, error, refetch, isFetching } =
+    useRAEvents(selectedDate);
 
   return (
     <div className="min-h-screen max-w-md mx-auto">
@@ -22,9 +23,20 @@ export default function HomePage() {
           </div>
         )}
         {error && (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            Failed to load events. Try again later.
-          </p>
+          <div className="text-center py-8 space-y-3">
+            <p className="text-sm text-foreground">Couldn&apos;t load events.</p>
+            {/* Surface the real reason — the API returns a useful message
+                (e.g. "Resident Advisor responded with 403") and hiding it
+                behind "try again later" makes failures undiagnosable. */}
+            <p className="text-xs text-muted-foreground px-6">{error.message}</p>
+            <button
+              onClick={() => void refetch()}
+              disabled={isFetching}
+              className="text-xs font-medium bg-secondary text-foreground border border-border px-3 py-1.5 rounded-md hover:bg-accent disabled:opacity-50 transition-colors"
+            >
+              {isFetching ? "Retrying…" : "Try again"}
+            </button>
+          </div>
         )}
         {events?.length === 0 && !isLoading && (
           <p className="text-center text-sm text-muted-foreground py-8">
