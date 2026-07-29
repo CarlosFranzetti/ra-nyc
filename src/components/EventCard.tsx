@@ -1,17 +1,8 @@
 import { format, parseISO } from "date-fns";
+import type { RAEvent } from "@/types/event";
 
 interface EventCardProps {
-  event: {
-    id: string;
-    title: string;
-    startTime: string;
-    endTime: string;
-    contentUrl: string;
-    images: { filename: string }[];
-    venue: { name: string; area: { name: string } } | null;
-    artists: { name: string }[];
-    pick: { blurb: string } | null;
-  };
+  event: RAEvent;
 }
 
 export default function EventCard({ event }: EventCardProps) {
