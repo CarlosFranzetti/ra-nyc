@@ -138,6 +138,39 @@ diagnose than it should have been:
 - The UI swallowed the API's error message behind "try again later". It now
   shows the real message plus a retry button, so a failure is self-diagnosing.
 
+### 2026-07-29 — Touch, navigation and perceived speed
+
+Reported as "touch response is quite different than the original on Lovable".
+Investigated; the component code is byte-identical to the Lovable version, so
+the difference was never the components. Real causes found and fixed:
+
+- **The date strip was clipped, not scrollable.** `DateSelector` had
+  `overflow-hidden`, so on a narrow phone the last dates rendered but could not
+  be reached at all. Now `overflow-x-auto` with scroll snapping and a hidden
+  scrollbar.
+- **No `active:` states.** Every interactive element styled only `hover:`,
+  which does not exist on touch — so a tap gave zero feedback until data
+  arrived. Added `active:` states to date buttons and event cards.
+- **Tap latency and grey flash.** Added `touch-action: manipulation` and
+  `-webkit-tap-highlight-color: transparent`.
+- **Light browser chrome.** No `color-scheme: dark`, no `theme-color`. The
+  status bar and the iOS rubber-band overscroll area rendered light against a
+  black app — the single most "not native" tell. Fixed in `index.html` +
+  `index.css`, with `viewport-fit=cover` and safe-area insets.
+- **Every date tap blanked to a spinner.** Now `placeholderData:
+  keepPreviousData` keeps the previous day visible, dimmed, while the next
+  loads; adjacent days are prefetched so stepping through the strip is
+  usually instant.
+
+Also added a `prefers-reduced-motion` block, which the new transitions made
+overdue.
+
+**Still open:** the user also reports "missing themes and preferences". No
+theme switcher or preferences UI exists in *any* commit in this repo's history
+— checked all 15. If the Lovable sandbox has unsynced work, it needs to be
+exported; the Lovable MCP connector requires an approval this session could not
+grant.
+
 ### 2026-07-29 — Event images never loaded
 
 Once events rendered, the flyers didn't. `EventCard` built the URL as

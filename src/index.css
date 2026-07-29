@@ -27,8 +27,50 @@
   * {
     @apply border-border;
   }
+
+  html {
+    /* Tells the browser this page is dark, so the rubber-band overscroll area,
+       scrollbars and form controls stop rendering light on dark. */
+    color-scheme: dark;
+    /* Stop iOS from bumping font sizes on rotation. */
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    /* Keeps the page from rubber-banding the whole document on iOS, which is
+       what makes a web app feel like a web page rather than an app. */
+    overscroll-behavior-y: none;
+  }
+
+  /* Touch targets: kill the grey flash and the legacy double-tap zoom delay so
+     taps register immediately instead of feeling laggy. */
+  a,
+  button {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Horizontal strips scroll, but a visible scrollbar on desktop looks broken
+     in a phone-width layout. */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

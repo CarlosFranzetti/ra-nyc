@@ -22,6 +22,22 @@ It was scaffolding. Lovable adds Supabase to new projects by default because
 most apps eventually want auth and storage; this one never did. It has been
 removed.
 
+**Was Supabase used for anything other than a database?** No. Searching every
+commit in the repo's history for `supabase.auth`, `supabase.storage`,
+`supabase.from`, `supabase.channel`, `supabase.functions` and `supabase.rpc`
+returns nothing — no authentication, no file storage, no realtime channels, no
+edge functions, no row-level security policies. The only Supabase artefacts
+that ever existed were:
+
+| File | What it was |
+| --- | --- |
+| `src/integrations/supabase/client.ts` | Generated `createClient()` call, never imported |
+| `src/integrations/supabase/types.ts` | Generated types declaring zero tables |
+| `supabase/config.toml` | One line: the project id |
+| `.env` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID` — deleted in commit `e1b1afd`, before the migration |
+
+So removing it dropped no functionality whatsoever.
+
 That's not an accident of how the app was built — it's what the app *is*.
 RA-NYC has **no data of its own**:
 

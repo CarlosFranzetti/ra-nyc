@@ -2,21 +2,43 @@ import { useState } from "react";
 import DateSelector from "@/components/DateSelector";
 import EventCard from "@/components/EventCard";
 import { useRAEvents } from "@/hooks/useRAEvents";
+import { cn } from "@/lib/utils";
 
 export default function HomePage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const { data: events, isLoading, error, refetch, isFetching } =
-    useRAEvents(selectedDate);
+  const {
+    data: events,
+    isLoading,
+    isPlaceholderData,
+    error,
+    refetch,
+    isFetching,
+  } = useRAEvents(selectedDate);
 
   return (
-    <div className="min-h-screen max-w-md mx-auto">
+    <div
+      className="min-h-screen max-w-md mx-auto"
+      // Respect the notch and home indicator now that the viewport paints
+      // edge to edge.
+      style={{
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
+    >
       <header className="px-3 pt-4 pb-1">
         <h1 className="text-lg font-bold text-foreground">RA NYC Events</h1>
       </header>
 
       <DateSelector selectedDate={selectedDate} onSelect={setSelectedDate} />
 
-      <main className="px-3 pb-8 space-y-3">
+      <main
+        className={cn(
+          "px-3 pb-8 space-y-3 transition-opacity duration-150",
+          // Showing the previous day dimmed reads as "loading" without the
+          // jarring blank-then-spinner cycle.
+          isPlaceholderData && "opacity-50",
+        )}
+      >
         {isLoading && (
           <div className="flex justify-center py-12">
             <div className="w-6 h-6 border-2 border-muted-foreground border-t-foreground rounded-full animate-spin" />
@@ -38,7 +60,7 @@ export default function HomePage() {
             </button>
           </div>
         )}
-        {events?.length === 0 && !isLoading && (
+        {events?.length === 0 && !isLoading && !error && (
           <p className="text-center text-sm text-muted-foreground py-8">
             No events found for this date.
           </p>

@@ -24,7 +24,7 @@ export default function EventCard({ event }: EventCardProps) {
       href={`https://ra.co${event.contentUrl}`}
       target="_blank"
       rel="noopener noreferrer"
-      className="block bg-card rounded-lg overflow-hidden border border-border hover:border-muted-foreground/30 transition-colors"
+      className="block bg-card rounded-lg overflow-hidden border border-border hover:border-muted-foreground/30 active:border-muted-foreground/50 active:scale-[0.99] transition-all duration-150"
     >
       {imageUrl && !imageFailed && (
         <img

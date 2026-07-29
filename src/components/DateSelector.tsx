@@ -11,20 +11,27 @@ export default function DateSelector({ selectedDate, onSelect }: DateSelectorPro
   const dates = Array.from({ length: 8 }, (_, i) => addDays(yesterday, i));
 
   return (
-    <div className="flex gap-1.5 px-3 py-3 overflow-hidden">
+    // overflow-hidden clipped the last dates out of reach on narrow phones —
+    // they were rendered but unscrollable. Scroll horizontally instead, with
+    // snap points so it settles on a date rather than mid-card.
+    <div className="flex gap-1.5 px-3 py-3 overflow-x-auto snap-x snap-mandatory no-scrollbar">
       {dates.map((date) => {
         const isSelected = format(date, "yyyy-MM-dd") === format(selectedDate, "yyyy-MM-dd");
         return (
           <button
             key={date.toISOString()}
             onClick={() => onSelect(date)}
+            aria-pressed={isSelected}
             className={cn(
-              "flex flex-col items-center px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 border min-w-[42px]",
+              "flex flex-col items-center shrink-0 snap-start px-2.5 py-1.5 rounded-md text-xs transition-all duration-150 border min-w-[42px]",
+              // Touch devices have no hover, so without an active: state a tap
+              // gives no feedback at all until the data arrives.
+              "active:scale-95",
               isSelected
                 ? "bg-primary text-primary-foreground border-primary"
                 : isWeekend(date)
-                  ? "bg-accent/50 text-foreground border-border hover:bg-accent"
-                  : "bg-secondary text-foreground border-border hover:bg-accent"
+                  ? "bg-accent/50 text-foreground border-border hover:bg-accent active:bg-accent"
+                  : "bg-secondary text-foreground border-border hover:bg-accent active:bg-accent"
             )}
           >
             <span className="font-medium">
