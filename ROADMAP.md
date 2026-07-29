@@ -1,9 +1,12 @@
 # Roadmap
 
-Planned features, in build order. Nothing here is implemented yet — the
-migration commit deliberately changed hosting and plumbing only, so that any
-bug in the deploy is unambiguously a migration bug and not a new feature's
-fault.
+Planned features, in build order.
+
+The themes, densities, navigation modes, swipe, details sheet and skeletons
+listed as done in §3 were rebuilt on 2026-07-29 from the feature manifest of
+the lost original — see
+[memorystate.md](./memorystate.md#2026-07-29--recovering-the-original-lovable-app).
+Everything else below is still unbuilt.
 
 Legend: **P1** = next up · **P2** = after that · **P3** = nice to have.
 
@@ -149,6 +152,10 @@ tap the DJ names?
 
 ## 3 · Smaller items
 
+**Done** (rebuilt 2026-07-29 from the lost original's feature manifest):
+themes, densities, navigation modes, swipe, details sheet, skeletons,
+adjacent-day prefetch.
+
 **P2**
 
 - **NYC-time dates.** `HomePage` seeds state from `new Date()` — the visitor's
@@ -157,8 +164,8 @@ tap the DJ names?
   evening, and the date strip should agree with how people actually talk about
   it.
 - **Pagination / infinite scroll.** Capped at RA's first 50 results per day.
-- **Error boundary + retry button.** A render crash currently blanks the page.
-- **`prefers-reduced-motion`** on the spinner and any sheet animation.
+- **Error boundary.** A render crash currently blanks the page. (The retry
+  button and `prefers-reduced-motion` handling are done.)
 
 **P3**
 
@@ -168,7 +175,6 @@ tap the DJ names?
 - **PWA / installable.** This is a phone app people open on the way out.
   Offline-cache the current week.
 - **Open Graph images** per day so shared links look like something.
-- **Skeleton cards** instead of the spinner.
 - **Tailwind v4 upgrade.** Pinned to v3 during the migration; see
   [MIGRATION.md](./MIGRATION.md#build-fixed). Do it as its own PR, never
   alongside a feature.

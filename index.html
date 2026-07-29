@@ -2,9 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the page paint under the notch/home indicator;
+         the safe-area insets in index.css keep content clear of them. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <!-- Without these the browser chrome and the overscroll rubber-band render
+         light against the dark app, which is the main reason the deployed site
+         looks less "native" than the in-app preview did. -->
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="RA NYC" />
     <title>RA NYC Events</title>
-    <meta name="description" content="Discover events in New York City via Resident Advisor" />
+    <meta
+      name="description"
+      content="Discover events in New York City via Resident Advisor"
+    />
   </head>
   <body>
     <div id="root"></div>

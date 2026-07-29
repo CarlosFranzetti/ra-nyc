@@ -1,14 +1,16 @@
+import { useState } from "react";
 import { format, parseISO } from "date-fns";
 import type { RAEvent } from "@/types/event";
+import { resolveRAImageUrl } from "@/lib/raImage";
 
 interface EventCardProps {
   event: RAEvent;
+  onOpen: (event: RAEvent) => void;
 }
 
-export default function EventCard({ event }: EventCardProps) {
-  const imageUrl = event.images?.[0]?.filename
-    ? `https://images.ra.co/${event.images[0].filename}`
-    : null;
+export default function EventCard({ event, onOpen }: EventCardProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const imageUrl = resolveRAImageUrl(event.images?.[0]?.filename);
 
   const formatTime = (t: string) => {
     try {
@@ -19,21 +21,25 @@ export default function EventCard({ event }: EventCardProps) {
   };
 
   return (
-    <a
-      href={`https://ra.co${event.contentUrl}`}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="block bg-card rounded-lg overflow-hidden border border-border hover:border-muted-foreground/30 transition-colors"
+    <button
+      type="button"
+      onClick={() => onOpen(event)}
+      className="block w-full text-left bg-card rounded-lg overflow-hidden border border-border hover:border-muted-foreground/30 active:border-muted-foreground/50 active:scale-[0.99] transition-all duration-150"
     >
-      {imageUrl && (
+      {imageUrl && !imageFailed && (
         <img
           src={imageUrl}
           alt={event.title}
-          className="w-full h-44 object-cover"
+          className="w-full object-cover bg-secondary"
+          style={{ height: "var(--card-image-h)" }}
           loading="lazy"
+          decoding="async"
+          // Drop the element rather than leaving a broken-image icon; plenty of
+          // RA listings have no usable flyer.
+          onError={() => setImageFailed(true)}
         />
       )}
-      <div className="p-3 space-y-1.5">
+      <div className="p-[var(--card-pad)] space-y-1.5">
         <h3 className="font-semibold text-sm text-foreground leading-tight">
           {event.title}
         </h3>
@@ -54,6 +60,6 @@ export default function EventCard({ event }: EventCardProps) {
           </span>
         )}
       </div>
-    </a>
+    </button>
   );
 }

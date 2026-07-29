@@ -14,8 +14,15 @@ deployed on [Vercel](https://vercel.com).
 
 - ⚡ **Quick and simple** — one screen, no login, no signup.
 - 📅 **Day-by-day** — yesterday through the next week, weekends highlighted.
+- 👆 **Swipe between days** in any navigation mode.
+- 🎨 **4 themes** — Noir, Midnight, Ember, Neon — all dark.
+- 📐 **3 densities** — Compact, Comfortable, Spacious.
+- 🧭 **3 navigation modes** — Standard strip, fixed Tabs, or Minimal (swipe only).
 - 🎭 **Curated for NYC** — underground, rooftop, and secret warehouse events.
-- 🔥 **RA Picks** flagged, with full lineups and set times.
+- 🔥 **RA Picks** flagged, with full lineups, set times and a details sheet.
+
+Preferences persist locally in the browser; there is no account and nothing is
+sent anywhere.
 
 ---
 
