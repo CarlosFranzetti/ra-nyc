@@ -7,10 +7,12 @@ import type { IncomingMessage, ServerResponse } from "http";
 /**
  * Serves the `api/` directory during `npm run dev`.
  *
- * On Vercel each file in `api/` becomes a serverless function automatically.
- * `vite dev` knows nothing about that convention, so this plugin loads the same
- * handler modules and adapts Node's req/res to the Web Request/Response the
- * handlers are written against — one implementation, both environments.
+ * On Vercel each file in `api/` becomes a serverless function automatically;
+ * `vite dev` knows nothing about that convention. Because the handlers are
+ * written against Node's (req, res) — which is both what Vercel invokes them
+ * with and what connect middleware provides — this only has to route, not
+ * adapt. The handler that runs here is byte-for-byte the one that runs in
+ * production.
  */
 function vercelApiDevServer(): Plugin {
   return {
@@ -34,17 +36,12 @@ function vercelApiDevServer(): Plugin {
 
           try {
             const mod = await server.ssrLoadModule(modulePath);
-            const handler = mod.default as (request: Request) => Promise<Response>;
+            const handler = mod.default as (
+              req: IncomingMessage,
+              res: ServerResponse,
+            ) => Promise<void>;
 
-            const request = new Request(
-              `http://${req.headers.host ?? "localhost"}${rawUrl}`,
-              { method: req.method, headers: req.headers as HeadersInit },
-            );
-
-            const response = await handler(request);
-            res.statusCode = response.status;
-            response.headers.forEach((value, key) => res.setHeader(key, value));
-            res.end(await response.text());
+            await handler(req, res);
           } catch (error) {
             server.ssrFixStacktrace(error as Error);
             console.error(`[api-dev-server] ${route} failed`, error);

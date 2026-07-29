@@ -23,5 +23,9 @@ export function useRAEvents(selectedDate: Date) {
       return json.events;
     },
     staleTime: 5 * 60 * 1000,
+    // Default is 3 retries with backoff. Combined with the function's 10s
+    // upstream timeout that can spin for ~45s before the user is told
+    // anything. One retry covers a blip; past that, show the error.
+    retry: 1,
   });
 }
