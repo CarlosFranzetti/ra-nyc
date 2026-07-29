@@ -138,6 +138,72 @@ diagnose than it should have been:
 - The UI swallowed the API's error message behind "try again later". It now
   shows the real message plus a retry button, so a failure is self-diagnosing.
 
+### 2026-07-29 — Recovering the original Lovable app
+
+The user reported missing "themes and preferences". They were right, and the
+earlier conclusion here — that no such feature ever existed — was wrong. It was
+drawn from this repo's git history, which turned out not to be the whole story.
+
+Lovable's project edit log (`list_edits`) still records commit `27c90a2`
+(2026-01-29), whose message describes the real original:
+
+> shadcn/ui components with Tailwind CSS · **Dynamic theming system (4 colour
+> themes, 3 layout densities)** · TanStack Query with aggressive prefetching ·
+> **Supabase Edge Function as GraphQL API proxy with rate limiting** · **Three
+> navigation modes: standard, tabs, minimal (swipe-only)** · event cards,
+> details sheets, and skeletons
+
+**That code is gone.** Verified three ways:
+- Lovable `read_file`/`get_diff` at those SHAs → `404 commit_not_found`; the
+  objects were dropped when `531b20e "Recreated project scaffold"` ran.
+- `git fetch origin 27c90a2` → `upload-pack: not our ref`.
+- `refs/pull/*` on GitHub holds only PRs 1–3, all from this migration. The old
+  log shows *different* PRs also numbered 1 and 2, so the GitHub repo was
+  deleted and recreated — which is what wiped both lineages.
+- The published build at `ra-nyc.lovable.app` returns 403, so the bundle can't
+  be scraped either.
+
+→ Rebuilt the feature set from that manifest rather than resurrecting the code.
+It is a reconstruction, not the literal original: theme names and exact palettes
+are new, since nothing recorded them.
+
+Two things this reframed:
+- **Supabase did do something beyond a database** — it hosted the RA proxy.
+  Corrected in DATABASE.md.
+- **The migration's architecture was right all along.** The original proxied RA
+  server-side too; the version that reached GitHub had regressed to a direct
+  browser fetch, which is why it could never have worked in production. The
+  Vercel function is the original design, rehosted.
+
+### 2026-07-29 — Rebuilt themes, preferences, navigation modes
+
+- **4 colour themes** (Noir, Midnight, Ember, Neon) as `data-theme` on `<html>`,
+  driving the existing HSL custom properties. All dark — RA listings get looked
+  at in the dark, and no light theme ever existed.
+- **3 densities** (Compact/Comfortable/Spacious) as `data-density`, with
+  `--density-scale` setting the root font size so every rem-based size moves
+  together, plus explicit flyer-height and padding tokens for what shouldn't
+  scale linearly.
+- **3 navigation modes**: Standard (scrolling strip), Tabs (all 8 days as fixed
+  columns, no scrolling), Minimal (no date UI, swipe only — the header shows the
+  date instead).
+- **Swipe between days in every mode**, hand-rolled on touch events. Gestures
+  that are more vertical than horizontal are ignored, so scrolling the list
+  never changes the day by accident.
+- **Event details sheet** replacing the straight-to-ra.co link; the lineup
+  renders as chips, which is where DJ set playback (ROADMAP §2) will attach.
+- **Skeleton cards** matching real card geometry, so nothing shifts on load.
+- Preferences persist to `localStorage` under `ra-nyc:preferences`, validated on
+  read — an unrecognised value falls back to the default rather than leaving the
+  app unstyled. Private-mode Safari throws on `localStorage`, so every access is
+  wrapped.
+
+Verified in a mobile-emulated Chromium (390×844, touch): defaults applied,
+theme/density/nav switching, persistence across reload, sheet open/close, tabs
+rendering 8 columns, minimal hiding the strip. 14/14 passed. The rig was
+temporary — Playwright is not a dependency, because its postinstall downloads
+browsers during Vercel builds. Committing a real suite is ROADMAP §0.
+
 ### 2026-07-29 — Touch, navigation and perceived speed
 
 Reported as "touch response is quite different than the original on Lovable".

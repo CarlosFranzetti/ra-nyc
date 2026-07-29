@@ -3,7 +3,13 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
+  /* ── Colour themes ──────────────────────────────────────────────────────
+     Selected by data-theme on <html>, written by PreferencesContext. Every
+     theme is dark; RA listings are looked at in the dark, and a light theme
+     was never part of this app. `:root` carries Noir so the page is styled
+     before React mounts. */
+  :root,
+  :root[data-theme="noir"] {
     --background: 0 0% 4%;
     --foreground: 0 0% 95%;
     --card: 0 0% 8%;
@@ -21,6 +27,89 @@
     --ring: 0 0% 80%;
     --radius: 0.5rem;
   }
+
+  :root[data-theme="midnight"] {
+    --background: 222 47% 6%;
+    --foreground: 213 31% 95%;
+    --card: 222 44% 10%;
+    --card-foreground: 213 31% 95%;
+    --primary: 213 94% 68%;
+    --primary-foreground: 222 47% 8%;
+    --secondary: 222 40% 15%;
+    --secondary-foreground: 213 31% 95%;
+    --muted: 222 40% 15%;
+    --muted-foreground: 215 20% 62%;
+    --accent: 222 40% 20%;
+    --accent-foreground: 213 31% 95%;
+    --border: 222 35% 18%;
+    --input: 222 35% 18%;
+    --ring: 213 94% 68%;
+    --radius: 0.625rem;
+  }
+
+  :root[data-theme="ember"] {
+    --background: 20 14% 5%;
+    --foreground: 30 20% 94%;
+    --card: 20 14% 9%;
+    --card-foreground: 30 20% 94%;
+    --primary: 24 95% 58%;
+    --primary-foreground: 20 14% 6%;
+    --secondary: 20 12% 15%;
+    --secondary-foreground: 30 20% 94%;
+    --muted: 20 12% 15%;
+    --muted-foreground: 25 12% 62%;
+    --accent: 20 12% 20%;
+    --accent-foreground: 30 20% 94%;
+    --border: 20 12% 18%;
+    --input: 20 12% 18%;
+    --ring: 24 95% 58%;
+    --radius: 0.375rem;
+  }
+
+  :root[data-theme="neon"] {
+    --background: 280 30% 5%;
+    --foreground: 300 20% 96%;
+    --card: 280 28% 9%;
+    --card-foreground: 300 20% 96%;
+    --primary: 315 96% 62%;
+    --primary-foreground: 280 30% 6%;
+    --secondary: 280 24% 16%;
+    --secondary-foreground: 300 20% 96%;
+    --muted: 280 24% 16%;
+    --muted-foreground: 290 15% 66%;
+    --accent: 285 30% 22%;
+    --accent-foreground: 300 20% 96%;
+    --border: 285 25% 20%;
+    --input: 285 25% 20%;
+    --ring: 315 96% 62%;
+    --radius: 0.75rem;
+  }
+
+  /* ── Layout density ─────────────────────────────────────────────────────
+     --density-scale drives the root font size, so rem-based spacing and type
+     scale together. The explicit values below cover the things that should
+     not scale linearly (flyer height especially). */
+  :root,
+  :root[data-density="comfortable"] {
+    --density-scale: 1;
+    --card-gap: 0.75rem;
+    --card-pad: 0.75rem;
+    --card-image-h: 11rem;
+  }
+
+  :root[data-density="compact"] {
+    --density-scale: 0.92;
+    --card-gap: 0.5rem;
+    --card-pad: 0.625rem;
+    --card-image-h: 8rem;
+  }
+
+  :root[data-density="spacious"] {
+    --density-scale: 1.06;
+    --card-gap: 1.125rem;
+    --card-pad: 1rem;
+    --card-image-h: 14rem;
+  }
 }
 
 @layer base {
@@ -34,6 +123,8 @@
     color-scheme: dark;
     /* Stop iOS from bumping font sizes on rotation. */
     -webkit-text-size-adjust: 100%;
+    /* Density scales every rem-based size in one place. */
+    font-size: calc(16px * var(--density-scale, 1));
   }
 
   body {

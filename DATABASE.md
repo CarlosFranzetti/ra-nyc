@@ -22,12 +22,26 @@ It was scaffolding. Lovable adds Supabase to new projects by default because
 most apps eventually want auth and storage; this one never did. It has been
 removed.
 
-**Was Supabase used for anything other than a database?** No. Searching every
-commit in the repo's history for `supabase.auth`, `supabase.storage`,
+**Was Supabase used for anything other than a database?** Yes — and this
+corrects an earlier answer here that was based only on this repo's git history.
+
+An earlier version of the app, since lost (see
+[memorystate.md](./memorystate.md#2026-07-29--recovering-the-original-lovable-app)),
+used a **Supabase Edge Function as a GraphQL proxy in front of ra.co, with rate
+limiting**. That is a compute feature, not a database one — it used Deno on
+Supabase's edge, and still no tables.
+
+It is worth dwelling on, because it independently validates this migration:
+that version proxied RA server-side for exactly the reasons `api/events.ts`
+does now. The version that reached GitHub had regressed to fetching ra.co
+straight from the browser, which is why it could never have worked in
+production. **The Vercel function is not a new architecture — it is the
+original one, rehosted.**
+
+Within the code that this repository has ever contained, though, the answer is
+no: searching every commit for `supabase.auth`, `supabase.storage`,
 `supabase.from`, `supabase.channel`, `supabase.functions` and `supabase.rpc`
-returns nothing — no authentication, no file storage, no realtime channels, no
-edge functions, no row-level security policies. The only Supabase artefacts
-that ever existed were:
+returns nothing. The only Supabase artefacts in this repo were:
 
 | File | What it was |
 | --- | --- |
@@ -36,7 +50,10 @@ that ever existed were:
 | `supabase/config.toml` | One line: the project id |
 | `.env` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID` — deleted in commit `e1b1afd`, before the migration |
 
-So removing it dropped no functionality whatsoever.
+So removing it dropped no functionality from *this* codebase, and the edge
+function's job is now done by `api/events.ts`. Nothing is lost by not going
+back to Supabase; a Vercel function sits next to the app it serves, with one
+platform to operate instead of two.
 
 That's not an accident of how the app was built — it's what the app *is*.
 RA-NYC has **no data of its own**:

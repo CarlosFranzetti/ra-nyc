@@ -85,16 +85,33 @@ api/
 src/
   main.tsx          React root + QueryClientProvider.
   App.tsx           Router. One route today: "/".
-  pages/HomePage.tsx    Date state, loading/error/empty states, event list.
+  pages/HomePage.tsx    Date state, loading/error/empty states, event list,
+                        swipe handling, sheet orchestration.
   components/
-    DateSelector.tsx    8-day strip: yesterday → +6 days. Weekends tinted.
+    DateSelector.tsx    8-day picker. Renders as a scrolling strip, fixed
+                        tabs, or nothing at all, per the navMode preference.
     EventCard.tsx       Image, title, venue, times, lineup, RA Pick badge.
-                        Whole card links to ra.co.
-  hooks/useRAEvents.ts  TanStack Query wrapper over GET /api/events.
+                        Opens the details sheet.
+    EventDetailsSheet   Full event detail; lineup as chips (the future
+                        attachment point for DJ set playback).
+    SettingsSheet.tsx   Theme / density / navigation preferences UI.
+    Sheet.tsx           Bottom-sheet primitive. Hand-rolled — one dialog
+                        pattern doesn't justify a headless UI dependency.
+    EventCardSkeleton   Load placeholder matching real card geometry.
+  context/
+    PreferencesContext  Preferences state, localStorage persistence, and the
+                        data-theme / data-density attribute writes.
+  hooks/useRAEvents.ts  TanStack Query wrapper over GET /api/events, with
+                        neighbouring-day prefetch.
+  hooks/useSwipe.ts     Touch-based horizontal swipe; ignores mostly-vertical
+                        gestures so scrolling never changes the day.
   types/event.ts        RAEvent / EventsResponse — the contract between
                         api/ and src/. Keep in sync with api/_lib/ra.ts.
+  types/preferences.ts  Theme / density / nav-mode unions, labels, swatches.
   lib/utils.ts          cn() — clsx + tailwind-merge.
-  index.css             Tailwind directives + the HSL design tokens.
+  lib/raImage.ts        Resolves RA's inconsistent images[].filename field.
+  index.css             Tailwind directives, the 4 themes, the 3 densities,
+                        and the touch/theming base rules.
 
 vite.config.ts      Vite config + a dev-only plugin that mounts api/*.ts as
                     routes so `npm run dev` behaves like production.
@@ -152,10 +169,23 @@ If that duplication ever becomes a real maintenance cost, the fix is a
 
 ## Design system
 
-Dark-only, defined as HSL triples in `src/index.css` under `:root` and consumed
-through `tailwind.config.ts` (`bg-card`, `text-muted-foreground`, …). Never
-hard-code a hex value in a component; add a token instead. `darkMode: ["class"]`
-is configured but unused — there is no light theme yet.
+Colours are HSL triples in `src/index.css`, consumed through
+`tailwind.config.ts` (`bg-card`, `text-muted-foreground`, …). Never hard-code a
+hex value in a component; add a token instead.
+
+**Themes** are four complete token sets selected by `data-theme` on `<html>`:
+Noir, Midnight, Ember, Neon. All four are dark — a light theme has never
+existed here, and `darkMode: ["class"]` remains configured but unused. `:root`
+carries Noir so the page is styled before React mounts.
+
+**Density** is `data-density` on `<html>`, also written by
+`PreferencesContext`. `--density-scale` sets the root font size, so every
+rem-based dimension scales together from one variable; `--card-gap`,
+`--card-pad` and `--card-image-h` cover what shouldn't scale linearly.
+Components consume those directly (`p-[var(--card-pad)]`).
+
+Both are attribute writes on a single element rather than React state threaded
+through the tree — changing a theme re-renders nothing.
 
 Layout is deliberately phone-shaped: `max-w-md mx-auto` on the page container.
 
