@@ -80,6 +80,7 @@ api/
   events.ts         GET /api/events?date=YYYY-MM-DD[&area=<id>]
                     Validates input, calls _lib/ra.ts, sets cache headers,
                     maps failures to 400/405/500/502/504.
+                    Signature is Node's (req, res) — see below.
 
 src/
   main.tsx          React root + QueryClientProvider.
@@ -104,6 +105,37 @@ tsconfig.api.json   Type-checks api/ (Node types).
 ```
 
 ---
+
+## Handler signature
+
+Functions in `api/` export a default handler taking Node's
+`IncomingMessage`/`ServerResponse`:
+
+```ts
+export default async function handler(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void>
+```
+
+This is not a stylistic choice. Vercel invokes a **default** export in `api/`
+with Node's `(req, res)`. The web standard `Request`/`Response` signature is for
+**named** method exports (`export function GET(request: Request)`), the Next.js
+App Router / Edge convention. Mixing them — `export default` taking a
+`Request` — type-checks fine and crashes at runtime, because `req.url` is then
+a relative path and `new URL()` rejects it. That cost us a deploy; see
+[MIGRATION.md §7](./MIGRATION.md#7--troubleshooting-the-import).
+
+Two rules follow:
+
+1. **Parse the URL with a base:** `new URL(req.url ?? "/", "http://localhost")`.
+   The base is discarded; only `searchParams` is read.
+2. **Wrap the entire handler body in try/catch.** Anything that escapes becomes
+   `FUNCTION_INVOCATION_FAILED` — an opaque 500 with no JSON body, which the UI
+   cannot explain to the user.
+
+The happy side effect is that Vite's connect middleware passes these same
+types, so `npm run dev` runs the production handler with no adapter in between.
 
 ## Type contract
 

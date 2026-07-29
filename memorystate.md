@@ -79,8 +79,9 @@ app. Pure Lovable scaffolding. Also dropped `class-variance-authority` (unused).
 → This is also the direct answer to "do I even need a database?": **you already
 had one, and the app never touched it.**
 
-**Wrote a Vite dev plugin** (`vite.config.ts`) that mounts `api/*.ts` as routes
-using the same Web `Request`/`Response` handlers Vercel runs.
+**Wrote a Vite dev plugin** (`vite.config.ts`) that mounts `api/*.ts` as routes,
+running the exact handler Vercel runs — Node's `(req, res)` is both what Vercel
+invokes and what connect middleware provides, so no adapter is needed.
 → Chosen over requiring `vercel dev` so that `npm run dev` alone gives a
 faithful local environment. `vercel dev` still works if preferred.
 
@@ -110,6 +111,32 @@ needs no declaration. Node major version moved to `engines.node` in
 `package.json`, which also overrides the dashboard setting — so it lives in git
 instead of in project state. Full writeup in
 [MIGRATION.md §7](./MIGRATION.md#7--troubleshooting-the-import).
+
+### 2026-07-29 — First deploy crashed: wrong function signature
+
+`500 FUNCTION_INVOCATION_FAILED` on every `/api/events` request. The UI showed
+an endless spinner.
+
+`api/events.ts` used `export default async function handler(request: Request)`.
+Vercel invokes a **default** export in `api/` with Node's `(req, res)`; the web
+`Request`/`Response` form is only for **named** method exports
+(`export function GET(request: Request)`). Vercel therefore passed an
+`IncomingMessage`, `request.url` was the relative path `/api/events?date=…`,
+and `new URL()` on a relative string threw `TypeError: Invalid URL` — outside
+the try/catch, so the invocation crashed.
+
+→ Handlers now take `IncomingMessage`/`ServerResponse`, parse the URL with an
+explicit base, and wrap the whole body in try/catch. Bonus: those are the same
+types connect passes, so the Vite dev plugin stopped adapting and now runs the
+production handler verbatim — this class of bug can't recur silently, because
+local dev exercises the real signature.
+
+Two secondary bugs fixed in the same round, both of which made this harder to
+diagnose than it should have been:
+- TanStack Query's default 3 retries × the function's 10s upstream timeout meant
+  a failing request spun for ~45s with no feedback. Now `retry: 1`.
+- The UI swallowed the API's error message behind "try again later". It now
+  shows the real message plus a retry button, so a failure is self-diagnosing.
 
 ### 2026-07-29 — Database decision: not yet, then Neon
 

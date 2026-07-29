@@ -90,9 +90,11 @@ via `engines.node` in `package.json` — **not** in `vercel.json`; see
 ### Local dev keeps working
 
 `vite dev` doesn't know about Vercel's `api/` convention, so `vite.config.ts`
-now includes a small plugin that loads the same handler modules and adapts
-Node's req/res to the Web `Request`/`Response` the handlers are written
-against. One implementation, both environments — no `vercel dev` required
+now includes a small plugin that routes `/api/*` to the matching module in
+`api/`. Because the handlers are written against Node's `(req, res)` — both
+what Vercel invokes them with and what connect middleware provides — the
+plugin only has to route, not adapt. The handler running locally is
+byte-for-byte the one running in production, and `vercel dev` is not required
 (though it still works).
 
 Also changed `server.host` from Lovable's `"::"` to `true`. `"::"` crashes with
@@ -229,6 +231,47 @@ The Node major version now comes from `package.json`:
 
 This also overrides whatever is set in *Project Settings → General → Node.js
 Version*, so the version lives in git rather than in dashboard state.
+
+### `500: FUNCTION_INVOCATION_FAILED` on every request to `/api/events`
+
+Hit on the first successful deploy. The handler was written as
+
+```ts
+export default async function handler(request: Request): Promise<Response>
+```
+
+Vercel invokes a **default export** in `api/` with Node's `(req, res)`. The web
+standard `Request`/`Response` signature applies only to **named method
+exports** — `export function GET(request: Request)` — which is the Next.js App
+Router / Edge convention. The default export above matched neither.
+
+So Vercel passed an `IncomingMessage`, making `request.url` the *relative* path
+`/api/events?date=…`, and `new URL(relativePath)` throws `TypeError: Invalid
+URL`. That throw sat outside the try/catch, so nothing caught it and the whole
+invocation crashed — on every request, regardless of whether RA was reachable.
+
+**Fix, applied:** write the handler against Node's
+`IncomingMessage`/`ServerResponse`, parse the URL with an explicit (unused)
+base, and wrap the entire body in try/catch so no throw can escape.
+
+```ts
+export default async function handler(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  try {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    …
+  } catch (error) { … }
+}
+```
+
+Node's types are also exactly what Vite's connect middleware passes, so the dev
+plugin no longer adapts anything — local and production run the same function.
+
+**The lesson worth keeping:** any throw before the try block crashes the
+invocation and produces this opaque 500 rather than a JSON error the UI can
+show. Keep the whole handler body inside the catch.
 
 ### `npm ci` fails with a lockfile mismatch
 
