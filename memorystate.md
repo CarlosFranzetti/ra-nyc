@@ -138,6 +138,22 @@ diagnose than it should have been:
 - The UI swallowed the API's error message behind "try again later". It now
   shows the real message plus a retry button, so a failure is self-diagnosing.
 
+### 2026-07-29 — Event images never loaded
+
+Once events rendered, the flyers didn't. `EventCard` built the URL as
+`` `https://images.ra.co/${filename}` ``, but RA's `images[].filename` is
+usually **already an absolute URL** — so this produced
+`https://images.ra.co/https://images.ra.co/…`, which 404s. Carried over from
+the Lovable build; it had never worked.
+
+→ `src/lib/raImage.ts` resolves both shapes (absolute, protocol-relative, bare
+path, leading slash, blank). A failed load now removes the `<img>` instead of
+leaving a broken-image icon, since plenty of RA listings have no usable flyer.
+
+Not verified against live RA data — `ra.co` is unreachable from the build
+environment — but the resolver is correct for either shape, so it holds
+whichever RA returns.
+
 ### 2026-07-29 — Database decision: not yet, then Neon
 
 Full reasoning in [DATABASE.md](./DATABASE.md). Compressed:

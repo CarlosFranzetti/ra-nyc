@@ -1,14 +1,15 @@
+import { useState } from "react";
 import { format, parseISO } from "date-fns";
 import type { RAEvent } from "@/types/event";
+import { resolveRAImageUrl } from "@/lib/raImage";
 
 interface EventCardProps {
   event: RAEvent;
 }
 
 export default function EventCard({ event }: EventCardProps) {
-  const imageUrl = event.images?.[0]?.filename
-    ? `https://images.ra.co/${event.images[0].filename}`
-    : null;
+  const [imageFailed, setImageFailed] = useState(false);
+  const imageUrl = resolveRAImageUrl(event.images?.[0]?.filename);
 
   const formatTime = (t: string) => {
     try {
@@ -25,12 +26,16 @@ export default function EventCard({ event }: EventCardProps) {
       rel="noopener noreferrer"
       className="block bg-card rounded-lg overflow-hidden border border-border hover:border-muted-foreground/30 transition-colors"
     >
-      {imageUrl && (
+      {imageUrl && !imageFailed && (
         <img
           src={imageUrl}
           alt={event.title}
-          className="w-full h-44 object-cover"
+          className="w-full h-44 object-cover bg-secondary"
           loading="lazy"
+          decoding="async"
+          // Drop the element rather than leaving a broken-image icon; plenty of
+          // RA listings have no usable flyer.
+          onError={() => setImageFailed(true)}
         />
       )}
       <div className="p-3 space-y-1.5">
