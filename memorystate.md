@@ -1,0 +1,210 @@
+# memorystate.md
+
+Running project journal: current state, decisions and *why*, and what's still
+open. Written so that a person — or an AI agent — picking this repo up cold can
+get productive without re-deriving anything.
+
+**Keep this file updated.** When you make a decision that a future reader would
+otherwise have to reverse-engineer from a diff, append it to the log.
+
+**Last updated:** 2026-07-29
+**Branch:** `claude/lovable-vercel-migration-hyp0a1`
+
+---
+
+## 1 · What this project is
+
+A one-screen, mobile-first web app listing Resident Advisor's New York City
+events by day. Pick a date from an 8-day strip, scroll the cards, tap through to
+`ra.co` for tickets. No accounts, no login, no ads, no data of its own.
+
+**Design intent: the workflow stays as it is.** Open it, see tonight, tap out.
+Every feature below has to survive the question "does this still work in ten
+seconds on a phone on the subway?"
+
+---
+
+## 2 · Current state
+
+| | |
+| --- | --- |
+| **Hosting** | Vercel (migrated from Lovable) |
+| **Build** | ✅ `npm run build` passes |
+| **Types** | ✅ `npm run typecheck` passes (app + api) |
+| **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
+| **Database** | None. Deliberately. See [DATABASE.md](./DATABASE.md) |
+| **Env vars** | None required |
+| **Tests** | ❌ None yet |
+| **Auth** | None, none planned |
+
+### Stack
+
+React 19 · TypeScript 5.9 · Vite 7 · Tailwind 3.4 · TanStack Query 5 ·
+React Router 7 · date-fns 4 · one Vercel Node 22 function.
+
+### Routes
+
+| Route | Kind | Purpose |
+| --- | --- | --- |
+| `/` | SPA | The only page. Date strip + event list |
+| `/api/events?date=YYYY-MM-DD[&area=8]` | Function | Cached proxy to RA GraphQL |
+
+---
+
+## 3 · Decision log
+
+### 2026-07-29 — Migrated Lovable → Vercel
+
+Full detail in [MIGRATION.md](./MIGRATION.md). The decisions worth remembering:
+
+**The repo did not build.** `package.json` had `tailwindcss@^4` while every
+config and stylesheet was written for v3. `npm run build` failed outright on a
+clean checkout. Lovable's sandbox hid it.
+→ **Pinned Tailwind to `^3.4`** rather than upgrading forward. A hosting
+migration and a framework upgrade in one commit means a failure has two possible
+causes. v4 is logged in [ROADMAP.md](./ROADMAP.md) as its own task.
+
+**Moved the RA fetch out of the browser** into `api/events.ts`. Three
+independent reasons, any one sufficient:
+1. `ra.co/graphql` sends no CORS headers → a direct browser call is blocked.
+2. The old code set `User-Agent` and `Referer` on a browser `fetch()`. Both are
+   forbidden headers; browsers drop them silently. The request RA actually
+   received was **not** the request the code appeared to send — and RA 403s
+   traffic that doesn't look like a browser.
+3. Caching. Seven days browsed × every visitor was that many requests to RA.
+   Now one edge-cached response serves everyone for 5 minutes.
+
+**Deleted Supabase.** Zero tables in the generated types, zero imports in the
+app. Pure Lovable scaffolding. Also dropped `class-variance-authority` (unused).
+→ This is also the direct answer to "do I even need a database?": **you already
+had one, and the app never touched it.**
+
+**Wrote a Vite dev plugin** (`vite.config.ts`) that mounts `api/*.ts` as routes
+using the same Web `Request`/`Response` handlers Vercel runs.
+→ Chosen over requiring `vercel dev` so that `npm run dev` alone gives a
+faithful local environment. `vercel dev` still works if preferred.
+
+**Changed `server.host` from `"::"` to `true`.** Lovable's IPv6-literal bind
+crashes with `EAFNOSUPPORT` on hosts without IPv6 — including the container this
+migration was done in.
+
+**Added a `.gitignore`.** The repo had none, so `node_modules/` was one
+`git add .` away from being committed.
+
+**Kept the day-at-a-time UX exactly as it was.** No visual changes in the
+migration commit. Deliberate: any post-deploy bug is then unambiguously a
+plumbing bug.
+
+### 2026-07-29 — Database decision: not yet, then Neon
+
+Full reasoning in [DATABASE.md](./DATABASE.md). Compressed:
+
+- The app holds **no data of its own**. Everything on screen comes from RA on
+  demand. A database would be a cache with extra steps, next to two caches
+  (Vercel edge + TanStack Query) that already work and cost nothing.
+- **The rule:** *add the database when there is data that cannot be re-fetched
+  from RA.* Currently false.
+- **The first thing that makes it true** is a hand-corrected DJ → SoundCloud
+  link. It can't be re-derived, so it can't live in a cache.
+- **Locally-hosted Postgres can't be production**: Vercel functions are
+  stateless and run in AWS; they can't reach a box at your house without either
+  exposing `:5432` to the internet or maintaining a tunnel — and the site would
+  go down when the laptop sleeps. Serverless also exhausts a normal Postgres
+  connection pool.
+- **But local Postgres is right for development.** Neon *is* Postgres, so the
+  same schema, SQL, migrations, and client work against both. Docker locally,
+  Neon in prod, one `DATABASE_URL`.
+- **Neon over the alternatives** because it scales to zero (this app's traffic
+  is Thursday-night spiky), has an HTTP driver built for serverless, does
+  database branching for preview deploys, and is portable — `pg_dump` and go.
+- Proposed schema is already written in DATABASE.md. Don't create it yet.
+
+### 2026-07-29 — Feature requests recorded
+
+Two features requested for **future** revisions, specified in
+[ROADMAP.md](./ROADMAP.md), not implemented in the migration commit:
+
+1. **Search bar for events** — phase 1a filters the loaded day in memory (no
+   backend, ~a day's work); phase 1b searches all upcoming events and is the
+   thing that needs the database.
+2. **Tap a DJ → play their SoundCloud / Mixcloud sets, plus a bio link** —
+   bottom sheet with an iframe embed. The hard part is resolving a name to an
+   account: RA gives a name and nothing else, SoundCloud's API is effectively
+   closed, and fuzzy DJ-name matching *will* be wrong sometimes. Start with
+   Mixcloud (open API), show nothing rather than a wrong match, and add manual
+   correction later.
+
+---
+
+## 4 · Map of the code
+
+```
+api/_lib/ra.ts          RA GraphQL client. The query, the browser-like headers,
+                        error mapping, date validation. Server-only.
+api/events.ts           The one endpoint. Validates, calls, caches, maps errors.
+
+src/pages/HomePage.tsx  Selected-date state + loading/error/empty states.
+src/components/         DateSelector (8-day strip), EventCard.
+src/hooks/useRAEvents   TanStack Query over /api/events.
+src/types/event.ts      RAEvent — the api ↔ src contract.
+src/index.css           Tailwind directives + HSL design tokens.
+
+vite.config.ts          Build config + the dev-only api/ route mounter.
+vercel.json             Runtime, SPA rewrite, asset cache headers.
+```
+
+### Gotchas a newcomer will hit
+
+- **`RAEvent` is declared twice** — `api/_lib/ra.ts` and `src/types/event.ts` —
+  because the function bundle and the browser bundle compile under different
+  tsconfigs. **Add a GraphQL field → update both.**
+- **Files in `api/` starting with `_` are not routes.** That's how `_lib/`
+  stays private.
+- **`npm run preview` does not serve `/api`.** It's static-only. Use
+  `npm run dev` or `vercel dev`.
+- **Never put a secret behind a `VITE_` prefix.** Vite inlines those into the
+  public browser bundle. Server-only values belong in `api/` and unprefixed env
+  vars.
+
+---
+
+## 5 · Open questions & known issues
+
+Carried over from the Lovable build unless noted.
+
+1. **Timezone.** `HomePage` seeds from `new Date()` — the *visitor's* clock, not
+   New York's. Someone in London at 01:00 sees NYC's tomorrow as "today".
+   Related: when does the night roll over? A 2 a.m. set belongs to the previous
+   evening in how people talk, but not in how the date strip counts.
+2. **Hard 50-event cap.** RA's first page only; no pagination. Busy Saturdays
+   are being silently truncated.
+3. **RA may block Vercel's egress IPs.** Untested from production —
+   `ra.co` is unreachable from the sandbox this migration was built in
+   (`connect_rejected` at the network policy), so the upstream call is verified
+   only by its error path returning a correct 502. **Check `/api/events` on the
+   first deploy.** Mitigations, in order: raise `s-maxage`; warm the cache with
+   a cron job; fall back to a stored snapshot (→ database).
+4. **No tests.** Highest-leverage next task; see ROADMAP §0.
+5. **No error boundary.** A render crash blanks the page.
+6. **RA has no published API terms.** This is an unofficial client that links
+   back to `ra.co` for every event and caches aggressively to stay light. If RA
+   objects, stop.
+7. **Is anyone actually tapping DJ names?** Unknown, and it decides whether
+   ROADMAP §2's database phase is worth building. Ship the no-DB version first
+   and find out.
+
+---
+
+## 6 · Next actions
+
+1. Import the repo into Vercel and deploy —
+   [MIGRATION.md §3](./MIGRATION.md#3--connect-the-repo-to-vercel).
+2. Verify `/api/events` against production (issue #3 above).
+3. Disconnect Lovable's GitHub integration; delete the empty Supabase project —
+   [MIGRATION.md §5](./MIGRATION.md#5--decommission-lovable).
+4. Add Vitest + a smoke test (ROADMAP §0).
+5. Build search phase 1a (ROADMAP §1). No backend needed.
+6. Build the DJ sheet with Mixcloud only (ROADMAP §2, steps 1–2). Still no
+   database.
+7. Re-read [DATABASE.md](./DATABASE.md) **only** when step 6 produces its first
+   wrong artist match that you want to correct by hand. That's the trigger.

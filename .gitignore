@@ -1,0 +1,12 @@
+node_modules
+dist
+.vercel
+
+# Local env files — never commit these
+.env
+.env.*
+!.env.example
+
+*.local
+*.log
+.DS_Store
