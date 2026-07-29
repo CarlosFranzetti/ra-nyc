@@ -81,9 +81,11 @@ for the longer answer about whether you want a database back.
 
 ### Vercel config added
 
-`vercel.json` sets the framework, the Node 22 function runtime with a 15 s cap,
-the SPA rewrite (`/(?!api/).*` → `/index.html`, so deep links and refreshes
-work), and immutable caching for content-hashed assets.
+`vercel.json` sets the framework, a 15 s cap on the function, the SPA rewrite
+(`/(?!api/).*` → `/index.html`, so deep links and refreshes work), and
+immutable caching for content-hashed assets. The Node major version is pinned
+via `engines.node` in `package.json` — **not** in `vercel.json`; see
+[§7](#7--troubleshooting-the-import).
 
 ### Local dev keeps working
 
@@ -192,3 +194,50 @@ Carried over from the Lovable build, not introduced here — see
 - The event list is capped at RA's first 50 results per day, with no pagination.
 - No tests.
 - No error boundary; a render crash blanks the page.
+
+---
+
+## 7 · Troubleshooting the import
+
+### `Function Runtimes must have a valid version, for example 'now-php@1.0.0'`
+
+Hit on the first import attempt. Cause: `vercel.json` had
+
+```json
+"functions": { "api/*.ts": { "runtime": "nodejs22.x", "maxDuration": 15 } }
+```
+
+The `functions.<glob>.runtime` field is **only for community and custom
+runtimes**, and expects an npm package spec — `vercel-php@0.5.2`,
+`now-php@1.0.0`. It is not where you select a Node version, so Vercel tried to
+parse `nodejs22.x` as `package@version`, found no version, and bailed.
+(`nodejs22.x` *is* valid syntax — but for Next.js route-segment config, not
+`vercel.json`.)
+
+**Fix, applied:** drop `runtime` entirely. Vercel's built-in Node runtime is the
+default for `api/*.ts` and needs no declaration. `maxDuration` stays.
+
+```json
+"functions": { "api/*.ts": { "maxDuration": 15 } }
+```
+
+The Node major version now comes from `package.json`:
+
+```json
+"engines": { "node": "22.x" }
+```
+
+This also overrides whatever is set in *Project Settings → General → Node.js
+Version*, so the version lives in git rather than in dashboard state.
+
+### `npm ci` fails with a lockfile mismatch
+
+`package-lock.json` is out of sync with `package.json`. Run `npm install`
+locally and commit the updated lockfile — don't switch the install command to
+`npm install`, which would let the deploy silently drift from the lockfile.
+
+### The build succeeds but `/api/events` 404s
+
+Check the SPA rewrite in `vercel.json` still excludes the API prefix. The
+negative lookahead in `/((?!api/).*)` is what stops `index.html` from
+swallowing function routes.

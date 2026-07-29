@@ -6,7 +6,6 @@
   "installCommand": "npm ci",
   "functions": {
     "api/*.ts": {
-      "runtime": "nodejs22.x",
       "maxDuration": 15
     }
   },

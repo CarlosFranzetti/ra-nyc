@@ -95,6 +95,22 @@ migration was done in.
 migration commit. Deliberate: any post-deploy bug is then unambiguously a
 plumbing bug.
 
+### 2026-07-29 — First Vercel import failed on `vercel.json`
+
+`Function Runtimes must have a valid version, for example 'now-php@1.0.0'`.
+
+`vercel.json` had `functions["api/*.ts"].runtime = "nodejs22.x"`. That field is
+**only for community/custom runtimes** and expects an npm spec
+(`vercel-php@0.5.2`), so Vercel tried to parse `nodejs22.x` as `package@version`
+and found no version. `nodejs22.x` is valid syntax — but for Next.js
+route-segment config, not `vercel.json`.
+
+→ Removed `runtime`; the built-in Node runtime is the default for `api/*.ts` and
+needs no declaration. Node major version moved to `engines.node` in
+`package.json`, which also overrides the dashboard setting — so it lives in git
+instead of in project state. Full writeup in
+[MIGRATION.md §7](./MIGRATION.md#7--troubleshooting-the-import).
+
 ### 2026-07-29 — Database decision: not yet, then Neon
 
 Full reasoning in [DATABASE.md](./DATABASE.md). Compressed:
