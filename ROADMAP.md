@@ -178,8 +178,9 @@ adjacent-day prefetch.
 - **Tailwind v4 upgrade.** Pinned to v3 during the migration; see
   [MIGRATION.md](./MIGRATION.md#build-fixed). Do it as its own PR, never
   alongside a feature.
-- **Analytics** — Vercel Analytics is one line and no cookie banner. Worth it
-  only to answer "is anyone tapping DJ names?"
+- ~~**Analytics**~~ — done: Vercel Analytics is wired up in `App.tsx`. Now
+  usable to answer "is anyone tapping DJ names?" before building ROADMAP §2's
+  database phase.
 
 ---
 

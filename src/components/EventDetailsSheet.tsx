@@ -1,5 +1,6 @@
 import { format, parseISO } from "date-fns";
 import Sheet from "@/components/Sheet";
+import EventImage from "@/components/EventImage";
 import { resolveRAImageUrl } from "@/lib/raImage";
 import type { RAEvent } from "@/types/event";
 
@@ -36,12 +37,17 @@ export default function EventDetailsSheet({
       {event && (
         <div className="space-y-4">
           {imageUrl && (
-            <img
-              src={imageUrl}
-              alt={event.title}
-              className="w-full rounded-lg object-cover bg-secondary"
+            <div
+              className="w-full rounded-lg overflow-hidden bg-secondary"
               style={{ height: "var(--card-image-h)" }}
-            />
+            >
+              <EventImage
+                src={imageUrl}
+                alt={event.title}
+                className="w-full h-full object-cover"
+                eager
+              />
+            </div>
           )}
 
           <div className="space-y-1.5">
