@@ -1,7 +1,14 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { addDays, format, subDays } from "date-fns";
 import { BottomNav } from "@/components/BottomNav";
-import { CalendarPopover } from "@/components/CalendarPopover";
+
+// Lazy here too, or the static import defeats Header's dynamic one and
+// react-day-picker stays in the main chunk.
+const CalendarPopover = lazy(() =>
+  import("@/components/CalendarPopover").then((m) => ({
+    default: m.CalendarPopover,
+  })),
+);
 import { DatePicker } from "@/components/DatePicker";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -148,14 +155,16 @@ export default function HomePage() {
             <BottomNav onCalendarClick={() => setCalendarOpen((v) => !v)} />
             {calendarOpen && (
               <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50">
-                <CalendarPopover
-                  selectedDate={selectedDate}
-                  onDateChange={(date) => {
-                    setSelectedDate(date);
-                    setCalendarOpen(false);
-                  }}
-                  align="center"
-                />
+                <Suspense fallback={null}>
+                  <CalendarPopover
+                    selectedDate={selectedDate}
+                    onDateChange={(date) => {
+                      setSelectedDate(date);
+                      setCalendarOpen(false);
+                    }}
+                    align="center"
+                  />
+                </Suspense>
               </div>
             )}
           </>

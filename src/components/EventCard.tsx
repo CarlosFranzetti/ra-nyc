@@ -52,7 +52,7 @@ export function EventCard({ event, onSelect }: EventCardProps) {
 
           {event.artists.length > 0 && (
             <p className="mt-1.5 text-xs text-muted-foreground line-clamp-1">
-              {event.artists.slice(0, 3).join(" · ")}
+              {event.artists.slice(0, 3).map((a) => a.name).join(" · ")}
               {event.artists.length > 3 && ` +${event.artists.length - 3}`}
             </p>
           )}

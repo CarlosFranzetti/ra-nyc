@@ -32,8 +32,8 @@ seconds on a phone on the subway?"
 | **Build** | ✅ `npm run build` passes |
 | **Types** | ✅ `npm run typecheck` passes (app + api) |
 | **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
-| **Database** | None. Deliberately. See [DATABASE.md](./DATABASE.md) |
-| **Env vars** | None required |
+| **Database** | Optional Neon, caches artist links only. See [DATABASE.md](./DATABASE.md) |
+| **Env vars** | None required; `DATABASE_URL` and `DISCOGS_TOKEN` optional |
 | **Tests** | ❌ None committed (UI verified ad hoc in headless Chromium) |
 | **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
@@ -51,6 +51,8 @@ Vercel Analytics · two Vercel Node 22 functions.
 | `/` | SPA | The only page. Date strip + event list |
 | `/api/events?date=YYYY-MM-DD[&area=8]` | Function | Cached proxy to RA GraphQL |
 | `/api/image?u=<https url>` | Function | Flyer proxy fallback, host-allowlisted |
+| `/api/artist?id=<ra id>&name=<name>` | Function | Resolves a DJ to sets + profile links |
+| `/artist/:id?name=<name>` | SPA | Artist page: set player, sets list, profiles |
 
 ---
 
@@ -234,6 +236,96 @@ typography settings change the resolved body font; density, nav style and
 persistence across reload; settings drawer, details drawer, calendar popover,
 bottom nav, minimal-mode swipe hint; no uncaught page errors. Screenshotted each
 theme against stubbed listings.
+
+### 2026-07-30 — DJ set player, artist page, and the first database
+
+Three things landed together, plus the answer to a question that had been open
+since the migration started.
+
+**The drawer now handles events that don't fit.** Long titles, long RA Pick
+blurbs and big lineups overflowed the 90vh sheet with no way to know. Fixed
+properly rather than cosmetically:
+- The *scroller* owns overflow, not the drawer. `min-h-0 flex-1 overflow-y-auto`
+  — without `min-h-0` a flex child refuses to shrink and pushes the drawer past
+  its max height, which is why inner scrolling looked broken before.
+- A **More** pill appears only when content actually continues past the fold,
+  measured with a `ResizeObserver` plus scroll listener. It pages down ~80% of a
+  viewport rather than jumping to the end.
+- A second control **expands the sheet to full height**, trading the flyer down
+  to a 24px strip — you expand to read the rest, not to see a bigger picture.
+- Blurbs clamp to 3 lines with **Show more** past 180 chars; lineups clamp to 8
+  chips with **+N more**.
+- All toggles reset per event, or the next event opens mid-scroll with the last
+  one's state.
+
+**Lineup names are now links.** `artists` changed from `string[]` to
+`{id, name}[]` — using `id` and `name` fields the GraphQL query *already*
+requested, so no new upstream risk. RA reuses artist names, so the id is what
+the lookup keys on.
+
+**`/api/artist` resolves a DJ to playable sets.** Sources and why:
+- **Mixcloud** — public API, no key, long DJ sets are its native content, and
+  it's embeddable. The only source we can both search *and* play, so it is the
+  player.
+- **SoundCloud** — better content, but API registration has been closed to new
+  apps for years. Cannot search; we emit a pre-filled search link and say so in
+  the UI rather than pretending.
+- **Discogs** — exact artist page when `DISCOGS_TOKEN` is set (their search
+  endpoint requires auth), otherwise a search link.
+- **RA** — tries a `artist(id:)` GraphQL query for a real profile URL, falls
+  back to RA search. Deliberately wrapped in its own try/catch: a schema change
+  there can cost us one link and must never touch the listings query.
+
+Matching is **strict on purpose** (`isPlausibleMatch`): normalised exact match,
+or a clean prefix on names ≥5 chars. Names are normalised for accents and RA's
+disambiguating suffixes (`"Cosmo (NY)"` → `cosmo`). A confidently wrong
+player — someone else's sets under a DJ's name — is worse than no player, so
+"not sure" shows an honest empty state pointing at search links.
+
+**`/artist/:id` page** in the existing look: Mixcloud iframe (mounted only after
+an explicit tap — mobile Safari blocks autoplay anyway, so a pre-mounted
+third-party iframe buys nothing), a switchable list of sets with durations and
+play counts, and the profile links.
+
+**The database, finally.** The user proposed Neon for caching links, and that is
+exactly the trigger this file and DATABASE.md predicted: a resolved — and
+especially a *hand-corrected* — DJ link cannot be re-derived from RA, so it
+cannot live in a cache.
+
+Designed as an **optional layer**, which is the important part:
+- No `DATABASE_URL` → resolve live, cache at the edge, app works identically.
+- `DATABASE_URL` set → `artist_links` serves lookups instantly and third-party
+  APIs get hit once per artist ever.
+- A missing table or unreachable database logs and falls through to live
+  resolution. The database can be added, removed, or fail without downtime.
+- `link_source` is `auto | manual | none`, and the upsert carries
+  `where artist_links.link_source <> 'manual'` — an automated re-resolve can
+  never clobber a human correction. That clause is the whole reason this is a
+  database and not a cache.
+- `none` is recorded too, so a fruitless resolve isn't retried forever.
+
+Schema in `migrations/0001_artist_links.sql`. **Not yet applied** — needs a Neon
+project and the env var; see DATABASE.md.
+
+**Bundle work, forced by the new page.** The build crossed 500 KB, so the artist
+page and the calendar are now lazy routes. The calendar's split initially did
+nothing because `HomePage` still imported it statically — Vite says so plainly
+in the build output, worth reading. Main chunk went **158 KB → 131 KB gzipped**.
+
+Verified in mobile-emulated Chromium with both APIs stubbed: 23/23 — chips
+clamp and expand, More appears only on overflow and scrolls, navigation carries
+the name, sets list and switch, the Mixcloud iframe mounts with a URL-encoded
+feed, profile links resolve, back returns to the listings, no page errors. The
+endpoint's own validation was checked live (400s, 405, and the graceful
+`linkSource: "none"` path, since Mixcloud is blocked from the build sandbox).
+
+**`ra-nyc-xi.vercel.app` is not ours.** The project has exactly three domains —
+`ra-nyc.vercel.app`, `ra-nyc-carlosfranzettis-projects.vercel.app`,
+`ra-nyc-git-main-…` — and `-xi` is not among them, nor is there a second Vercel
+project. It looks like Vercel's auto-suffix from an earlier import that has
+since been released. **Canonical URL is `ra-nyc.vercel.app`.** Re-attaching
+`-xi` is a dashboard action (Settings → Domains) and the name may now be taken
+globally; no code change can fix it.
 
 ### 2026-07-29 — Images, take two: proxy fallback + analytics
 

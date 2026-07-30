@@ -21,6 +21,8 @@ deployed on [Vercel](https://vercel.com).
 - 🧭 **3 navigation modes** — Standard strip, bottom Tabs, or Minimal (swipe only).
 - 📅 **Jump to any date** with the calendar, beyond the 8-day strip.
 - 🔥 **Busiest first** — sorted by attendance, with RA Picks flagged.
+- 🎧 **Tap a DJ to hear a set** — Mixcloud playback, multiple sets, plus RA,
+  Discogs and SoundCloud links.
 - 🎭 **Curated for NYC** — underground, rooftop, and secret warehouse events.
 
 The colour theme is picked at random each time you open the app.
@@ -40,7 +42,7 @@ sent anywhere.
 | API      | Vercel serverless functions (`api/events.ts`, `api/image.ts`) |
 | Hosting  | Vercel                                        |
 | Analytics| Vercel Analytics (no cookies, no consent banner) |
-| Database | **None.** See [DATABASE.md](./DATABASE.md).   |
+| Database | Optional Neon (artist links only). See [DATABASE.md](./DATABASE.md). |
 
 ---
 
@@ -53,9 +55,16 @@ npm install
 npm run dev          # http://localhost:8080 — serves the UI *and* /api/events
 ```
 
-There are **no environment variables to set.** The app talks to Resident
-Advisor's public GraphQL endpoint through our own serverless function; nothing
-is authenticated.
+**No environment variables are required.** The app talks to Resident Advisor's
+public GraphQL endpoint through our own serverless function; nothing is
+authenticated.
+
+Two are optional — see `.env.example`:
+
+| Variable | Effect if set |
+| --- | --- |
+| `DATABASE_URL` | Neon connection string. Caches resolved DJ links durably and enables hand corrections. See [DATABASE.md](./DATABASE.md). |
+| `DISCOGS_TOKEN` | Exact Discogs artist pages instead of search links (their search API requires auth). |
 
 | Script              | What it does                                    |
 | ------------------- | ----------------------------------------------- |

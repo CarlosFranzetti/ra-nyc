@@ -1,4 +1,9 @@
 /** Shape returned by `/api/events` — mirrors `api/_lib/ra.ts`. */
+export interface Artist {
+  id: string;
+  name: string;
+}
+
 export interface Event {
   id: string;
   title: string;
@@ -8,7 +13,7 @@ export interface Event {
   url: string;
   imageUrl: string | null;
   venue: { name: string; area: string };
-  artists: string[];
+  artists: Artist[];
   attending: number;
   isPick: boolean;
   pickBlurb: string | null;

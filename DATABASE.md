@@ -1,5 +1,16 @@
 # Do you need a database?
 
+> **Status, 2026-07-30: yes, now — and it's wired up as an optional layer.**
+>
+> The trigger this document predicted has fired. DJ set playback needs a
+> resolved artist → Mixcloud/SoundCloud mapping, and a *corrected* one cannot be
+> re-derived from RA, so it cannot live in a cache. See
+> [§ The database, as built](#the-database-as-built) at the end for the schema,
+> setup steps, and the one design rule that matters.
+>
+> Everything below is the original reasoning, kept because it's still why there
+> is exactly **one** table and not a mirror of RA.
+
 **Short answer: no. Not today. Don't add one yet.**
 
 You asked whether the database is even needed, and whether a locally-hosted
@@ -306,3 +317,58 @@ SQL you can read, no runtime). Skip a heavy ORM — the queries here are small.
 
 Right now that condition is false. The first feature that makes it true is a
 hand-corrected DJ link.
+
+
+---
+
+## The database, as built
+
+Added 2026-07-30 for DJ set playback. One table, `artist_links`, defined in
+`migrations/0001_artist_links.sql`.
+
+### It is optional, on purpose
+
+| `DATABASE_URL` | Behaviour |
+| --- | --- |
+| unset | Resolve links live per request, cache at Vercel's edge for 24 h. App works identically, just warmer on third-party APIs. |
+| set | `artist_links` serves lookups instantly; each artist costs one round of third-party calls **ever**. |
+| set but unreachable, or table missing | Logs, falls through to live resolution. No downtime. |
+
+That property is the point. The database can be added, removed, or fail without
+taking the site down — it is a cache **with a memory**, not a dependency.
+
+### The rule that makes it a database and not a cache
+
+```sql
+on conflict (ra_artist_id) do update set …
+where artist_links.link_source <> 'manual'
+```
+
+`link_source` is `auto | manual | none`. A nightly or on-demand re-resolve can
+never overwrite a row a human corrected. Without that clause there'd be no
+reason for this table to exist — the edge cache would do.
+
+`none` is stored too, so an artist with no findable sets isn't re-resolved on
+every visit forever.
+
+### Setting it up
+
+1. Create a Neon project (free tier is ample — this table is a few MB at most).
+2. Copy the **pooled** connection string.
+3. Apply the migration:
+   ```bash
+   psql "$DATABASE_URL" -f migrations/0001_artist_links.sql
+   ```
+4. Add `DATABASE_URL` in Vercel → Settings → Environment Variables, for
+   Production and Preview. Redeploy.
+5. Optional: `DISCOGS_TOKEN` for exact Discogs artist pages instead of search
+   links — their search endpoint requires auth.
+
+Local development uses the same schema against Docker Postgres; see
+[Recommendation](#recommendation) above.
+
+### What is still *not* in the database
+
+Events. They remain a pure read-through proxy of RA with edge caching, because
+they are re-derivable and change daily. Mirroring them is only worth it for
+cross-day search ([ROADMAP §1b](./ROADMAP.md)), which isn't built.
