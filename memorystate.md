@@ -237,6 +237,63 @@ persistence across reload; settings drawer, details drawer, calendar popover,
 bottom nav, minimal-mode swipe hint; no uncaught page errors. Screenshotted each
 theme against stubbed listings.
 
+### 2026-07-30 — Subdued artist page, 3 sets, 5 links, and a real speed pass
+
+**Subdued.** The listings screen is the loud one — glows, stagger, neon accents —
+and that's right for it. The artist page is a *read*, so it now stays quiet: flat
+card surfaces, plain borders, muted labels, and the accent colour reserved for the
+one genuinely interactive control (play). The player lost its glow ring and sits
+on `bg-card`.
+
+**Sets capped at 3** (`MAX_SETS`), down from 4. Page order is now sets → bio →
+links, which matches how you actually read it.
+
+**5 links under the bio** (`MAX_LINKS`), in a new `links` array built server-side
+by `buildLinkList`. Providers: Discogs, SoundCloud, Mixcloud, **Bandcamp**,
+**Beatport**. RA is excluded because it *is* the bio — its link is the bio's
+attribution. Resolved profiles sort ahead of search URLs, so a real Discogs page
+outranks a Beatport query. Neither Bandcamp nor Beatport has a keyless artist
+search API, so those are honestly labelled "Search releases" rather than dressed
+up as profiles.
+
+**Speed and caching — the substantive part.**
+
+1. **Query cache persisted to localStorage** (`PersistQueryClientProvider` +
+   `createSyncStoragePersister`). This is the biggest perceived-speed win
+   available: a returning visitor sees their last day, and any artist they
+   opened, painted from disk on the first frame instead of after a round trip.
+   Verified — a card renders at 400 ms after reload with the network still in
+   flight. `throttleTime: 2000` keeps cache serialisation (synchronous) off the
+   main thread mid-scroll, and `buster: "v2-artists"` must be bumped whenever an
+   API response shape changes or restored data will be the wrong shape.
+2. **Artist prefetch on chip touch/hover**, mirroring the date strip.
+   `touchstart` fires well before `click`, so the request is usually already in
+   flight when the route mounts. Verified firing on hover before navigation.
+3. **Wider edge windows.** Events: `s-maxage=300` fresh but SWR raised
+   3600 → 86400, so a cold region or an RA outage degrades to slightly-old
+   listings rather than an error. Artist: `s-maxage` 1 day → 1 week, SWR 1 week →
+   30 days, since a DJ's Mixcloud/SoundCloud identity effectively never changes.
+4. **Preconnect `images.ra.co`** (hit on essentially every screen) plus
+   dns-prefetch for the three player hosts.
+
+**The animation-jank fix is the interesting one.** The ported CSS had
+`*, *::before, *::after { transition: … box-shadow 0.3s }` — a **box-shadow
+transition on every element in the document**. box-shadow can't be composited, so
+every frame of a drawer drag was forcing a full repaint of everything on screen.
+Removed box-shadow from the global rule and let the elements that actually want an
+animated glow opt in. Also swapped `.transition-smooth`'s easing to iOS's sheet
+curve `cubic-bezier(0.32, 0.72, 0, 1)`, which decelerates late so a drag release
+settles instead of stopping, and added `will-change-transform` to the drawer so it
+gets its own compositor layer.
+
+Migration `0003_artist_link_list.sql` adds the `links` jsonb column and forces one
+re-resolve of non-manual rows (they predate both the link list and the 3-set cap).
+
+Verified: 14/14 in mobile Chromium — 3 sets, exactly 5 links, resolved-first
+ordering, Bandcamp and Beatport present, bio attributed and clamped, subdued
+player styling, prefetch-on-hover, and cache restore before the network settles.
+Plus 5/5 cap and ordering assertions against the compiled module.
+
 ### 2026-07-30 — Multi-source sets: SoundCloud first, 4 per DJ, plus bios
 
 Requested: sets from SoundCloud then Mixcloud then others, 4 total per DJ, plus a

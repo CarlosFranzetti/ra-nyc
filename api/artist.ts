@@ -70,13 +70,14 @@ export default async function handler(
 
     const links = await getArtistLinks(id, name);
 
-    // Long edge cache: an artist's Mixcloud identity barely changes, and this is
-    // the layer that protects Mixcloud from our traffic when there's no database.
+    // Very long edge cache: a DJ's Mixcloud/SoundCloud identity effectively
+    // never changes, and this is the layer that protects those APIs from our
+    // traffic when there's no database configured.
     return send(
       res,
       200,
       { ...links, persisted: isDbEnabled() } satisfies ArtistResponse,
-      "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800",
+      "public, max-age=3600, s-maxage=604800, stale-while-revalidate=2592000",
     );
   } catch (error) {
     console.error("[api/artist] unexpected failure", error);

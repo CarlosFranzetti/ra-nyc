@@ -186,7 +186,7 @@ types, so `npm run dev` runs the production handler with no adapter in between.
 
 ## DJ sets
 
-`/api/artist` resolves a name to at most **4** sets, preferring providers in this
+`/api/artist` resolves a name to at most **3** sets, preferring providers in this
 order:
 
 | Provider | Search | Embed | Key |
@@ -216,11 +216,47 @@ disambiguating suffixes stripped (`"Cosmo (NY)"` → `cosmo`). Free-text titles
 player — someone else's set under a DJ's name — is worse than an empty list, so a
 near miss shows an empty state pointing at search links.
 
+**Links** under the bio are capped at 5 and ranked resolved-profile-first, so a
+real Discogs page outranks a Beatport search. RA is excluded from the list because
+it *is* the bio — its URL is the bio's attribution. Bandcamp and Beatport have no
+keyless artist search, so they are labelled as searches rather than presented as
+profiles.
+
 **Bio** is the first available of: RA's `biography`, the artist's Mixcloud
 `biog`, their SoundCloud description, or Discogs prose — attributed in the UI to
 whichever it came from. RA's field is an educated guess at their schema, so that
 query asks for it and retries without it on error; one unknown field fails an
 entire GraphQL query.
+
+## Caching and perceived speed
+
+Four layers, cheapest first:
+
+1. **Persisted query cache.** The TanStack cache is written to `localStorage`
+   (`ra-nyc:query-cache`, 1-day `maxAge`) and rehydrated on boot, so a returning
+   visitor's last day paints on the first frame with no network at all.
+   Serialisation is synchronous, hence `throttleTime: 2000` to keep it off the
+   main thread mid-scroll. **Bump `buster` whenever an API response shape
+   changes**, or restored data will be the wrong shape.
+2. **Prefetch before the tap.** Date chips and lineup chips both prefetch on
+   `touchstart`/`mouseenter`, which fires well before `click` — the request is
+   usually in flight by the time the view mounts. Adjacent days (+1, +2, −1) are
+   warmed too.
+3. **Edge cache.** Events: 5 min fresh, 1 day `stale-while-revalidate`. Artist:
+   1 week fresh, 30 days SWR, since a DJ's platform identity effectively never
+   changes. Generous SWR means a cold region or an upstream outage degrades to
+   slightly-old data rather than an error.
+4. **Optional Neon.** Removes third-party lookups entirely after the first
+   resolve. See [DATABASE.md](./DATABASE.md).
+
+### One animation gotcha worth remembering
+
+The ported stylesheet transitioned **`box-shadow` on `*`**. box-shadow cannot be
+composited, so every frame of a drawer drag repainted everything on screen. It is
+now off the global rule, and only elements that want an animated glow opt in.
+`.transition-smooth` uses iOS's sheet curve, `cubic-bezier(0.32, 0.72, 0, 1)`,
+which decelerates late so a released drag settles rather than stops; the drawer
+also carries `will-change-transform` for its own layer.
 
 ## Rate limiting
 

@@ -28,8 +28,9 @@ import { getSql } from "./db.js";
 
 export type SetProvider = "soundcloud" | "mixcloud" | "archive" | "youtube";
 
-/** How many sets we show per artist. */
-export const MAX_SETS = 4;
+/** How many sets we show per artist. Deliberately small — this is a listings
+ *  app with a taster attached, not a music player. */
+export const MAX_SETS = 3;
 
 export interface ArtistSet {
   provider: SetProvider;
@@ -53,6 +54,19 @@ export interface ArtistBio {
   url: string | null;
 }
 
+/** An outbound profile link shown under the bio. */
+export interface ArtistLink {
+  label: string;
+  url: string;
+  /** Sub-label; distinguishes a real profile from a name search. */
+  detail: string;
+  /** True when we matched an actual profile rather than building a search URL. */
+  resolved: boolean;
+}
+
+/** Links shown under the bio. RA is excluded — it *is* the bio. */
+export const MAX_LINKS = 5;
+
 export interface ArtistLinks {
   id: string;
   name: string;
@@ -64,6 +78,8 @@ export interface ArtistLinks {
   raUrl: string | null;
   bio: ArtistBio | null;
   sets: ArtistSet[];
+  /** Ranked and capped at MAX_LINKS, resolved profiles before searches. */
+  links: ArtistLink[];
   linkSource: "auto" | "manual" | "none";
   cached: boolean;
 }
@@ -508,7 +524,67 @@ function buildFallbackLinks(name: string) {
     soundcloudUrl: `https://soundcloud.com/search?q=${q}`,
     discogsUrl: `https://www.discogs.com/search/?type=artist&q=${q}`,
     raUrl: `https://ra.co/search?searchTerm=${q}`,
+    // Neither Bandcamp nor Beatport exposes a keyless artist search API, so
+    // these are honest search links rather than resolved profiles.
+    bandcampUrl: `https://bandcamp.com/search?q=${q}&item_type=b`,
+    beatportUrl: `https://www.beatport.com/search/artists?q=${q}`,
   };
+}
+
+/**
+ * Builds the link list shown under the bio.
+ *
+ * Resolved profiles sort ahead of search URLs — a real Discogs page is worth
+ * more than a Beatport query — and the whole thing is capped so the page stays
+ * a short read rather than a link farm.
+ */
+function buildLinkList(parts: {
+  discogs: { url: string; resolved: boolean };
+  bandcamp: string;
+  beatport: string;
+  soundcloud: { url: string; user: string | null };
+  mixcloud: { url: string | null; user: string | null };
+}): ArtistLink[] {
+  const candidates: ArtistLink[] = [
+    {
+      label: "Discogs",
+      url: parts.discogs.url,
+      detail: parts.discogs.resolved ? "Discography" : "Search releases",
+      resolved: parts.discogs.resolved,
+    },
+    {
+      label: "Bandcamp",
+      url: parts.bandcamp,
+      detail: "Search releases",
+      resolved: false,
+    },
+    {
+      label: "Beatport",
+      url: parts.beatport,
+      detail: "Search releases",
+      resolved: false,
+    },
+    {
+      label: "SoundCloud",
+      url: parts.soundcloud.url,
+      detail: parts.soundcloud.user ? `@${parts.soundcloud.user}` : "Search",
+      resolved: Boolean(parts.soundcloud.user),
+    },
+    ...(parts.mixcloud.url
+      ? [
+          {
+            label: "Mixcloud",
+            url: parts.mixcloud.url,
+            detail: parts.mixcloud.user ? `@${parts.mixcloud.user}` : "Search",
+            resolved: Boolean(parts.mixcloud.user),
+          },
+        ]
+      : []),
+  ];
+
+  return candidates
+    .sort((a, b) => Number(b.resolved) - Number(a.resolved))
+    .slice(0, MAX_LINKS);
 }
 
 // ─── Persistence ────────────────────────────────────────────────────────────
@@ -524,6 +600,7 @@ interface ArtistRow {
   ra_url: string | null;
   bio: ArtistBio | null;
   sets: ArtistSet[] | null;
+  links: ArtistLink[] | null;
   link_source: "auto" | "manual" | "none";
 }
 
@@ -534,7 +611,7 @@ async function readCached(artistId: string): Promise<ArtistLinks | null> {
   try {
     const rows = (await sql`
       select ra_artist_id, name, mixcloud_user, mixcloud_url, soundcloud_user,
-             soundcloud_url, discogs_url, ra_url, bio, sets, link_source
+             soundcloud_url, discogs_url, ra_url, bio, sets, links, link_source
       from artist_links
       where ra_artist_id = ${artistId}
     `) as unknown as ArtistRow[];
@@ -553,6 +630,7 @@ async function readCached(artistId: string): Promise<ArtistLinks | null> {
       raUrl: row.ra_url,
       bio: row.bio,
       sets: row.sets ?? [],
+      links: row.links ?? [],
       linkSource: row.link_source,
       cached: true,
     };
@@ -571,13 +649,14 @@ async function writeCached(links: ArtistLinks): Promise<void> {
     await sql`
       insert into artist_links (
         ra_artist_id, name, mixcloud_user, mixcloud_url, soundcloud_user,
-        soundcloud_url, discogs_url, ra_url, bio, sets, link_source,
+        soundcloud_url, discogs_url, ra_url, bio, sets, links, link_source,
         resolved_at, updated_at
       ) values (
         ${links.id}, ${links.name}, ${links.mixcloudUser}, ${links.mixcloudUrl},
         ${links.soundcloudUser}, ${links.soundcloudUrl}, ${links.discogsUrl},
         ${links.raUrl}, ${links.bio ? JSON.stringify(links.bio) : null}::jsonb,
-        ${JSON.stringify(links.sets)}::jsonb, ${links.linkSource}, now(), now()
+        ${JSON.stringify(links.sets)}::jsonb,
+        ${JSON.stringify(links.links)}::jsonb, ${links.linkSource}, now(), now()
       )
       on conflict (ra_artist_id) do update set
         name            = excluded.name,
@@ -589,6 +668,7 @@ async function writeCached(links: ArtistLinks): Promise<void> {
         ra_url          = excluded.ra_url,
         bio             = excluded.bio,
         sets            = excluded.sets,
+        links           = excluded.links,
         link_source     = excluded.link_source,
         resolved_at     = now(),
         updated_at      = now()
@@ -666,6 +746,20 @@ export async function getArtistLinks(
             ? { text: discogs.profile, source: "Discogs", url: discogs.url }
             : null;
 
+    const linkList = buildLinkList({
+      discogs: {
+        url: discogs?.url ?? fallback.discogsUrl,
+        resolved: Boolean(discogs?.url),
+      },
+      bandcamp: fallback.bandcampUrl,
+      beatport: fallback.beatportUrl,
+      soundcloud: {
+        url: soundcloud?.url ?? fallback.soundcloudUrl,
+        user: soundcloud?.user ?? null,
+      },
+      mixcloud: { url: mixcloud?.url ?? null, user: mixcloud?.user ?? null },
+    });
+
     const links: ArtistLinks = {
       id: artistId,
       name,
@@ -677,6 +771,7 @@ export async function getArtistLinks(
       raUrl: ra.url ?? fallback.raUrl,
       bio,
       sets,
+      links: linkList,
       linkSource: sets.length > 0 || bio ? "auto" : "none",
       cached: false,
     };
