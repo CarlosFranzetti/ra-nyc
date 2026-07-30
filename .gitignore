@@ -10,3 +10,9 @@ dist
 *.local
 *.log
 .DS_Store
+
+# Source archives. LOVES.zip was committed to share the original project and
+# carried a .env inside it — keep archives out of the repo entirely.
+*.zip
+*.tar.gz
+*.tgz
