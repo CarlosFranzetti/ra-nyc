@@ -15,6 +15,11 @@ export const RA_GRAPHQL_URL = "https://ra.co/graphql";
 /** RA's internal area id for New York City. */
 export const NYC_AREA_ID = 8;
 
+export interface RAArtist {
+  id: string;
+  name: string;
+}
+
 /** Cleaned-up event shape sent to the browser. */
 export interface RAEvent {
   id: string;
@@ -25,7 +30,7 @@ export interface RAEvent {
   url: string;
   imageUrl: string | null;
   venue: { name: string; area: string };
-  artists: string[];
+  artists: RAArtist[];
   attending: number;
   isPick: boolean;
   pickBlurb: string | null;
@@ -132,7 +137,10 @@ function transformListing(listing: RAListing): RAEvent {
     url: `https://ra.co${event.contentUrl}`,
     imageUrl: rawImage ? normalizeImageUrl(rawImage) : null,
     venue: { name: event.venue?.name ?? "TBA", area: "New York" },
-    artists: event.artists?.map((a) => a.name) ?? [],
+    // Keep ids, not just names: the artist page and its Mixcloud lookup are
+    // keyed on them, and RA reuses names across different artists.
+    artists:
+      event.artists?.map((a) => ({ id: a.id, name: a.name })) ?? [],
     attending: event.attending ?? 0,
     isPick: Boolean(event.pick),
     pickBlurb: event.pick?.blurb ?? null,

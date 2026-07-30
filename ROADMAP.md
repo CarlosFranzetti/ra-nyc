@@ -79,7 +79,17 @@ Ship 1a first and see whether 1b is actually wanted. It may not be.
 
 ---
 
-## 2 · DJ sets + artist bios — P2
+## 2 · DJ sets + artist bios — **steps 1–2 shipped 2026-07-30**
+
+**Built:** `/api/artist` (Mixcloud search + cloudcasts, RA artist lookup, Discogs
+with optional token, SoundCloud search link), the `/artist/:id` page with a
+Mixcloud player and switchable set list, tappable lineup chips in the details
+drawer, and the `artist_links` table with `link_source` so hand corrections
+survive a re-resolve.
+
+**Still to do from this section:** the manual-correction admin route (step 4),
+confidence scoring beyond the current strict name match, and SoundCloud playback
+if their API ever reopens. The original plan follows.
 
 > *"Clicking a dj will play SoundCloud or Mixcloud or other available dj sets
 > and if available a link to their bio is also available."*

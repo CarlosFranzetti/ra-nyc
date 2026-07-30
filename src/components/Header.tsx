@@ -1,4 +1,13 @@
-import { CalendarPopover } from "@/components/CalendarPopover";
+import { lazy, Suspense } from "react";
+import { CalendarDays } from "lucide-react";
+
+// react-day-picker is the heaviest dependency in the app and the calendar is
+// opened rarely, so it loads on demand.
+const CalendarPopover = lazy(() =>
+  import("@/components/CalendarPopover").then((m) => ({
+    default: m.CalendarPopover,
+  })),
+);
 import { SettingsSheet } from "@/components/SettingsSheet";
 import { useTheme } from "@/context/ThemeContext";
 
@@ -19,10 +28,18 @@ export function Header({ selectedDate, onDateChange }: HeaderProps) {
         <h1 className="text-xl font-bold tracking-tight">RA NYC Events</h1>
         <div className="flex items-center gap-1">
           {showCalendar && (
-            <CalendarPopover
-              selectedDate={selectedDate}
-              onDateChange={onDateChange}
-            />
+            <Suspense
+              fallback={
+                <span className="p-2 text-muted-foreground">
+                  <CalendarDays className="h-5 w-5" />
+                </span>
+              }
+            >
+              <CalendarPopover
+                selectedDate={selectedDate}
+                onDateChange={onDateChange}
+              />
+            </Suspense>
           )}
           <SettingsSheet />
         </div>

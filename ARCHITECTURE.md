@@ -2,13 +2,16 @@
 
 ## One-paragraph summary
 
-RA-NYC is a static single-page React app plus two serverless functions. The SPA
+RA-NYC is a static single-page React app plus three serverless functions. The SPA
 is built by Vite into `dist/` and served from Vercel's CDN. `api/events.ts` is a
 thin, cached, validating proxy in front of Resident Advisor's public GraphQL
 endpoint; `api/image.ts` is a fallback proxy for flyer images the RA CDN won't
-serve to a browser directly. There is no database, no auth, and no persistent
-state anywhere in the system — user preferences live in `localStorage` and never
-leave the device.
+serve to a browser directly. `api/artist.ts` resolves a DJ to playable Mixcloud sets and profile links.
+
+There is no auth. The only persistent state is one optional Postgres table
+caching resolved artist links — absent a `DATABASE_URL` the app resolves live and
+behaves identically. User preferences live in `localStorage` and never leave the
+device.
 
 ---
 
@@ -89,12 +92,19 @@ api/
                     Fallback path only — see "Images" below.
   _lib/rateLimit.ts Per-IP request budgets. Best-effort by design — see
                     "Rate limiting" below.
+  _lib/db.ts        Optional Neon client. Returns null without DATABASE_URL,
+                    and every caller falls through to live resolution.
+  _lib/artistLinks  Resolves a DJ name to Mixcloud sets + profile links, with
+                    strict match guarding and read-through DB caching.
+  artist.ts         GET /api/artist?id=<ra id>&name=<name>
 
 src/
   main.tsx          React root + QueryClientProvider + ThemeProvider.
   App.tsx           Router + Vercel Analytics. One route today: "/".
   pages/HomePage.tsx    Date state, loading/error/empty states, event list,
                         swipe handling, drawer orchestration, density classes.
+  pages/ArtistPage.tsx  Set player, switchable set list, profile links. Lazy
+                        route — most visits never open it.
   components/
     Header.tsx          Sticky blurred bar: title, calendar, settings.
     DatePicker.tsx      8-day strip. Prefetches a day on touchstart/hover, so
@@ -111,6 +121,7 @@ src/
     EmptyState.tsx      No events for this date.
     ErrorState.tsx      Failure + the API's real message + retry.
     SplashScreen.tsx    Covers first paint until the first day lands.
+    SetPlayer.tsx       Mixcloud iframe, mounted only after an explicit tap.
     ui/drawer.tsx       Thin vaul wrapper — the one headless-UI dependency.
   context/
     ThemeContext.tsx    Preferences state, localStorage persistence, and the
@@ -119,6 +130,7 @@ src/
                         prefetch, and usePrefetchEvents for hover/touch.
   hooks/useSwipe.ts     Touch-based horizontal swipe; ignores mostly-vertical
                         gestures so scrolling never changes the day.
+  hooks/useArtist.ts    TanStack Query over GET /api/artist.
   types/event.ts        Event / EventsResponse — the contract between api/ and
                         src/. Keep in sync with api/_lib/ra.ts.
   types/preferences.ts  Theme / density / typography / nav unions + labels.
