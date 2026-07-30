@@ -141,6 +141,37 @@ diagnose than it should have been:
 - The UI swallowed the API's error message behind "try again later". It now
   shows the real message plus a retry button, so a failure is self-diagnosing.
 
+### 2026-07-30 — Rate limiting restored
+
+The Supabase edge function had per-IP rate limiting (30/min) and the Vercel port
+never carried it over. Added back in `api/_lib/rateLimit.ts`, used by both
+functions: 30/min for `/api/events`, 200/min for `/api/image` (a screen of
+listings can request ~50 flyers, all of which hit the proxy if the CDN is
+blocking direct loads).
+
+Known and accepted limitation: the counters are in module memory, so they are
+per *instance*. Vercel scales horizontally and recycles instances, so this is
+best-effort — a caller spread across instances gets more than the limit, and a
+cold start resets the window. Made that trade knowingly rather than adding
+Upstash/Vercel KV, which means credentials and another service to operate. If
+abuse ever materialises, Vercel's Firewall rate limiting is the right next step
+(edge-level, global, no code) — not a distributed limiter in here.
+
+It's still worth having because of *where* it sits: the edge cache absorbs
+normal traffic, so only cache misses reach the function, which is exactly the
+traffic that would otherwise reach ra.co.
+
+Two details that matter more than the limit itself:
+- The 429 is `Cache-Control: no-store`. A cached 429 at the edge would be served
+  to every visitor — one abusive caller becoming an outage for all.
+- `X-RateLimit-*` go only on the 429, never on the cacheable 200, or the edge
+  would cache one caller's remaining count and serve it to everyone.
+- The check runs *before* input validation, so spraying malformed dates isn't a
+  free bypass.
+
+Verified: 30 requests pass, the 31st onward returns 429 with `Retry-After: 59`
+and the budget headers; the image proxy keeps a separate bucket.
+
 ### 2026-07-30 — The original was recovered, and merged in
 
 The user supplied `LOVES.zip`: a full export of the original Lovable project,

@@ -87,6 +87,8 @@ api/
                     Flyer proxy for when the RA CDN refuses a direct browser
                     request. Host-allowlisted, image/* only, 8 MB cap.
                     Fallback path only — see "Images" below.
+  _lib/rateLimit.ts Per-IP request budgets. Best-effort by design — see
+                    "Rate limiting" below.
 
 src/
   main.tsx          React root + QueryClientProvider.
@@ -160,6 +162,36 @@ Two rules follow:
 
 The happy side effect is that Vite's connect middleware passes these same
 types, so `npm run dev` runs the production handler with no adapter in between.
+
+## Rate limiting
+
+Both functions apply a per-IP budget before doing any work: **30/minute** for
+`/api/events`, **200/minute** for `/api/image` (one screen of listings can ask
+for ~50 flyers, and if the CDN blocks direct loads every one arrives at the
+proxy). Over budget returns `429` with `Retry-After` and `X-RateLimit-*`.
+
+Ported from the Supabase edge function this API replaced. Three things about it
+are deliberate:
+
+- **It is best-effort, not a security control.** Counters live in module memory,
+  so they are per *instance*: Vercel runs many concurrent instances and recycles
+  them, so a caller spread across instances exceeds the limit and a cold start
+  resets the window. A distributed limiter needs a shared store (Upstash /
+  Vercel KV) — credentials and a service to operate, which this app deliberately
+  doesn't have. If real abuse appears, use Vercel's Firewall rate limiting
+  (edge-level, no code, actually global) rather than building one here.
+- **It still works, because of where it sits.** The edge cache absorbs nearly
+  all normal traffic, so only cache misses reach the function — exactly the
+  requests that would otherwise hit ra.co. A visitor clicking through a week
+  costs 8. Anything near these limits is not a person browsing.
+- **The 429 is `no-store`.** A cached 429 at the edge would be served to every
+  visitor, turning one abusive caller into an outage. For the same reason the
+  `X-RateLimit-*` headers appear only on the 429, never on the cacheable 200 —
+  otherwise the edge would cache one caller's remaining count and hand it to
+  everyone.
+
+Malformed requests count against the budget too: the check runs before input
+validation, so spraying invalid dates isn't a free bypass.
 
 ## Images
 
