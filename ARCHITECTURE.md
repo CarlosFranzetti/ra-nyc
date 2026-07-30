@@ -87,42 +87,52 @@ api/
                     Flyer proxy for when the RA CDN refuses a direct browser
                     request. Host-allowlisted, image/* only, 8 MB cap.
                     Fallback path only — see "Images" below.
+  _lib/rateLimit.ts Per-IP request budgets. Best-effort by design — see
+                    "Rate limiting" below.
 
 src/
-  main.tsx          React root + QueryClientProvider.
-  App.tsx           Router. One route today: "/".
+  main.tsx          React root + QueryClientProvider + ThemeProvider.
+  App.tsx           Router + Vercel Analytics. One route today: "/".
   pages/HomePage.tsx    Date state, loading/error/empty states, event list,
-                        swipe handling, sheet orchestration.
+                        swipe handling, drawer orchestration, density classes.
   components/
-    DateSelector.tsx    8-day picker. Renders as a scrolling strip, fixed
-                        tabs, or nothing at all, per the navMode preference.
-    EventCard.tsx       Image, title, venue, times, lineup, RA Pick badge.
-                        Opens the details sheet.
-    EventDetailsSheet   Full event detail; lineup as chips (the future
+    Header.tsx          Sticky blurred bar: title, calendar, settings.
+    DatePicker.tsx      8-day strip. Prefetches a day on touchstart/hover, so
+                        the fetch is in flight before the tap lands.
+    CalendarPopover     Jump to any date beyond the strip (react-day-picker).
+    BottomNav.tsx       Bottom bar for the "tabs" navigation style.
+    EventCard.tsx       Compact row: 96px thumb, title, venue, time, lineup,
+                        "N going", PICK badge. Opens the details drawer.
+    EventThumb.tsx      Flyer <img>: CDN-direct → /api/image → venue initial.
+    EventDetailsSheet   Full detail in a drawer; lineup as chips (the future
                         attachment point for DJ set playback).
-    SettingsSheet.tsx   Theme / density / navigation preferences UI.
-    Sheet.tsx           Bottom-sheet primitive. Hand-rolled — one dialog
-                        pattern doesn't justify a headless UI dependency.
-    EventCardSkeleton   Load placeholder matching real card geometry.
-    EventImage.tsx      Flyer <img> with CDN-direct → proxy → hide fallback.
+    SettingsSheet.tsx   Theme / density / typography / navigation preferences.
+    EventSkeleton.tsx   Shimmer placeholder matching EventCard's geometry.
+    EmptyState.tsx      No events for this date.
+    ErrorState.tsx      Failure + the API's real message + retry.
+    SplashScreen.tsx    Covers first paint until the first day lands.
+    ui/drawer.tsx       Thin vaul wrapper — the one headless-UI dependency.
   context/
-    PreferencesContext  Preferences state, localStorage persistence, and the
-                        data-theme / data-density attribute writes.
-  hooks/useRAEvents.ts  TanStack Query wrapper over GET /api/events, with
-                        neighbouring-day prefetch.
+    ThemeContext.tsx    Preferences state, localStorage persistence, and the
+                        theme-/density-/type- class writes on <html>.
+  hooks/useEvents.ts    TanStack Query over GET /api/events, with +1/+2/-1 day
+                        prefetch, and usePrefetchEvents for hover/touch.
   hooks/useSwipe.ts     Touch-based horizontal swipe; ignores mostly-vertical
                         gestures so scrolling never changes the day.
-  types/event.ts        RAEvent / EventsResponse — the contract between
-                        api/ and src/. Keep in sync with api/_lib/ra.ts.
-  types/preferences.ts  Theme / density / nav-mode unions, labels, swatches.
+  types/event.ts        Event / EventsResponse — the contract between api/ and
+                        src/. Keep in sync with api/_lib/ra.ts.
+  types/preferences.ts  Theme / density / typography / nav unions + labels.
   lib/utils.ts          cn() — clsx + tailwind-merge.
-  lib/raImage.ts        Resolves RA's inconsistent images[].filename field.
-  index.css             Tailwind directives, the 4 themes, the 3 densities,
-                        and the touch/theming base rules.
+  lib/images.ts         Builds the /api/image proxy URL.
+  lib/formatTime.ts     RA sends ISO or bare HH:mm; renders both as "11pm".
+  index.css             The 4 themes, 3 densities, 3 typography variants, glow
+                        system, stagger + shimmer animations, touch base rules.
+  assets/ra-logo.svg    Splash mark.
 
 vite.config.ts      Vite config + a dev-only plugin that mounts api/*.ts as
                     routes so `npm run dev` behaves like production.
-vercel.json         Framework, function runtime, SPA rewrite, asset headers.
+vercel.json         Framework, maxDuration, SPA rewrite, asset headers.
+public/             ra-favicon.svg, robots.txt.
 tailwind.config.ts  Design tokens mapped to the CSS variables in index.css.
 tsconfig.app.json   Type-checks src/ (DOM libs, @/* alias).
 tsconfig.api.json   Type-checks api/ (Node types).
@@ -160,6 +170,36 @@ Two rules follow:
 
 The happy side effect is that Vite's connect middleware passes these same
 types, so `npm run dev` runs the production handler with no adapter in between.
+
+## Rate limiting
+
+Both functions apply a per-IP budget before doing any work: **30/minute** for
+`/api/events`, **200/minute** for `/api/image` (one screen of listings can ask
+for ~50 flyers, and if the CDN blocks direct loads every one arrives at the
+proxy). Over budget returns `429` with `Retry-After` and `X-RateLimit-*`.
+
+Ported from the Supabase edge function this API replaced. Three things about it
+are deliberate:
+
+- **It is best-effort, not a security control.** Counters live in module memory,
+  so they are per *instance*: Vercel runs many concurrent instances and recycles
+  them, so a caller spread across instances exceeds the limit and a cold start
+  resets the window. A distributed limiter needs a shared store (Upstash /
+  Vercel KV) — credentials and a service to operate, which this app deliberately
+  doesn't have. If real abuse appears, use Vercel's Firewall rate limiting
+  (edge-level, no code, actually global) rather than building one here.
+- **It still works, because of where it sits.** The edge cache absorbs nearly
+  all normal traffic, so only cache misses reach the function — exactly the
+  requests that would otherwise hit ra.co. A visitor clicking through a week
+  costs 8. Anything near these limits is not a person browsing.
+- **The 429 is `no-store`.** A cached 429 at the edge would be served to every
+  visitor, turning one abusive caller into an outage. For the same reason the
+  `X-RateLimit-*` headers appear only on the 429, never on the cacheable 200 —
+  otherwise the edge would cache one caller's remaining count and hand it to
+  everyone.
+
+Malformed requests count against the budget too: the check runs before input
+validation, so spraying invalid dates isn't a free bypass.
 
 ## Images
 

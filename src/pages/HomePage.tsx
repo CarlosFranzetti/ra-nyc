@@ -1,119 +1,166 @@
-import { useState } from "react";
-import { addDays, format, isToday, subDays } from "date-fns";
-import DateSelector from "@/components/DateSelector";
-import EventCard from "@/components/EventCard";
-import EventCardSkeleton from "@/components/EventCardSkeleton";
-import EventDetailsSheet from "@/components/EventDetailsSheet";
-import SettingsSheet from "@/components/SettingsSheet";
-import { usePreferences } from "@/context/PreferencesContext";
-import { useRAEvents } from "@/hooks/useRAEvents";
+import { useEffect, useState } from "react";
+import { addDays, format, subDays } from "date-fns";
+import { BottomNav } from "@/components/BottomNav";
+import { CalendarPopover } from "@/components/CalendarPopover";
+import { DatePicker } from "@/components/DatePicker";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
+import { EventCard } from "@/components/EventCard";
+import { EventDetailsSheet } from "@/components/EventDetailsSheet";
+import { EventSkeleton } from "@/components/EventSkeleton";
+import { Header } from "@/components/Header";
+import { SplashScreen } from "@/components/SplashScreen";
+import { useTheme } from "@/context/ThemeContext";
+import { useEvents } from "@/hooks/useEvents";
 import { useSwipe } from "@/hooks/useSwipe";
 import { cn } from "@/lib/utils";
-import type { RAEvent } from "@/types/event";
+import type { Event } from "@/types/event";
 
 export default function HomePage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeEvent, setActiveEvent] = useState<RAEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
-  const { preferences } = usePreferences();
-  const {
-    data: events,
-    isLoading,
-    isPlaceholderData,
-    error,
-    refetch,
-    isFetching,
-  } = useRAEvents(selectedDate);
+  const { navStyle, layoutDensity } = useTheme();
+  const dateString = format(selectedDate, "yyyy-MM-dd");
+  const { data, isLoading, isFetching, error, refetch } = useEvents(dateString);
 
-  // Swipe works in every navigation mode; in Minimal it's the only way to move.
+  // Re-keying the list on date change restarts the stagger animation, so a new
+  // day animates in rather than swapping silently.
+  const listKey = dateString;
+
+  useEffect(() => {
+    if (!isLoading && data) {
+      const timer = setTimeout(() => setShowSplash(false), 500);
+      return () => clearTimeout(timer);
+    }
+    // Never strand the user behind the splash if the first fetch fails.
+    if (error) setShowSplash(false);
+    return undefined;
+  }, [isLoading, data, error]);
+
   const swipe = useSwipe({
-    onSwipeLeft: () => setSelectedDate((date) => addDays(date, 1)),
-    onSwipeRight: () => setSelectedDate((date) => subDays(date, 1)),
+    onSwipeLeft: () => setSelectedDate((d) => addDays(d, 1)),
+    onSwipeRight: () => setSelectedDate((d) => subDays(d, 1)),
   });
 
-  const dateLabel = isToday(selectedDate)
-    ? "Today"
-    : format(selectedDate, "EEEE d MMM");
+  const handleEventSelect = (event: Event) => {
+    setSelectedEvent(event);
+    setSheetOpen(true);
+  };
+
+  const spacingClass = cn(
+    layoutDensity === "tight" && "space-y-1",
+    layoutDensity === "default" && "space-y-2",
+    layoutDensity === "airy" && "space-y-3",
+  );
+
+  const padX = cn(
+    layoutDensity === "tight" && "px-2",
+    layoutDensity === "default" && "px-3",
+    layoutDensity === "airy" && "px-4",
+  );
+
+  const mainPadding = cn(
+    layoutDensity === "tight" && "px-2 pb-4",
+    layoutDensity === "default" && "px-3 pb-6",
+    layoutDensity === "airy" && "px-4 pb-8",
+  );
+
+  const hasEvents = Boolean(data?.events?.length);
+  const isEmpty = Boolean(data && data.events.length === 0);
 
   return (
-    <div
-      className="min-h-screen max-w-md mx-auto"
-      // Respect the notch and home indicator now that the viewport paints
-      // edge to edge.
-      style={{
-        paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: "env(safe-area-inset-bottom)",
-      }}
-    >
-      <header className="flex items-baseline justify-between gap-3 px-3 pt-4 pb-1">
-        <div>
-          <h1 className="text-lg font-bold text-foreground">RA NYC Events</h1>
-          {/* Minimal mode drops the date picker, so the header has to say which
-              day you're looking at. */}
-          {preferences.navMode === "minimal" && (
-            <p className="text-xs text-muted-foreground">{dateLabel}</p>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => setSettingsOpen(true)}
-          aria-label="Preferences"
-          className="text-xs text-muted-foreground hover:text-foreground active:text-foreground border border-border rounded-md px-2 py-1 active:scale-95 transition-all"
-        >
-          Settings
-        </button>
-      </header>
+    <>
+      <SplashScreen isVisible={showSplash} />
 
-      <DateSelector
-        selectedDate={selectedDate}
-        onSelect={setSelectedDate}
-        navMode={preferences.navMode}
-      />
-
-      <main
-        {...swipe}
+      <div
         className={cn(
-          "px-3 pb-8 transition-opacity duration-150",
-          // Showing the previous day dimmed reads as "loading" without the
-          // jarring blank-then-spinner cycle.
-          isPlaceholderData && "opacity-50",
+          "min-h-screen bg-background",
+          navStyle === "tabs" && "has-bottom-nav",
+          navStyle === "minimal" && "swipe-active",
         )}
-        style={{ display: "grid", gap: "var(--card-gap)" }}
+        {...swipe}
       >
-        {isLoading &&
-          Array.from({ length: 4 }, (_, i) => <EventCardSkeleton key={i} />)}
+        <Header selectedDate={selectedDate} onDateChange={setSelectedDate} />
 
-        {error && (
-          <div className="text-center py-8 space-y-3">
-            <p className="text-sm text-foreground">Couldn&apos;t load events.</p>
-            {/* Surface the real reason — the API returns a useful message
-                (e.g. "Resident Advisor responded with 403") and hiding it
-                behind "try again later" makes failures undiagnosable. */}
-            <p className="text-xs text-muted-foreground px-6">{error.message}</p>
-            <button
-              onClick={() => void refetch()}
-              disabled={isFetching}
-              className="text-xs font-medium bg-secondary text-foreground border border-border px-3 py-1.5 rounded-md hover:bg-accent active:bg-accent disabled:opacity-50 transition-colors"
-            >
-              {isFetching ? "Retrying…" : "Try again"}
-            </button>
+        {navStyle !== "minimal" && (
+          <div className="py-2 border-b border-border/50">
+            <DatePicker selectedDate={selectedDate} onDateChange={setSelectedDate} />
           </div>
         )}
 
-        {events?.length === 0 && !isLoading && !error && (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            No events found for this date.
+        <div className={cn("py-2 flex items-center justify-between gap-2", padX)}>
+          <p className="text-xs text-muted-foreground">
+            {hasEvents
+              ? `${data!.count} event${data!.count !== 1 ? "s" : ""} · ${format(selectedDate, "EEE, MMM d")}`
+              : format(selectedDate, "EEE, MMM d")}
           </p>
+          {/* Minimal mode hides the strip, so the swipe hint has to live here. */}
+          {navStyle === "minimal" && (
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+              Swipe to change day
+            </span>
+          )}
+        </div>
+
+        <main className={mainPadding}>
+          <div
+            className={cn(
+              "transition-opacity duration-150",
+              isFetching && !isLoading ? "opacity-60" : "opacity-100",
+            )}
+          >
+            {error ? (
+              <ErrorState
+                onRetry={() => void refetch()}
+                detail={error.message}
+                retrying={isFetching}
+              />
+            ) : isEmpty ? (
+              <EmptyState />
+            ) : hasEvents ? (
+              <div key={listKey} className={cn(spacingClass, "stagger-animation")}>
+                {data!.events.map((event) => (
+                  <EventCard key={event.id} event={event} onSelect={handleEventSelect} />
+                ))}
+              </div>
+            ) : (
+              <div className={cn(spacingClass, "stagger-animation")}>
+                {Array.from({ length: 6 }, (_, i) => (
+                  <EventSkeleton key={i} />
+                ))}
+              </div>
+            )}
+          </div>
+        </main>
+
+        <EventDetailsSheet
+          event={selectedEvent}
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+        />
+
+        {navStyle === "tabs" && (
+          <>
+            <BottomNav onCalendarClick={() => setCalendarOpen((v) => !v)} />
+            {calendarOpen && (
+              <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50">
+                <CalendarPopover
+                  selectedDate={selectedDate}
+                  onDateChange={(date) => {
+                    setSelectedDate(date);
+                    setCalendarOpen(false);
+                  }}
+                  align="center"
+                />
+              </div>
+            )}
+          </>
         )}
-
-        {events?.map((event) => (
-          <EventCard key={event.id} event={event} onOpen={setActiveEvent} />
-        ))}
-      </main>
-
-      <EventDetailsSheet event={activeEvent} onClose={() => setActiveEvent(null)} />
-      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-    </div>
+      </div>
+    </>
   );
 }

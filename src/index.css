@@ -1,167 +1,378 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  /* ── Colour themes ──────────────────────────────────────────────────────
-     Selected by data-theme on <html>, written by PreferencesContext. Every
-     theme is dark; RA listings are looked at in the dark, and a light theme
-     was never part of this app. `:root` carries Noir so the page is styled
-     before React mounts. */
-  :root,
-  :root[data-theme="noir"] {
-    --background: 0 0% 4%;
-    --foreground: 0 0% 95%;
-    --card: 0 0% 8%;
-    --card-foreground: 0 0% 95%;
-    --primary: 0 0% 100%;
-    --primary-foreground: 0 0% 0%;
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 95%;
-    --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 60%;
-    --accent: 0 0% 18%;
-    --accent-foreground: 0 0% 95%;
-    --border: 0 0% 16%;
-    --input: 0 0% 16%;
-    --ring: 0 0% 80%;
-    --radius: 0.5rem;
-  }
+/* ─────────────────────────────────────────────────────────────────────────────
+   Themes, typography and density.
 
-  :root[data-theme="midnight"] {
-    --background: 222 47% 6%;
-    --foreground: 213 31% 95%;
-    --card: 222 44% 10%;
-    --card-foreground: 213 31% 95%;
-    --primary: 213 94% 68%;
-    --primary-foreground: 222 47% 8%;
-    --secondary: 222 40% 15%;
-    --secondary-foreground: 213 31% 95%;
-    --muted: 222 40% 15%;
-    --muted-foreground: 215 20% 62%;
-    --accent: 222 40% 20%;
-    --accent-foreground: 213 31% 95%;
-    --border: 222 35% 18%;
-    --input: 222 35% 18%;
-    --ring: 213 94% 68%;
-    --radius: 0.625rem;
-  }
-
-  :root[data-theme="ember"] {
-    --background: 20 14% 5%;
-    --foreground: 30 20% 94%;
-    --card: 20 14% 9%;
-    --card-foreground: 30 20% 94%;
-    --primary: 24 95% 58%;
-    --primary-foreground: 20 14% 6%;
-    --secondary: 20 12% 15%;
-    --secondary-foreground: 30 20% 94%;
-    --muted: 20 12% 15%;
-    --muted-foreground: 25 12% 62%;
-    --accent: 20 12% 20%;
-    --accent-foreground: 30 20% 94%;
-    --border: 20 12% 18%;
-    --input: 20 12% 18%;
-    --ring: 24 95% 58%;
-    --radius: 0.375rem;
-  }
-
-  :root[data-theme="neon"] {
-    --background: 280 30% 5%;
-    --foreground: 300 20% 96%;
-    --card: 280 28% 9%;
-    --card-foreground: 300 20% 96%;
-    --primary: 315 96% 62%;
-    --primary-foreground: 280 30% 6%;
-    --secondary: 280 24% 16%;
-    --secondary-foreground: 300 20% 96%;
-    --muted: 280 24% 16%;
-    --muted-foreground: 290 15% 66%;
-    --accent: 285 30% 22%;
-    --accent-foreground: 300 20% 96%;
-    --border: 285 25% 20%;
-    --input: 285 25% 20%;
-    --ring: 315 96% 62%;
-    --radius: 0.75rem;
-  }
-
-  /* ── Layout density ─────────────────────────────────────────────────────
-     --density-scale drives the root font size, so rem-based spacing and type
-     scale together. The explicit values below cover the things that should
-     not scale linearly (flyer height especially). */
-  :root,
-  :root[data-density="comfortable"] {
-    --density-scale: 1;
-    --card-gap: 0.75rem;
-    --card-pad: 0.75rem;
-    --card-image-h: 11rem;
-  }
-
-  :root[data-density="compact"] {
-    --density-scale: 0.92;
-    --card-gap: 0.5rem;
-    --card-pad: 0.625rem;
-    --card-image-h: 8rem;
-  }
-
-  :root[data-density="spacious"] {
-    --density-scale: 1.06;
-    --card-gap: 1.125rem;
-    --card-pad: 1rem;
-    --card-image-h: 14rem;
-  }
+   Deliberately NOT inside `@layer base`: these class names are built at runtime
+   (`theme-${x}`), so Tailwind's content scanner never sees them and tree-shakes
+   the rules out of the build. Only Neon survived, because `:root` anchored it.
+   Plain CSS is never purged.
+   ───────────────────────────────────────────────────────────────────────────── */
+/* Neon Theme - Electric Cyan */
+:root, .theme-neon {
+  --background: 200 15% 4%;
+  --foreground: 180 20% 95%;
+  --card: 200 15% 7%;
+  --card-foreground: 180 20% 95%;
+  --popover: 200 15% 7%;
+  --popover-foreground: 180 20% 95%;
+  --primary: 185 100% 50%;
+  --primary-foreground: 200 15% 4%;
+  --secondary: 200 15% 12%;
+  --secondary-foreground: 180 20% 95%;
+  --muted: 200 15% 15%;
+  --muted-foreground: 185 20% 55%;
+  --accent: 185 40% 12%;
+  --accent-foreground: 185 100% 70%;
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 185 25% 18%;
+  --input: 200 15% 18%;
+  --ring: 185 100% 50%;
+  --radius: 0.5rem;
+  --glow-color: 185 100% 50%;
+  --glow-intensity: 0.4;
 }
+
+/* Vapor Theme - Pink/Magenta Vaporwave */
+.theme-vapor {
+  --background: 280 20% 4%;
+  --foreground: 300 20% 95%;
+  --card: 280 20% 7%;
+  --card-foreground: 300 20% 95%;
+  --popover: 280 20% 7%;
+  --popover-foreground: 300 20% 95%;
+  --primary: 320 100% 60%;
+  --primary-foreground: 280 20% 4%;
+  --secondary: 280 20% 12%;
+  --secondary-foreground: 300 20% 95%;
+  --muted: 280 20% 15%;
+  --muted-foreground: 320 20% 55%;
+  --accent: 320 40% 15%;
+  --accent-foreground: 320 100% 75%;
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 320 25% 20%;
+  --input: 280 20% 18%;
+  --ring: 320 100% 60%;
+  --glow-color: 320 100% 60%;
+  --glow-intensity: 0.35;
+}
+
+/* Matrix Theme - Terminal Green */
+.theme-matrix {
+  --background: 120 20% 3%;
+  --foreground: 120 50% 92%;
+  --card: 120 20% 6%;
+  --card-foreground: 120 50% 92%;
+  --popover: 120 20% 6%;
+  --popover-foreground: 120 50% 92%;
+  --primary: 120 100% 50%;
+  --primary-foreground: 120 20% 3%;
+  --secondary: 120 15% 12%;
+  --secondary-foreground: 120 50% 92%;
+  --muted: 120 15% 14%;
+  --muted-foreground: 120 40% 60%;
+  --accent: 120 40% 12%;
+  --accent-foreground: 120 100% 65%;
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 120 25% 16%;
+  --input: 120 15% 16%;
+  --ring: 120 100% 50%;
+  --glow-color: 120 100% 50%;
+  --glow-intensity: 0.35;
+}
+
+/* Sunset Theme - Orange Neon */
+.theme-sunset {
+  --background: 15 20% 5%;
+  --foreground: 35 60% 96%;
+  --card: 15 20% 8%;
+  --card-foreground: 35 60% 96%;
+  --popover: 15 20% 8%;
+  --popover-foreground: 35 60% 96%;
+  --primary: 30 100% 55%;
+  --primary-foreground: 15 20% 5%;
+  --secondary: 15 20% 12%;
+  --secondary-foreground: 35 60% 96%;
+  --muted: 15 20% 15%;
+  --muted-foreground: 30 50% 60%;
+  --accent: 280 30% 15%;
+  --accent-foreground: 30 100% 65%;
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 30 30% 20%;
+  --input: 15 20% 18%;
+  --ring: 30 100% 55%;
+  --glow-color: 30 100% 55%;
+  --glow-intensity: 0.4;
+}
+
+/* Typography variants */
+.type-system {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.type-mono {
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  letter-spacing: -0.02em;
+}
+
+.type-display {
+  font-family: 'Outfit', system-ui, sans-serif;
+}
+
+.type-display h1,
+.type-display h2,
+.type-display h3 {
+  font-family: 'Bebas Neue', 'Impact', sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Density variants */
+.density-default {
+  --spacing-unit: 1;
+}
+
+.density-tight {
+  --spacing-unit: 0.7;
+}
+
+.density-airy {
+  --spacing-unit: 1.4;
+}
+
 
 @layer base {
   * {
     @apply border-border;
   }
+  html, body {
+    background: hsl(var(--background));
+  }
+  #root {
+    min-height: 100vh;
+    background: hsl(var(--background));
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
 
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.3);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.5);
+}
+
+/* Smooth transitions */
+.transition-smooth {
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Theme transition - smooth color changes */
+*, *::before, *::after {
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Glow effects */
+.glow-primary {
+  box-shadow: 0 0 20px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 40px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+}
+
+.glow-primary-sm {
+  box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.4));
+}
+
+.glow-primary-hover:hover {
+  box-shadow: 0 0 15px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 30px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+}
+
+.text-glow {
+  text-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity)),
+               0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+}
+
+/* Animation keyframes */
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-slide-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity));
+  }
+  50% {
+    box-shadow: 0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 1.5)),
+                0 0 30px hsl(var(--glow-color) / var(--glow-intensity));
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Animation classes */
+.animate-fade-slide-in {
+  animation: fade-slide-in 0.3s ease-out forwards;
+}
+
+.animate-fade-slide-out {
+  animation: fade-slide-out 0.2s ease-in forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Staggered animations for lists */
+.stagger-animation > * {
+  opacity: 0;
+  animation: fade-slide-in 0.3s ease-out forwards;
+}
+
+.stagger-animation > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-animation > *:nth-child(2) { animation-delay: 50ms; }
+.stagger-animation > *:nth-child(3) { animation-delay: 100ms; }
+.stagger-animation > *:nth-child(4) { animation-delay: 150ms; }
+.stagger-animation > *:nth-child(5) { animation-delay: 200ms; }
+.stagger-animation > *:nth-child(6) { animation-delay: 250ms; }
+.stagger-animation > *:nth-child(7) { animation-delay: 300ms; }
+.stagger-animation > *:nth-child(8) { animation-delay: 350ms; }
+.stagger-animation > *:nth-child(n+9) { animation-delay: 400ms; }
+
+/* Enhanced skeleton loading */
+.skeleton-glow {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--glow-color) / 0.1) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+/* Bottom nav spacing */
+.has-bottom-nav {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+
+/* Minimal nav swipe indicator */
+.swipe-active::after {
+  content: '';
+  position: fixed;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 5px;
+  background: hsl(var(--primary) / 0.4);
+  border-radius: 3px;
+  box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity));
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Additions from the Vercel migration — kept separate from the ported styles
+   above so the original design intent stays legible.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@layer base {
   html {
-    /* Tells the browser this page is dark, so the rubber-band overscroll area,
-       scrollbars and form controls stop rendering light on dark. */
+    /* Dark rubber-band overscroll, scrollbars and form controls on iOS. */
     color-scheme: dark;
-    /* Stop iOS from bumping font sizes on rotation. */
     -webkit-text-size-adjust: 100%;
-    /* Density scales every rem-based size in one place. */
-    font-size: calc(16px * var(--density-scale, 1));
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    /* Keeps the page from rubber-banding the whole document on iOS, which is
-       what makes a web app feel like a web page rather than an app. */
+    /* Stops the whole document rubber-banding, which is what makes a web app
+       feel like a web page. */
     overscroll-behavior-y: none;
   }
 
-  /* Touch targets: kill the grey flash and the legacy double-tap zoom delay so
-     taps register immediately instead of feeling laggy. */
+  /* Kill the grey tap flash and the legacy double-tap zoom delay, so taps
+     register immediately rather than feeling laggy. */
   a,
   button {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
   }
-
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
-    }
-  }
 }
 
 @layer utilities {
-  /* Horizontal strips scroll, but a visible scrollbar on desktop looks broken
-     in a phone-width layout. */
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+  /* Safe-area insets, needed now the viewport paints edge to edge. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
   }
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* Bottom nav has to clear the home indicator too. */
+  .pb-nav-safe {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+/* The glow and stagger animations are the app's whole personality, but they are
+   also exactly what motion sensitivity reacts to. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .stagger-animation > * {
+    opacity: 1;
+    animation: none;
   }
 }

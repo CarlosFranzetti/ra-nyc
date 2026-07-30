@@ -15,11 +15,15 @@ deployed on [Vercel](https://vercel.com).
 - ⚡ **Quick and simple** — one screen, no login, no signup.
 - 📅 **Day-by-day** — yesterday through the next week, weekends highlighted.
 - 👆 **Swipe between days** in any navigation mode.
-- 🎨 **4 themes** — Noir, Midnight, Ember, Neon — all dark.
-- 📐 **3 densities** — Compact, Comfortable, Spacious.
-- 🧭 **3 navigation modes** — Standard strip, fixed Tabs, or Minimal (swipe only).
+- 🎨 **4 neon themes** — Neon, Vapor, Matrix, Sunset — each with its own glow.
+- 🔤 **3 typography settings** — System, Mono, Display.
+- 📐 **3 densities** — Tight, Default, Airy.
+- 🧭 **3 navigation modes** — Standard strip, bottom Tabs, or Minimal (swipe only).
+- 📅 **Jump to any date** with the calendar, beyond the 8-day strip.
+- 🔥 **Busiest first** — sorted by attendance, with RA Picks flagged.
 - 🎭 **Curated for NYC** — underground, rooftop, and secret warehouse events.
-- 🔥 **RA Picks** flagged, with full lineups, set times and a details sheet.
+
+The colour theme is picked at random each time you open the app.
 
 Preferences persist locally in the browser; there is no account and nothing is
 sent anywhere.

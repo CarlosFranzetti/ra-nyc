@@ -1,133 +1,174 @@
-import Sheet from "@/components/Sheet";
-import { usePreferences } from "@/context/PreferencesContext";
+import { Settings } from "lucide-react";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
+import { useTheme } from "@/context/ThemeContext";
 import { cn } from "@/lib/utils";
 import {
-  COLOR_THEMES,
-  DENSITIES,
-  DENSITY_LABELS,
-  NAV_MODES,
-  NAV_MODE_HINTS,
-  NAV_MODE_LABELS,
-  THEME_LABELS,
-  THEME_SWATCHES,
+  DENSITY_OPTIONS,
+  NAV_OPTIONS,
+  THEME_OPTIONS,
+  TYPOGRAPHY_OPTIONS,
 } from "@/types/preferences";
 
-interface SettingsSheetProps {
-  open: boolean;
-  onClose: () => void;
-}
-
-function SectionHeading({ children }: { children: string }) {
+function OptionGroup({
+  title,
+  columns,
+  children,
+}: {
+  title: string;
+  columns: 2 | 3 | 4;
+  children: React.ReactNode;
+}) {
   return (
-    <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-      {children}
-    </h3>
-  );
-}
-
-const optionClasses = (selected: boolean) =>
-  cn(
-    "rounded-md border px-3 py-2 text-xs transition-all duration-150 active:scale-95",
-    selected
-      ? "bg-primary text-primary-foreground border-primary font-medium"
-      : "bg-secondary text-foreground border-border hover:bg-accent active:bg-accent",
-  );
-
-export default function SettingsSheet({ open, onClose }: SettingsSheetProps) {
-  const { preferences, setPreference, reset } = usePreferences();
-
-  return (
-    <Sheet open={open} onClose={onClose} title="Preferences">
-      <div className="space-y-5">
-        <section>
-          <SectionHeading>Theme</SectionHeading>
-          <div className="grid grid-cols-2 gap-2">
-            {COLOR_THEMES.map((theme) => {
-              const [surface, accent] = THEME_SWATCHES[theme];
-              return (
-                <button
-                  key={theme}
-                  type="button"
-                  onClick={() => setPreference("theme", theme)}
-                  aria-pressed={preferences.theme === theme}
-                  className={cn(
-                    optionClasses(preferences.theme === theme),
-                    "flex items-center gap-2",
-                  )}
-                >
-                  {/* Preview the palette rather than only naming it — the names
-                      mean nothing until you've seen them. */}
-                  <span
-                    className="h-4 w-4 shrink-0 rounded-full border border-white/20"
-                    style={{
-                      background: `linear-gradient(135deg, ${surface} 50%, ${accent} 50%)`,
-                    }}
-                  />
-                  {THEME_LABELS[theme]}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <section>
-          <SectionHeading>Density</SectionHeading>
-          <div className="grid grid-cols-3 gap-2">
-            {DENSITIES.map((density) => (
-              <button
-                key={density}
-                type="button"
-                onClick={() => setPreference("density", density)}
-                aria-pressed={preferences.density === density}
-                className={optionClasses(preferences.density === density)}
-              >
-                {DENSITY_LABELS[density]}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <SectionHeading>Navigation</SectionHeading>
-          <div className="space-y-2">
-            {NAV_MODES.map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setPreference("navMode", mode)}
-                aria-pressed={preferences.navMode === mode}
-                className={cn(
-                  optionClasses(preferences.navMode === mode),
-                  "w-full text-left",
-                )}
-              >
-                <span className="block font-medium">{NAV_MODE_LABELS[mode]}</span>
-                <span
-                  className={cn(
-                    "block text-[11px]",
-                    preferences.navMode === mode
-                      ? "opacity-70"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {NAV_MODE_HINTS[mode]}
-                </span>
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Swipe left or right anywhere on the list to change day in any mode.
-          </p>
-        </section>
-
-        <button
-          type="button"
-          onClick={reset}
-          className="text-xs text-muted-foreground hover:text-foreground active:text-foreground underline underline-offset-2"
-        >
-          Reset to defaults
-        </button>
+    <div className="space-y-2">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
+        {title}
+      </h3>
+      <div
+        className={cn(
+          "grid gap-2",
+          columns === 2 && "grid-cols-2",
+          columns === 3 && "grid-cols-3",
+          columns === 4 && "grid-cols-4",
+        )}
+      >
+        {children}
       </div>
-    </Sheet>
+    </div>
+  );
+}
+
+function OptionButton({
+  active,
+  onClick,
+  label,
+  description,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  description: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex flex-col items-start p-3 rounded-lg border transition-all duration-150 text-left active:scale-95",
+        active
+          ? "border-primary bg-primary/10 text-foreground"
+          : "border-border/50 bg-card hover:bg-accent active:bg-accent text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <span className="text-sm font-medium">{label}</span>
+      <span className="text-xs opacity-60 mt-0.5">{description}</span>
+    </button>
+  );
+}
+
+export function SettingsSheet() {
+  const {
+    colorTheme,
+    setColorTheme,
+    layoutDensity,
+    setLayoutDensity,
+    typography,
+    setTypography,
+    navStyle,
+    setNavStyle,
+  } = useTheme();
+
+  return (
+    <Drawer direction="right">
+      <DrawerTrigger asChild>
+        <button
+          aria-label="Customize"
+          className="p-2 rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+      </DrawerTrigger>
+
+      <DrawerContent direction="right" className="overflow-y-auto">
+        <div className="p-4 pt-safe">
+          <DrawerTitle className="text-base font-semibold text-foreground">
+            Customize
+          </DrawerTitle>
+
+          <div className="mt-6 space-y-6">
+            <OptionGroup title="Theme" columns={4}>
+              {THEME_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setColorTheme(opt.value)}
+                  aria-pressed={colorTheme === opt.value}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 p-2 rounded-lg border transition-all active:scale-95",
+                    colorTheme === opt.value
+                      ? "border-primary bg-primary/10"
+                      : "border-border/50 bg-card hover:bg-accent",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "w-6 h-6 rounded-full",
+                      colorTheme === opt.value &&
+                        "ring-2 ring-offset-2 ring-offset-background ring-primary",
+                    )}
+                    style={{ background: opt.color }}
+                  />
+                  <span className="text-[10px] font-medium">{opt.label}</span>
+                </button>
+              ))}
+            </OptionGroup>
+
+            <OptionGroup title="Density" columns={3}>
+              {DENSITY_OPTIONS.map((opt) => (
+                <OptionButton
+                  key={opt.value}
+                  active={layoutDensity === opt.value}
+                  onClick={() => setLayoutDensity(opt.value)}
+                  label={opt.label}
+                  description={opt.desc}
+                />
+              ))}
+            </OptionGroup>
+
+            <OptionGroup title="Typography" columns={3}>
+              {TYPOGRAPHY_OPTIONS.map((opt) => (
+                <OptionButton
+                  key={opt.value}
+                  active={typography === opt.value}
+                  onClick={() => setTypography(opt.value)}
+                  label={opt.label}
+                  description={opt.desc}
+                />
+              ))}
+            </OptionGroup>
+
+            <OptionGroup title="Navigation" columns={3}>
+              {NAV_OPTIONS.map((opt) => (
+                <OptionButton
+                  key={opt.value}
+                  active={navStyle === opt.value}
+                  onClick={() => setNavStyle(opt.value)}
+                  label={opt.label}
+                  description={opt.desc}
+                />
+              ))}
+            </OptionGroup>
+
+            <p className="text-[11px] text-muted-foreground px-1">
+              Swipe left or right on the list to change day. The colour theme is
+              picked at random each time you open the app.
+            </p>
+          </div>
+        </div>
+      </DrawerContent>
+    </Drawer>
   );
 }

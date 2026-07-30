@@ -6,14 +6,22 @@ import {
   RAError,
   type RAEvent,
 } from "./_lib/ra.js";
+import { clientIp, rateLimit, rateLimitHeaders } from "./_lib/rateLimit.js";
 
 export interface EventsResponse {
   date: string;
-  count: number;
   events: RAEvent[];
+  count: number;
 }
 
 const UPSTREAM_TIMEOUT_MS = 10_000;
+
+/**
+ * A visitor clicking through a week costs 8 requests, and only cache misses get
+ * this far — so 30/minute is far above real use and well below anything that
+ * would trouble ra.co.
+ */
+const RATE_LIMIT = { limit: 30, windowMs: 60_000 };
 
 /**
  * Written against Node's IncomingMessage/ServerResponse rather than the web
@@ -38,6 +46,23 @@ function send(
   res.end(JSON.stringify(body));
 }
 
+function tooManyRequests(
+  res: ServerResponse,
+  retryAfterSeconds: number,
+  headers: Record<string, string>,
+): void {
+  res.setHeader("Retry-After", String(retryAfterSeconds));
+  for (const [key, value] of Object.entries(headers)) res.setHeader(key, value);
+  // `no-store` matters: a cached 429 at the edge would be served to every
+  // visitor, turning one abusive caller into an outage for everyone.
+  send(
+    res,
+    429,
+    { error: "Too many requests. Please try again shortly." },
+    "no-store",
+  );
+}
+
 export default async function handler(
   req: IncomingMessage,
   res: ServerResponse,
@@ -45,6 +70,13 @@ export default async function handler(
   try {
     if (req.method !== "GET") {
       return send(res, 405, { error: "Method not allowed" });
+    }
+
+    // Budget headers go only on the 429, never on the cacheable 200 — the edge
+    // would cache one caller's remaining count and serve it to everyone.
+    const limit = rateLimit(`events:${clientIp(req)}`, RATE_LIMIT);
+    if (!limit.ok) {
+      return tooManyRequests(res, limit.retryAfterSeconds, rateLimitHeaders(limit));
     }
 
     // req.url is a path, not an absolute URL, so URL needs a base. The base is
@@ -79,7 +111,7 @@ export default async function handler(
       return send(
         res,
         200,
-        { date, count: events.length, events } satisfies EventsResponse,
+        { date, events, count: events.length } satisfies EventsResponse,
         "public, max-age=0, s-maxage=300, stale-while-revalidate=3600",
       );
     } finally {

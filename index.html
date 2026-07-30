@@ -2,24 +2,58 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- viewport-fit=cover lets the page paint under the notch/home indicator;
-         the safe-area insets in index.css keep content clear of them. -->
+    <!-- user-scalable=no removes the double-tap-zoom delay; viewport-fit=cover
+         lets the page paint under the notch, with safe-area insets in the CSS. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <!-- Without these the browser chrome and the overscroll rubber-band render
-         light against the dark app, which is the main reason the deployed site
-         looks less "native" than the in-app preview did. -->
     <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#080808" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RA NYC" />
+    <link rel="icon" type="image/svg+xml" href="/ra-favicon.svg" />
+
+    <!-- Paint the background before CSS loads, so opening the app never flashes
+         white. Themes override this the moment the stylesheet lands. -->
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+        background: #080808;
+        color: #fff;
+      }
+    </style>
+
+    <!-- Fonts for the Mono and Display typography settings. Link tags rather
+         than a CSS @import, which would be render-blocking. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+
     <title>RA NYC Events</title>
     <meta
       name="description"
-      content="Discover events in New York City via Resident Advisor"
+      content="Resident Advisor NYC events in a fast, mobile-friendly list."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="RA NYC Events" />
+    <meta
+      property="og:description"
+      content="Resident Advisor NYC events in a fast, mobile-friendly list."
+    />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="RA NYC Events" />
+    <meta
+      name="twitter:description"
+      content="Resident Advisor NYC events in a fast, mobile-friendly list."
     />
   </head>
   <body>

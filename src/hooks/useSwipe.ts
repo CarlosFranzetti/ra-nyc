@@ -18,7 +18,7 @@ interface UseSwipeOptions {
 export function useSwipe({
   onSwipeLeft,
   onSwipeRight,
-  threshold = 60,
+  threshold = 80,
 }: UseSwipeOptions) {
   const start = useRef<{ x: number; y: number } | null>(null);
 

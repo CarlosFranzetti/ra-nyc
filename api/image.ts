@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
+import { clientIp, rateLimit, rateLimitHeaders } from "./_lib/rateLimit.js";
 
 /**
  * Same-origin proxy for RA flyer images.
@@ -18,6 +19,13 @@ const ALLOWED_HOSTS = new Set(["images.ra.co", "ra.co", "www.ra.co"]);
 const MAX_BYTES = 8 * 1024 * 1024;
 const UPSTREAM_TIMEOUT_MS = 10_000;
 
+/**
+ * Higher than the events limit: one screen of listings can ask for ~50 flyers,
+ * and if the CDN is blocking direct loads every one of them arrives here. Still
+ * bounded, because this endpoint moves real bytes.
+ */
+const RATE_LIMIT = { limit: 200, windowMs: 60_000 };
+
 function fail(res: ServerResponse, status: number, message: string): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -30,6 +38,17 @@ export default async function handler(
 ): Promise<void> {
   try {
     if (req.method !== "GET") return fail(res, 405, "Method not allowed");
+
+    const limit = rateLimit(`image:${clientIp(req)}`, RATE_LIMIT);
+    if (!limit.ok) {
+      res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+      for (const [k, v] of Object.entries(rateLimitHeaders(limit))) {
+        res.setHeader(k, v);
+      }
+      // no-store, or the edge serves this 429 to everyone.
+      res.setHeader("Cache-Control", "no-store");
+      return fail(res, 429, "Too many requests. Please try again shortly.");
+    }
 
     const url = new URL(req.url ?? "/", "http://localhost");
     const target = url.searchParams.get("u");
