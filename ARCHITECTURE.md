@@ -2,11 +2,13 @@
 
 ## One-paragraph summary
 
-RA-NYC is a static single-page React app plus exactly one serverless function.
-The SPA is built by Vite into `dist/` and served from Vercel's CDN. The function
-(`api/events.ts`) is a thin, cached, validating proxy in front of Resident
-Advisor's public GraphQL endpoint. There is no database, no auth, and no
-persistent state anywhere in the system.
+RA-NYC is a static single-page React app plus two serverless functions. The SPA
+is built by Vite into `dist/` and served from Vercel's CDN. `api/events.ts` is a
+thin, cached, validating proxy in front of Resident Advisor's public GraphQL
+endpoint; `api/image.ts` is a fallback proxy for flyer images the RA CDN won't
+serve to a browser directly. There is no database, no auth, and no persistent
+state anywhere in the system — user preferences live in `localStorage` and never
+leave the device.
 
 ---
 
@@ -81,6 +83,10 @@ api/
                     Validates input, calls _lib/ra.ts, sets cache headers,
                     maps failures to 400/405/500/502/504.
                     Signature is Node's (req, res) — see below.
+  image.ts          GET /api/image?u=<absolute https url>
+                    Flyer proxy for when the RA CDN refuses a direct browser
+                    request. Host-allowlisted, image/* only, 8 MB cap.
+                    Fallback path only — see "Images" below.
 
 src/
   main.tsx          React root + QueryClientProvider.
@@ -98,6 +104,7 @@ src/
     Sheet.tsx           Bottom-sheet primitive. Hand-rolled — one dialog
                         pattern doesn't justify a headless UI dependency.
     EventCardSkeleton   Load placeholder matching real card geometry.
+    EventImage.tsx      Flyer <img> with CDN-direct → proxy → hide fallback.
   context/
     PreferencesContext  Preferences state, localStorage persistence, and the
                         data-theme / data-density attribute writes.
@@ -153,6 +160,29 @@ Two rules follow:
 
 The happy side effect is that Vite's connect middleware passes these same
 types, so `npm run dev` runs the production handler with no adapter in between.
+
+## Images
+
+RA's `images[].filename` is inconsistent — sometimes an absolute URL, sometimes
+a bare path — so `src/lib/raImage.ts` normalises it. Loading the result can
+still fail, because `images.ra.co` applies hotlink protection based on
+`Referer`/`Origin`, and a browser cannot set either (both are forbidden
+headers, the same constraint that forced `api/events.ts` server-side).
+
+`EventImage` therefore degrades in three stages:
+
+1. **Direct from the CDN**, with `referrerPolicy="no-referrer"` — fast, and
+   costs us no bandwidth. Sending no referrer at all is often enough, since
+   many CDNs reject a foreign referrer but allow an absent one.
+2. **Through `/api/image`** on error, which can send the `Referer` the CDN
+   wants. Responses are cached `immutable` for a month at the edge; RA flyer
+   URLs are content-addressed, so the bytes never change.
+3. **Removed** if both fail. Plenty of listings have no usable flyer, and an
+   empty slot beats a broken-image icon.
+
+`/api/image` is **host-allowlisted** (`images.ra.co`, `ra.co`, `www.ra.co`),
+https-only, and refuses any response whose `Content-Type` isn't `image/*`.
+Without those it would be an open proxy and a general-purpose content relay.
 
 ## Type contract
 

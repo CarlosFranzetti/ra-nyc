@@ -34,13 +34,14 @@ seconds on a phone on the subway?"
 | **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
 | **Database** | None. Deliberately. See [DATABASE.md](./DATABASE.md) |
 | **Env vars** | None required |
-| **Tests** | ❌ None yet |
+| **Tests** | ❌ None committed (UI verified ad hoc in headless Chromium) |
+| **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
 
 ### Stack
 
 React 19 · TypeScript 5.9 · Vite 7 · Tailwind 3.4 · TanStack Query 5 ·
-React Router 7 · date-fns 4 · one Vercel Node 22 function.
+React Router 7 · date-fns 4 · Vercel Analytics · two Vercel Node 22 functions.
 
 ### Routes
 
@@ -48,6 +49,7 @@ React Router 7 · date-fns 4 · one Vercel Node 22 function.
 | --- | --- | --- |
 | `/` | SPA | The only page. Date strip + event list |
 | `/api/events?date=YYYY-MM-DD[&area=8]` | Function | Cached proxy to RA GraphQL |
+| `/api/image?u=<https url>` | Function | Flyer proxy fallback, host-allowlisted |
 
 ---
 
@@ -137,6 +139,38 @@ diagnose than it should have been:
   a failing request spun for ~45s with no feedback. Now `retry: 1`.
 - The UI swallowed the API's error message behind "try again later". It now
   shows the real message plus a retry button, so a failure is self-diagnosing.
+
+### 2026-07-29 — Images, take two: proxy fallback + analytics
+
+Images still weren't loading after the URL-shape fix, and the `onError` handler
+added with it meant failures now hide the element — so a blocked flyer presents
+as "no images" rather than a broken icon.
+
+Couldn't observe the cause: Vercel's `web_fetch_vercel_url` can't fetch this
+deployment, and `get_runtime_logs` showed no invocations at all — expected,
+since edge-cache hits never reach the function. So rather than guess a third
+time, `EventImage` now covers every remaining cause:
+
+1. Direct from the CDN with `referrerPolicy="no-referrer"`. Many CDNs reject a
+   foreign `Referer` but allow none — this alone may be the whole fix.
+2. On failure, retry through the new `/api/image` function, which *can* send the
+   `Referer` RA wants. Cached `immutable` for a month at the edge; RA flyer URLs
+   are content-addressed so the bytes never change.
+3. Only then remove the element.
+
+The direct path stays the default, so no bandwidth flows through the function in
+the normal case. `/api/image` is host-allowlisted (`images.ra.co`, `ra.co`,
+`www.ra.co`), https-only, `image/*`-only, 8 MB capped — without those it's an
+open proxy and a content relay. All six guards verified locally.
+
+**Still unconfirmed:** whether hotlink protection was actually the cause. If
+images remain missing, the next suspect is the `images` array arriving empty
+from RA, which needs one look at `/api/events?date=…` in a browser.
+
+Also installed **Vercel Analytics** (`<Analytics />` in `App.tsx`, inside
+`BrowserRouter` so future routes count as page views). No cookies, so no consent
+banner. Worth having now: ROADMAP §2's database phase hinges on whether anyone
+actually taps DJ names.
 
 ### 2026-07-29 — Recovering the original Lovable app
 

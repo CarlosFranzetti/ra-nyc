@@ -33,8 +33,9 @@ sent anywhere.
 | UI       | React 19 + TypeScript, Tailwind CSS 3         |
 | Data     | TanStack Query                                |
 | Build    | Vite 7                                        |
-| API      | Vercel serverless function (`api/events.ts`)  |
+| API      | Vercel serverless functions (`api/events.ts`, `api/image.ts`) |
 | Hosting  | Vercel                                        |
+| Analytics| Vercel Analytics (no cookies, no consent banner) |
 | Database | **None.** See [DATABASE.md](./DATABASE.md).   |
 
 ---
