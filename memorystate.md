@@ -237,6 +237,70 @@ persistence across reload; settings drawer, details drawer, calendar popover,
 bottom nav, minimal-mode swipe hint; no uncaught page errors. Screenshotted each
 theme against stubbed listings.
 
+### 2026-07-30 — Multi-source sets: SoundCloud first, 4 per DJ, plus bios
+
+Requested: sets from SoundCloud then Mixcloud then others, 4 total per DJ, plus a
+bio, plus Discogs if available.
+
+**The SoundCloud constraint, stated plainly.** SoundCloud has the most DJ sets
+and is now first in preference order — but their API registration has been closed
+to new apps for years. The common workaround is to scrape a `client_id` out of
+their web bundle; **deliberately not done here.** It circumvents an access
+control they put up on purpose and breaks every time they rebuild. So SoundCloud
+search is opt-in via `SOUNDCLOUD_CLIENT_ID` (only useful if you already have one).
+Without it, SoundCloud degrades to a search link. Embedding an
+*already-resolved* SoundCloud URL needs no key, so playback is identical either
+way — only discovery is gated.
+
+**Providers now, in preference order:**
+
+| Provider | Search | Embed | Key |
+| --- | --- | --- | --- |
+| SoundCloud | `api-v2` | widget | required (`SOUNDCLOUD_CLIENT_ID`) |
+| Mixcloud | public API | widget | none |
+| Internet Archive | `advancedsearch` | `/embed/` | none |
+| YouTube | Data API v3 | `/embed/` | optional (`YOUTUBE_API_KEY`) |
+
+**Internet Archive was added so "and others" is real, not aspirational** — it's
+fully keyless and holds a lot of radio-show and festival archival. That means
+even with zero keys configured the feature works: Mixcloud + Archive fill the
+list.
+
+`orderSets` sorts by provider rank then by play count within a provider (a decent
+proxy for "the good one"), then caps at `MAX_SETS = 4`. Verified: a YouTube set
+with 9,999 plays is correctly dropped in favour of lower-played SoundCloud ones,
+because provider rank dominates.
+
+Every provider yields a plain iframe URL, so `SetPlayer` needs no SDK — just a
+per-provider height, since a SoundCloud widget and a YouTube player disagree
+about how tall they should be.
+
+**Bio**, first available of: RA `biography` → Mixcloud `biog` → SoundCloud
+description → Discogs profile, attributed in the UI to whichever it came from.
+RA's field is an educated guess at their schema, so the query asks for it and
+retries without it on error — one unknown field fails an entire GraphQL query.
+Discogs prose is stripped of its `[a=Artist]` / `[l=Label]` markup.
+
+**A real bug found by testing the matcher.** `normalizeName` relied on NFD to
+strip accents, which works for `é` (letter + combining acute) but silently fails
+for `ø`, `æ`, `ß`, `ł` — those are *distinct letters*, not letter-plus-accent, so
+NFD leaves them alone and "Bjørn" never matched "bjorn". Added an explicit
+transliteration table ahead of the NFD pass. The original combining-mark regex
+was also written with literal marks rather than `\u0300-\u036f`, which is
+fragile; now escaped. 9/9 normalisation cases pass, including `Straße` →
+`strasse` and `Æther` → `aether`.
+
+Migration `0002_artist_bio_and_soundcloud.sql` adds `soundcloud_user` and `bio`,
+and clears 0001-era Mixcloud-only `sets` rows (which lack a `provider` field) so
+they re-resolve once — disposable by definition, and `link_source <> 'manual'` is
+respected.
+
+Verified: 15/15 in mobile Chromium — SoundCloud plays first, provider badges and
+per-provider labels correct, switching to the Archive set swaps the embed host,
+bio renders with attribution and clamps, profile rows show handles rather than
+search text when resolved. Plus the live endpoint's no-keys path, which returns
+`linkSource: "none"` with search fallbacks.
+
 ### 2026-07-30 — DJ set player, artist page, and the first database
 
 Three things landed together, plus the answer to a question that had been open

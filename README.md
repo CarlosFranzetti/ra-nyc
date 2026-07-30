@@ -21,8 +21,8 @@ deployed on [Vercel](https://vercel.com).
 - 🧭 **3 navigation modes** — Standard strip, bottom Tabs, or Minimal (swipe only).
 - 📅 **Jump to any date** with the calendar, beyond the 8-day strip.
 - 🔥 **Busiest first** — sorted by attendance, with RA Picks flagged.
-- 🎧 **Tap a DJ to hear a set** — Mixcloud playback, multiple sets, plus RA,
-  Discogs and SoundCloud links.
+- 🎧 **Tap a DJ to hear a set** — up to 4 sets from SoundCloud, Mixcloud and the
+  Internet Archive, plus a bio and links to RA and Discogs.
 - 🎭 **Curated for NYC** — underground, rooftop, and secret warehouse events.
 
 The colour theme is picked at random each time you open the app.
@@ -64,7 +64,9 @@ Two are optional — see `.env.example`:
 | Variable | Effect if set |
 | --- | --- |
 | `DATABASE_URL` | Neon connection string. Caches resolved DJ links durably and enables hand corrections. See [DATABASE.md](./DATABASE.md). |
-| `DISCOGS_TOKEN` | Exact Discogs artist pages instead of search links (their search API requires auth). |
+| `SOUNDCLOUD_CLIENT_ID` | Enables SoundCloud set search — the preferred source. Their API registration has been closed to new apps for years, so this can't be self-served; without it Mixcloud and the Internet Archive fill the list. |
+| `YOUTUBE_API_KEY` | Adds long-form YouTube sets as a further fallback. |
+| `DISCOGS_TOKEN` | Exact Discogs artist pages instead of search links, and Discogs prose as a bio fallback. |
 
 | Script              | What it does                                    |
 | ------------------- | ----------------------------------------------- |
