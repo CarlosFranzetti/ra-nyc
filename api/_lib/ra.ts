@@ -4,6 +4,10 @@
  * This runs on Vercel (or in the Vite dev middleware), never in the browser:
  * ra.co does not send CORS headers, and the `User-Agent` / `Referer` headers it
  * expects are forbidden headers that browsers silently strip from fetch().
+ *
+ * The query and the transform below are ported from the original Supabase edge
+ * function this replaced — that version was the one that actually worked, and
+ * getting `flyerFront` and `attending` back is what fixed missing flyers.
  */
 
 export const RA_GRAPHQL_URL = "https://ra.co/graphql";
@@ -11,41 +15,66 @@ export const RA_GRAPHQL_URL = "https://ra.co/graphql";
 /** RA's internal area id for New York City. */
 export const NYC_AREA_ID = 8;
 
+/** Cleaned-up event shape sent to the browser. */
 export interface RAEvent {
   id: string;
   title: string;
   date: string;
   startTime: string;
   endTime: string;
-  contentUrl: string;
-  images: { filename: string }[];
-  venue: { name: string; area: { name: string } | null } | null;
-  artists: { id: string; name: string }[];
-  pick: { blurb: string } | null;
+  url: string;
+  imageUrl: string | null;
+  venue: { name: string; area: string };
+  artists: string[];
+  attending: number;
+  isPick: boolean;
+  pickBlurb: string | null;
+}
+
+/** Raw listing as RA returns it. */
+interface RAListing {
+  id: string;
+  listingDate: string;
+  event: {
+    id: string;
+    title: string;
+    attending: number | null;
+    date: string;
+    startTime: string | null;
+    endTime: string | null;
+    contentUrl: string;
+    flyerFront: string | null;
+    images: { id: string; filename: string; alt: string | null }[] | null;
+    venue: { id: string; name: string; contentUrl: string } | null;
+    artists: { id: string; name: string }[] | null;
+    pick: { blurb: string } | null;
+  };
 }
 
 const EVENT_LISTINGS_QUERY = `
-  query GET_DEFAULT_EVENTS_LISTING(
-    $filters: FilterInputDtoInput
-    $pageSize: Int
-  ) {
-    eventListings(filters: $filters, pageSize: $pageSize, page: 1) {
+  query GET_EVENT_LISTINGS($filters: FilterInputDtoInput, $pageSize: Int, $page: Int) {
+    eventListings(filters: $filters, pageSize: $pageSize, page: $page) {
       data {
+        id
+        listingDate
         event {
           id
           title
+          attending
           date
           startTime
           endTime
           contentUrl
+          flyerFront
           images {
+            id
             filename
+            alt
           }
           venue {
+            id
             name
-            area {
-              name
-            }
+            contentUrl
           }
           artists {
             id
@@ -56,6 +85,7 @@ const EVENT_LISTINGS_QUERY = `
           }
         }
       }
+      totalResults
     }
   }
 `;
@@ -68,6 +98,45 @@ export class RAError extends Error {
     super(message);
     this.name = "RAError";
   }
+}
+
+/**
+ * RA is inconsistent about image paths: absolute URLs, protocol-relative URLs,
+ * bare filenames, and — the case that broke flyers for a while — a value that
+ * already contains `images.ra.co/` but without a scheme. Prefixing the host
+ * unconditionally turns that last one into `images.ra.co/images.ra.co/…`.
+ */
+export function normalizeImageUrl(src: string): string {
+  const s = src.trim();
+  if (s.startsWith("http")) return s;
+  if (s.startsWith("//")) return `https:${s}`;
+  if (s.includes("images.ra.co/")) {
+    return `https://${s.replace(/^https?:\/\//, "").replace(/^\/+/, "")}`;
+  }
+  return `https://images.ra.co/${s.replace(/^\/+/, "")}`;
+}
+
+function transformListing(listing: RAListing): RAEvent {
+  const event = listing.event;
+
+  // flyerFront is RA's dedicated flyer field and is present far more often than
+  // images[0]. Preferring it is the difference between flyers loading and not.
+  const rawImage = event.flyerFront ?? event.images?.[0]?.filename ?? null;
+
+  return {
+    id: event.id,
+    title: event.title,
+    date: event.date,
+    startTime: event.startTime ?? "",
+    endTime: event.endTime ?? "",
+    url: `https://ra.co${event.contentUrl}`,
+    imageUrl: rawImage ? normalizeImageUrl(rawImage) : null,
+    venue: { name: event.venue?.name ?? "TBA", area: "New York" },
+    artists: event.artists?.map((a) => a.name) ?? [],
+    attending: event.attending ?? 0,
+    isPick: Boolean(event.pick),
+    pickBlurb: event.pick?.blurb ?? null,
+  };
 }
 
 export interface FetchEventsOptions {
@@ -92,12 +161,12 @@ export async function fetchRAEvents({
       Accept: "application/json",
       // RA rejects requests that do not look like a browser.
       "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-      Referer: "https://ra.co/events/us/newyorkcity",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Referer: "https://ra.co/events/us/newyork",
       Origin: "https://ra.co",
     },
     body: JSON.stringify({
-      operationName: "GET_DEFAULT_EVENTS_LISTING",
+      operationName: "GET_EVENT_LISTINGS",
       query: EVENT_LISTINGS_QUERY,
       variables: {
         filters: {
@@ -105,6 +174,7 @@ export async function fetchRAEvents({
           listingDate: { gte: date, lte: date },
         },
         pageSize,
+        page: 1,
       },
     }),
     signal,
@@ -115,7 +185,7 @@ export async function fetchRAEvents({
   }
 
   const json = (await res.json()) as {
-    data?: { eventListings?: { data?: { event: RAEvent }[] } };
+    data?: { eventListings?: { data?: RAListing[] } };
     errors?: { message: string }[];
   };
 
@@ -123,7 +193,11 @@ export async function fetchRAEvents({
     throw new RAError(json.errors[0]?.message ?? "GraphQL error", 502);
   }
 
-  return (json.data?.eventListings?.data ?? []).map((listing) => listing.event);
+  return (json.data?.eventListings?.data ?? [])
+    .map(transformListing)
+    // Busiest first — with a 50-event cap and no pagination, popularity is a
+    // better ordering than whatever RA returns.
+    .sort((a, b) => b.attending - a.attending);
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -132,5 +206,11 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function isValidDate(value: string): boolean {
   if (!DATE_RE.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(parsed.getTime());
+  if (Number.isNaN(parsed.getTime())) return false;
+
+  // Reject anything more than a year out either way; RA has nothing useful
+  // there and it keeps the cache key space bounded.
+  const now = Date.now();
+  const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+  return Math.abs(parsed.getTime() - now) <= YEAR_MS;
 }

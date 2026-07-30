@@ -7,7 +7,7 @@ get productive without re-deriving anything.
 **Keep this file updated.** When you make a decision that a future reader would
 otherwise have to reverse-engineer from a diff, append it to the log.
 
-**Last updated:** 2026-07-29
+**Last updated:** 2026-07-30
 **Branch:** `claude/lovable-vercel-migration-hyp0a1`
 
 ---
@@ -41,7 +41,8 @@ seconds on a phone on the subway?"
 ### Stack
 
 React 19 · TypeScript 5.9 · Vite 7 · Tailwind 3.4 · TanStack Query 5 ·
-React Router 7 · date-fns 4 · Vercel Analytics · two Vercel Node 22 functions.
+React Router 7 · date-fns 4 · lucide-react · vaul · react-day-picker ·
+Vercel Analytics · two Vercel Node 22 functions.
 
 ### Routes
 
@@ -139,6 +140,69 @@ diagnose than it should have been:
   a failing request spun for ~45s with no feedback. Now `retry: 1`.
 - The UI swallowed the API's error message behind "try again later". It now
   shows the real message plus a retry button, so a failure is self-diagnosing.
+
+### 2026-07-30 — The original was recovered, and merged in
+
+The user supplied `LOVES.zip`: a full export of the original Lovable project,
+including the Supabase edge function and the shadcn tree. This is the code that
+`27c90a2`'s commit message described and that neither git remote still had.
+
+**It settled the image bug outright.** The original queried RA's dedicated
+`flyerFront` field and only fell back to `images[0].filename`. Our query never
+asked for `flyerFront` — that alone explains most missing flyers. Its
+normaliser also handles a case ours got wrong: a value already containing
+`images.ra.co/` but with no scheme, which our resolver turned into
+`https://images.ra.co/images.ra.co/…`. Both ported into `api/_lib/ra.ts`.
+
+**Ported from the original** (the look and feel, verbatim where sensible):
+- The four real themes — **Neon** (electric cyan), **Vapor** (magenta),
+  **Matrix** (terminal green), **Sunset** (orange) — with `--glow-color` /
+  `--glow-intensity` and the `glow-primary*` / `text-glow` utilities. The earlier
+  reconstruction's palettes were guesses and are gone.
+- A **typography** axis nobody had mentioned: System / Mono (JetBrains Mono) /
+  Display (Outfit + Bebas Neue headings).
+- Densities renamed to the originals: **tight / default / airy**.
+- `stagger-animation` (50 ms cascade, re-keyed per date so a new day animates
+  in), `skeleton-glow` shimmer, the global 0.3s colour transition, the 4px
+  primary-tinted scrollbar, the splash screen, the sticky `backdrop-blur`
+  header, and the event-count line.
+- **The card layout**, which was the biggest miss: a compact horizontal row —
+  96px thumbnail, then title / venue / time / lineup / "N going" — not the
+  full-width flyer cards we had. Dense and scannable is the whole point.
+- `attending` surfaced, and **events sorted by it descending**. With a 50-event
+  cap and no pagination, popularity beats RA's own ordering.
+- Prefetch of +1/+2/−1 days, plus prefetch on `touchstart`/hover of a date chip,
+  so the fetch is usually in flight before the tap lands.
+- The random colour theme on every load. Kept deliberately — it's most of the
+  charm. One line in `ThemeContext` to make it sticky.
+- iOS metas: `user-scalable=no`, `theme-color`, apple web-app metas, RA favicon,
+  and an inline background so opening never flashes white.
+
+**Deliberately not ported:** the Supabase client and edge function (that job is
+`api/events.ts` now), and the ~50-file shadcn `ui/` tree with its 28 Radix
+packages. Kept only what the feel actually depends on: `lucide-react` for icons,
+`vaul` for the drag-to-dismiss drawer, and `@radix-ui/react-popover` +
+`react-day-picker` for the jump-to-date calendar. The Favorites tab was dropped
+rather than shipped dead — favourites need persistence, which is the first thing
+that would genuinely need a database.
+
+**A bug found while porting, present in the original too:** Tailwind tree-shakes
+custom CSS inside `@layer base` when its selectors aren't in the content globs.
+These class names are built at runtime (`theme-${x}`), so `.theme-vapor`,
+`.theme-matrix` and `.theme-sunset` were purged from the bundle — only
+`:root,.theme-neon` survived, because `:root` anchored it. Every theme silently
+resolved to Neon. Fixed by lifting the theme/typography/density blocks out of
+`@layer base`; plain CSS is never purged. Typography classes also renamed
+`font-*` → `type-*`, because `.font-mono` collides with Tailwind's own utility,
+which wins over a base-layer rule and would have replaced JetBrains Mono with
+Tailwind's mono stack.
+
+Verified in mobile-emulated Chromium (390×844, touch): all four themes produce
+distinct computed `--glow-color`/`--background`/`--primary`; all three
+typography settings change the resolved body font; density, nav style and
+persistence across reload; settings drawer, details drawer, calendar popover,
+bottom nav, minimal-mode swipe hint; no uncaught page errors. Screenshotted each
+theme against stubbed listings.
 
 ### 2026-07-29 — Images, take two: proxy fallback + analytics
 

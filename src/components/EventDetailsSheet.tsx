@@ -1,111 +1,131 @@
 import { format, parseISO } from "date-fns";
-import Sheet from "@/components/Sheet";
-import EventImage from "@/components/EventImage";
-import { resolveRAImageUrl } from "@/lib/raImage";
-import type { RAEvent } from "@/types/event";
+import { Users, MapPin, Clock, ExternalLink, X } from "lucide-react";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { EventThumb } from "@/components/EventThumb";
+import { formatTime } from "@/lib/formatTime";
+import type { Event } from "@/types/event";
 
 interface EventDetailsSheetProps {
-  event: RAEvent | null;
-  onClose: () => void;
+  event: Event | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-function formatTime(value: string): string {
+function formatDate(dateStr: string): string {
   try {
-    return format(parseISO(value), "h:mm a");
+    return format(parseISO(dateStr), "EEEE, MMMM d");
   } catch {
-    return value;
+    return dateStr;
   }
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex gap-3 text-xs">
-      <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
-      <span className="text-foreground">{value}</span>
-    </div>
-  );
-}
-
-export default function EventDetailsSheet({
+export function EventDetailsSheet({
   event,
-  onClose,
+  open,
+  onOpenChange,
 }: EventDetailsSheetProps) {
-  const imageUrl = resolveRAImageUrl(event?.images?.[0]?.filename);
+  if (!event) return null;
 
   return (
-    <Sheet open={event !== null} onClose={onClose} title={event?.title ?? "Event"}>
-      {event && (
-        <div className="space-y-4">
-          {imageUrl && (
-            <div
-              className="w-full rounded-lg overflow-hidden bg-secondary"
-              style={{ height: "var(--card-image-h)" }}
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        <div className="relative overflow-y-auto">
+          <DrawerClose asChild>
+            <button
+              aria-label="Close"
+              className="absolute top-3 right-3 z-10 bg-background/80 backdrop-blur-sm rounded-full p-2 text-foreground active:scale-95 transition-transform"
             >
-              <EventImage
-                src={imageUrl}
-                alt={event.title}
-                className="w-full h-full object-cover"
-                eager
-              />
-            </div>
-          )}
+              <X className="w-5 h-5" />
+            </button>
+          </DrawerClose>
 
-          <div className="space-y-1.5">
-            <h3 className="text-sm font-semibold text-foreground leading-tight">
-              {event.title}
-            </h3>
-            {event.pick && (
-              <span className="inline-block text-[10px] font-medium bg-primary text-primary-foreground px-1.5 py-0.5 rounded">
-                RA Pick
-              </span>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            {event.venue && <Row label="Venue" value={event.venue.name} />}
-            {event.venue?.area && <Row label="Area" value={event.venue.area.name} />}
-            <Row
-              label="Time"
-              value={`${formatTime(event.startTime)} – ${formatTime(event.endTime)}`}
+          <div className="w-full aspect-square max-h-[40vh] bg-muted overflow-hidden">
+            <EventThumb
+              imageUrl={event.imageUrl}
+              alt={event.title}
+              fallbackLabel={event.venue.name}
+              fallbackTextClass="text-6xl"
+              eager
             />
           </div>
 
-          {event.pick?.blurb && (
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {event.pick.blurb}
-            </p>
-          )}
-
-          {event.artists.length > 0 && (
-            <div>
-              <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                Lineup
-              </h4>
-              {/* Chips rather than a comma list: this is where tapping a DJ to
-                  play their sets will hang off (see ROADMAP.md §2). */}
-              <div className="flex flex-wrap gap-1.5">
-                {event.artists.map((artist) => (
-                  <span
-                    key={artist.id || artist.name}
-                    className="text-xs bg-secondary text-foreground border border-border rounded-full px-2.5 py-1"
-                  >
-                    {artist.name}
-                  </span>
-                ))}
+          <div className="px-4 py-5 space-y-4">
+            {event.isPick && (
+              <div className="inline-block bg-primary text-primary-foreground text-xs font-semibold px-2 py-1 rounded glow-primary-sm">
+                RA PICK
               </div>
-            </div>
-          )}
+            )}
 
-          <a
-            href={`https://ra.co${event.contentUrl}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block w-full text-center text-xs font-medium bg-primary text-primary-foreground rounded-md py-2.5 active:scale-[0.99] transition-transform"
-          >
-            View on Resident Advisor
-          </a>
+            <DrawerTitle className="text-xl font-bold text-foreground leading-tight text-left">
+              {event.title}
+            </DrawerTitle>
+
+            {event.pickBlurb && (
+              <p className="text-sm text-muted-foreground italic">
+                &ldquo;{event.pickBlurb}&rdquo;
+              </p>
+            )}
+
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <span>
+                {formatDate(event.date)}
+                {event.startTime && ` · ${formatTime(event.startTime)}`}
+                {event.endTime && ` – ${formatTime(event.endTime)}`}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <span>{event.venue.name}</span>
+            </div>
+
+            {event.attending > 0 && (
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <Users className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <span>{event.attending.toLocaleString()} going</span>
+              </div>
+            )}
+
+            {event.artists.length > 0 && (
+              <div className="pt-2 border-t border-border">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  Lineup
+                </h3>
+                {/* Chips, not a comma list — this is where tapping a DJ to play
+                    their sets will attach (ROADMAP.md §2). */}
+                <div className="flex flex-wrap gap-2">
+                  {event.artists.map((artist) => (
+                    <span
+                      key={artist}
+                      className="text-sm bg-secondary text-secondary-foreground px-2 py-1 rounded"
+                    >
+                      {artist}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2 pb-safe">
+              <a
+                href={event.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full bg-primary text-primary-foreground py-3 rounded-lg font-semibold text-sm transition-smooth hover:opacity-90 active:scale-[0.99]"
+              >
+                View on RA
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </div>
+          </div>
         </div>
-      )}
-    </Sheet>
+      </DrawerContent>
+    </Drawer>
   );
 }

@@ -9,8 +9,8 @@ import {
 
 export interface EventsResponse {
   date: string;
-  count: number;
   events: RAEvent[];
+  count: number;
 }
 
 const UPSTREAM_TIMEOUT_MS = 10_000;
@@ -79,7 +79,7 @@ export default async function handler(
       return send(
         res,
         200,
-        { date, count: events.length, events } satisfies EventsResponse,
+        { date, events, count: events.length } satisfies EventsResponse,
         "public, max-age=0, s-maxage=300, stale-while-revalidate=3600",
       );
     } finally {
