@@ -94,8 +94,9 @@ api/
                     "Rate limiting" below.
   _lib/db.ts        Optional Neon client. Returns null without DATABASE_URL,
                     and every caller falls through to live resolution.
-  _lib/artistLinks  Resolves a DJ name to Mixcloud sets + profile links, with
-                    strict match guarding and read-through DB caching.
+  _lib/artistLinks  Resolves a DJ to sets, a bio and profile links across four
+                    providers, with strict match guarding, provider ordering,
+                    and read-through DB caching. See "DJ sets" below.
   artist.ts         GET /api/artist?id=<ra id>&name=<name>
 
 src/
@@ -182,6 +183,44 @@ Two rules follow:
 
 The happy side effect is that Vite's connect middleware passes these same
 types, so `npm run dev` runs the production handler with no adapter in between.
+
+## DJ sets
+
+`/api/artist` resolves a name to at most **4** sets, preferring providers in this
+order:
+
+| Provider | Search | Embed | Key |
+| --- | --- | --- | --- |
+| **SoundCloud** | `api-v2` | widget | **required** — `SOUNDCLOUD_CLIENT_ID` |
+| **Mixcloud** | public API | widget | none |
+| **Internet Archive** | `advancedsearch` | `/embed/` | none |
+| **YouTube** | Data API v3 | `/embed/` | optional — `YOUTUBE_API_KEY` |
+
+SoundCloud is first because it holds the most DJ sets — but its API registration
+has been closed to new apps for years. The tempting workaround is to scrape a
+`client_id` out of their web bundle; this deliberately does not, because that
+circumvents an access control on purpose and breaks whenever they rebuild.
+SoundCloud search is therefore opt-in via a key you already have, and without one
+it degrades to a search link while Mixcloud and the Internet Archive still fill
+the list. Embedding an already-resolved SoundCloud URL needs no key, so playback
+is identical either way.
+
+Every provider yields a plain iframe URL, so playback needs no SDK — only a
+per-provider height, since a SoundCloud widget and a YouTube player disagree
+about how tall they should be.
+
+**Matching is strict on purpose.** `isPlausibleMatch` requires a normalised exact
+match or a clean prefix on names of five or more characters, with RA's
+disambiguating suffixes stripped (`"Cosmo (NY)"` → `cosmo`). Free-text titles
+(Archive, YouTube) additionally have to mention the artist. A confidently wrong
+player — someone else's set under a DJ's name — is worse than an empty list, so a
+near miss shows an empty state pointing at search links.
+
+**Bio** is the first available of: RA's `biography`, the artist's Mixcloud
+`biog`, their SoundCloud description, or Discogs prose — attributed in the UI to
+whichever it came from. RA's field is an educated guess at their schema, so that
+query asks for it and retries without it on error; one unknown field fails an
+entire GraphQL query.
 
 ## Rate limiting
 

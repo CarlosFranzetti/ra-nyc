@@ -5,7 +5,9 @@ import {
   Disc3,
   ExternalLink,
   Headphones,
+  Library,
   Music,
+  MonitorPlay,
   Search,
 } from "lucide-react";
 import { SetPlayer } from "@/components/SetPlayer";
@@ -13,6 +15,14 @@ import { SettingsSheet } from "@/components/SettingsSheet";
 import { useArtist } from "@/hooks/useArtist";
 import { formatDuration } from "@/lib/formatDuration";
 import { cn } from "@/lib/utils";
+import { PROVIDER_LABELS, type SetProvider } from "@/types/artist";
+
+const PROVIDER_ICON: Record<SetProvider, typeof Music> = {
+  soundcloud: Music,
+  mixcloud: Headphones,
+  archive: Library,
+  youtube: MonitorPlay,
+};
 
 function OutboundLink({
   href,
@@ -45,15 +55,16 @@ function OutboundLink({
 export default function ArtistPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  // The name rides along in the query string: RA's GraphQL needs it for the
-  // Mixcloud lookup, and it lets the header render before the fetch resolves.
+  // The name rides along in the query string: the provider lookups are keyed on
+  // it, and it lets the header render before the fetch resolves.
   const name = searchParams.get("name") ?? "";
 
   const { data, isLoading, error } = useArtist(id, name);
-  const [activeSetKey, setActiveSetKey] = useState<string | null>(null);
+  const [activeSetId, setActiveSetId] = useState<string | null>(null);
+  const [bioExpanded, setBioExpanded] = useState(false);
 
   const sets = data?.sets ?? [];
-  const activeSet = sets.find((s) => s.key === activeSetKey) ?? sets[0] ?? null;
+  const activeSet = sets.find((s) => s.id === activeSetId) ?? sets[0] ?? null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -95,16 +106,23 @@ export default function ArtistPage() {
             {/* Player */}
             {activeSet ? (
               <section className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Headphones className="h-4 w-4 text-primary" />
-                  <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Now playing
-                  </h2>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Headphones className="h-4 w-4 text-primary" />
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Now playing
+                    </h2>
+                  </div>
+                  <span className="rounded-full border border-border/60 bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {PROVIDER_LABELS[activeSet.provider]}
+                  </span>
                 </div>
                 <p className="text-sm font-medium leading-tight text-foreground">
                   {activeSet.title}
                 </p>
-                <SetPlayer key={activeSet.key} set={activeSet} />
+                {/* Keyed so switching sets remounts rather than swapping src on a
+                    live third-party player. */}
+                <SetPlayer key={activeSet.id} set={activeSet} />
               </section>
             ) : (
               // Honest empty state. Matching is deliberately strict — a
@@ -114,9 +132,36 @@ export default function ArtistPage() {
                 <Music className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
                 <p className="text-sm font-medium text-foreground">No sets found</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Nothing on Mixcloud matched this name closely enough to be sure
-                  it&apos;s them. The links below search by name.
+                  Nothing matched this name closely enough to be sure it&apos;s
+                  them. The links below search by name.
                 </p>
+              </section>
+            )}
+
+            {/* Bio */}
+            {data.bio && (
+              <section className="space-y-2">
+                <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Bio · {data.bio.source}
+                </h2>
+                <div className="rounded-lg border border-border/50 bg-card p-3">
+                  <p
+                    className={cn(
+                      "whitespace-pre-line text-sm leading-relaxed text-muted-foreground",
+                      !bioExpanded && "line-clamp-5",
+                    )}
+                  >
+                    {data.bio.text}
+                  </p>
+                  {data.bio.text.length > 260 && (
+                    <button
+                      onClick={() => setBioExpanded((v) => !v)}
+                      className="mt-2 text-xs font-medium text-primary active:opacity-70"
+                    >
+                      {bioExpanded ? "Show less" : "Show more"}
+                    </button>
+                  )}
+                </div>
               </section>
             )}
 
@@ -128,12 +173,19 @@ export default function ArtistPage() {
                 </h2>
                 <div className="space-y-1.5">
                   {sets.map((set) => {
-                    const isActive = set.key === activeSet?.key;
-                    const duration = formatDuration(set.duration);
+                    const isActive = set.id === activeSet?.id;
+                    const Icon = PROVIDER_ICON[set.provider];
+                    const meta = [
+                      PROVIDER_LABELS[set.provider],
+                      formatDuration(set.duration),
+                      set.plays ? `${set.plays.toLocaleString()} plays` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
                     return (
                       <button
-                        key={set.key}
-                        onClick={() => setActiveSetKey(set.key)}
+                        key={set.id}
+                        onClick={() => setActiveSetId(set.id)}
                         aria-pressed={isActive}
                         className={cn(
                           "flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-smooth active:scale-[0.99]",
@@ -142,7 +194,7 @@ export default function ArtistPage() {
                             : "border-border/50 bg-card hover:bg-accent active:bg-accent",
                         )}
                       >
-                        <Music
+                        <Icon
                           className={cn(
                             "h-4 w-4 flex-shrink-0",
                             isActive ? "text-primary" : "text-muted-foreground",
@@ -153,12 +205,7 @@ export default function ArtistPage() {
                             {set.title}
                           </span>
                           <span className="block text-xs text-muted-foreground">
-                            {[
-                              duration,
-                              set.plays ? `${set.plays.toLocaleString()} plays` : null,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ") || "Mixcloud"}
+                            {meta}
                           </span>
                         </span>
                       </button>
@@ -186,6 +233,18 @@ export default function ArtistPage() {
                     }
                   />
                 )}
+                {data.soundcloudUrl && (
+                  <OutboundLink
+                    href={data.soundcloudUrl}
+                    icon={data.soundcloudUser ? Music : Search}
+                    label="SoundCloud"
+                    detail={
+                      data.soundcloudUser
+                        ? `@${data.soundcloudUser}`
+                        : "Search — their API is closed to new apps"
+                    }
+                  />
+                )}
                 {data.mixcloudUrl && (
                   <OutboundLink
                     href={data.mixcloudUrl}
@@ -206,22 +265,14 @@ export default function ArtistPage() {
                     }
                   />
                 )}
-                {data.soundcloudUrl && (
-                  <OutboundLink
-                    href={data.soundcloudUrl}
-                    icon={Search}
-                    label="SoundCloud"
-                    detail="Search — their API is closed to new apps"
-                  />
-                )}
               </div>
             </section>
 
             <p className="px-1 text-[11px] leading-relaxed text-muted-foreground/70">
-              Sets come from Mixcloud, matched by name. Matching is strict on
+              Sets are matched by name across SoundCloud, Mixcloud and the
+              Internet Archive, preferred in that order. Matching is strict on
               purpose, so a missing player means &ldquo;not sure&rdquo; rather than
               &ldquo;nothing exists&rdquo;.
-              {!data.persisted && " Results are cached at the edge."}
             </p>
           </>
         )}
