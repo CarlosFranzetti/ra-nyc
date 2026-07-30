@@ -20,6 +20,14 @@ export interface ArtistBio {
   url: string | null;
 }
 
+export interface ArtistLink {
+  label: string;
+  url: string;
+  detail: string;
+  /** True when we matched an actual profile rather than building a search URL. */
+  resolved: boolean;
+}
+
 export interface ArtistDetails {
   id: string;
   name: string;
@@ -31,6 +39,7 @@ export interface ArtistDetails {
   raUrl: string | null;
   bio: ArtistBio | null;
   sets: ArtistSet[];
+  links: ArtistLink[];
   linkSource: "auto" | "manual" | "none";
   cached: boolean;
   persisted: boolean;

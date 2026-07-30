@@ -18,6 +18,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { EventThumb } from "@/components/EventThumb";
+import { usePrefetchArtist } from "@/hooks/useArtist";
 import { formatTime } from "@/lib/formatTime";
 import { cn } from "@/lib/utils";
 import type { Event } from "@/types/event";
@@ -44,6 +45,7 @@ export function EventDetailsSheet({
   open,
   onOpenChange,
 }: EventDetailsSheetProps) {
+  const prefetchArtist = usePrefetchArtist();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [blurbExpanded, setBlurbExpanded] = useState(false);
@@ -196,6 +198,8 @@ export function EventDetailsSheet({
                     <Link
                       key={artist.id || artist.name}
                       to={`/artist/${encodeURIComponent(artist.id)}?name=${encodeURIComponent(artist.name)}`}
+                      onTouchStart={() => prefetchArtist(artist.id, artist.name)}
+                      onMouseEnter={() => prefetchArtist(artist.id, artist.name)}
                       className="rounded-full border border-border/60 bg-secondary px-2.5 py-1 text-sm text-secondary-foreground transition-smooth hover:border-primary hover:text-primary active:scale-95"
                     >
                       {artist.name}

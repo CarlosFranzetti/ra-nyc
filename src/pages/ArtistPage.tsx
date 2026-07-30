@@ -2,13 +2,11 @@ import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
-  Disc3,
   ExternalLink,
   Headphones,
   Library,
-  Music,
   MonitorPlay,
-  Search,
+  Music,
 } from "lucide-react";
 import { SetPlayer } from "@/components/SetPlayer";
 import { SettingsSheet } from "@/components/SettingsSheet";
@@ -24,31 +22,18 @@ const PROVIDER_ICON: Record<SetProvider, typeof Music> = {
   youtube: MonitorPlay,
 };
 
-function OutboundLink({
-  href,
-  label,
-  detail,
-  icon: Icon,
-}: {
-  href: string;
-  label: string;
-  detail: string;
-  icon: typeof Disc3;
-}) {
+/**
+ * Section heading.
+ *
+ * The listings screen is the loud one — glows, stagger, neon accents. This page
+ * is a read, so it stays deliberately quiet: muted labels, plain borders, accent
+ * colour reserved for the one thing that is actually interactive.
+ */
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-3 rounded-lg border border-border/50 bg-card p-3 transition-smooth hover:bg-accent active:bg-accent active:scale-[0.99]"
-    >
-      <Icon className="h-4 w-4 flex-shrink-0 text-primary" />
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-foreground">{label}</span>
-        <span className="block text-xs text-muted-foreground">{detail}</span>
-      </span>
-      <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-    </a>
+    <h2 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      {children}
+    </h2>
   );
 }
 
@@ -65,6 +50,7 @@ export default function ArtistPage() {
 
   const sets = data?.sets ?? [];
   const activeSet = sets.find((s) => s.id === activeSetId) ?? sets[0] ?? null;
+  const links = data?.links ?? [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -86,12 +72,12 @@ export default function ArtistPage() {
         </div>
       </header>
 
-      <main className="space-y-5 px-4 pb-10 pt-4">
+      <main className="space-y-6 px-4 pb-10 pt-4">
         {isLoading && (
           <div className="space-y-3">
-            <div className="skeleton-glow h-20 rounded-lg" />
-            <div className="skeleton-glow h-14 rounded-lg" />
-            <div className="skeleton-glow h-14 rounded-lg" />
+            <div className="skeleton-glow h-16 rounded-lg" />
+            <div className="skeleton-glow h-28 rounded-lg" />
+            <div className="skeleton-glow h-12 rounded-lg" />
           </div>
         )}
 
@@ -103,34 +89,76 @@ export default function ArtistPage() {
 
         {data && (
           <>
-            {/* Player */}
+            {/* ── Sets ─────────────────────────────────────────────────── */}
             {activeSet ? (
               <section className="space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Headphones className="h-4 w-4 text-primary" />
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Now playing
-                    </h2>
-                  </div>
-                  <span className="rounded-full border border-border/60 bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="flex items-baseline justify-between gap-2">
+                  <SectionLabel>
+                    {sets.length > 1 ? `${sets.length} sets` : "Set"}
+                  </SectionLabel>
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
                     {PROVIDER_LABELS[activeSet.provider]}
                   </span>
                 </div>
-                <p className="text-sm font-medium leading-tight text-foreground">
+
+                <p className="text-sm font-medium leading-snug text-foreground">
                   {activeSet.title}
                 </p>
                 {/* Keyed so switching sets remounts rather than swapping src on a
                     live third-party player. */}
                 <SetPlayer key={activeSet.id} set={activeSet} />
+
+                {sets.length > 1 && (
+                  <div className="space-y-1.5 pt-1">
+                    {sets.map((set) => {
+                      const isActive = set.id === activeSet.id;
+                      const Icon = PROVIDER_ICON[set.provider];
+                      const meta = [
+                        PROVIDER_LABELS[set.provider],
+                        formatDuration(set.duration),
+                        set.plays ? `${set.plays.toLocaleString()} plays` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
+                      return (
+                        <button
+                          key={set.id}
+                          onClick={() => setActiveSetId(set.id)}
+                          aria-pressed={isActive}
+                          className={cn(
+                            "flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-smooth active:scale-[0.99]",
+                            isActive
+                              ? "border-primary/50 bg-secondary"
+                              : "border-border/50 bg-card hover:bg-accent active:bg-accent",
+                          )}
+                        >
+                          <Icon
+                            className={cn(
+                              "h-3.5 w-3.5 flex-shrink-0",
+                              isActive ? "text-primary" : "text-muted-foreground",
+                            )}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] text-foreground">
+                              {set.title}
+                            </span>
+                            <span className="block text-[11px] text-muted-foreground">
+                              {meta}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </section>
             ) : (
               // Honest empty state. Matching is deliberately strict — a
               // confidently wrong player is worse than none — so "not found"
               // happens and should point somewhere useful.
               <section className="rounded-lg border border-border/50 bg-card p-4 text-center">
-                <Music className="mx-auto mb-2 h-6 w-6 text-muted-foreground" />
-                <p className="text-sm font-medium text-foreground">No sets found</p>
+                <Music className="mx-auto mb-2 h-5 w-5 text-muted-foreground" />
+                <p className="text-sm text-foreground">No sets found</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Nothing matched this name closely enough to be sure it&apos;s
                   them. The links below search by name.
@@ -138,140 +166,96 @@ export default function ArtistPage() {
               </section>
             )}
 
-            {/* Bio */}
-            {data.bio && (
+            {/* ── Bio ──────────────────────────────────────────────────── */}
+            {data.bio ? (
               <section className="space-y-2">
-                <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Bio · {data.bio.source}
-                </h2>
-                <div className="rounded-lg border border-border/50 bg-card p-3">
-                  <p
-                    className={cn(
-                      "whitespace-pre-line text-sm leading-relaxed text-muted-foreground",
-                      !bioExpanded && "line-clamp-5",
-                    )}
-                  >
-                    {data.bio.text}
-                  </p>
-                  {data.bio.text.length > 260 && (
-                    <button
-                      onClick={() => setBioExpanded((v) => !v)}
-                      className="mt-2 text-xs font-medium text-primary active:opacity-70"
+                <div className="flex items-baseline justify-between gap-2">
+                  <SectionLabel>Bio</SectionLabel>
+                  {data.bio.url ? (
+                    <a
+                      href={data.bio.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] uppercase tracking-wide text-muted-foreground/70 underline underline-offset-2"
                     >
-                      {bioExpanded ? "Show less" : "Show more"}
-                    </button>
+                      {data.bio.source}
+                    </a>
+                  ) : (
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                      {data.bio.source}
+                    </span>
                   )}
                 </div>
+                <p
+                  className={cn(
+                    "whitespace-pre-line text-sm leading-relaxed text-muted-foreground",
+                    !bioExpanded && "line-clamp-6",
+                  )}
+                >
+                  {data.bio.text}
+                </p>
+                {data.bio.text.length > 300 && (
+                  <button
+                    onClick={() => setBioExpanded((v) => !v)}
+                    className="text-xs font-medium text-primary active:opacity-70"
+                  >
+                    {bioExpanded ? "Show less" : "Show more"}
+                  </button>
+                )}
               </section>
+            ) : (
+              data.raUrl && (
+                <section className="space-y-2">
+                  <SectionLabel>Bio</SectionLabel>
+                  <p className="text-sm text-muted-foreground">
+                    No bio found.{" "}
+                    <a
+                      href={data.raUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline underline-offset-2"
+                    >
+                      Look them up on RA
+                    </a>
+                    .
+                  </p>
+                </section>
+              )
             )}
 
-            {/* Other sets */}
-            {sets.length > 1 && (
+            {/* ── Links, under the bio, capped at 5 ────────────────────── */}
+            {links.length > 0 && (
               <section className="space-y-2">
-                <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {sets.length} sets
-                </h2>
-                <div className="space-y-1.5">
-                  {sets.map((set) => {
-                    const isActive = set.id === activeSet?.id;
-                    const Icon = PROVIDER_ICON[set.provider];
-                    const meta = [
-                      PROVIDER_LABELS[set.provider],
-                      formatDuration(set.duration),
-                      set.plays ? `${set.plays.toLocaleString()} plays` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ");
-                    return (
-                      <button
-                        key={set.id}
-                        onClick={() => setActiveSetId(set.id)}
-                        aria-pressed={isActive}
-                        className={cn(
-                          "flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-smooth active:scale-[0.99]",
-                          isActive
-                            ? "border-primary bg-primary/10"
-                            : "border-border/50 bg-card hover:bg-accent active:bg-accent",
-                        )}
+                <SectionLabel>Elsewhere</SectionLabel>
+                <ul className="divide-y divide-border/50 overflow-hidden rounded-lg border border-border/50 bg-card">
+                  {links.map((link) => (
+                    <li key={link.label}>
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 px-3 py-2.5 transition-smooth hover:bg-accent active:bg-accent"
                       >
-                        <Icon
-                          className={cn(
-                            "h-4 w-4 flex-shrink-0",
-                            isActive ? "text-primary" : "text-muted-foreground",
-                          )}
-                        />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm text-foreground">
-                            {set.title}
+                          <span className="block text-[13px] text-foreground">
+                            {link.label}
                           </span>
-                          <span className="block text-xs text-muted-foreground">
-                            {meta}
+                          <span className="block text-[11px] text-muted-foreground">
+                            {link.detail}
                           </span>
                         </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                        <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               </section>
             )}
 
-            {/* Profiles */}
-            <section className="space-y-2">
-              <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Profiles
-              </h2>
-              <div className="space-y-1.5">
-                {data.raUrl && (
-                  <OutboundLink
-                    href={data.raUrl}
-                    icon={Disc3}
-                    label="Resident Advisor"
-                    detail={
-                      data.raUrl.includes("/search")
-                        ? "Search RA for this artist"
-                        : "Bio, upcoming events and past gigs"
-                    }
-                  />
-                )}
-                {data.soundcloudUrl && (
-                  <OutboundLink
-                    href={data.soundcloudUrl}
-                    icon={data.soundcloudUser ? Music : Search}
-                    label="SoundCloud"
-                    detail={
-                      data.soundcloudUser
-                        ? `@${data.soundcloudUser}`
-                        : "Search — their API is closed to new apps"
-                    }
-                  />
-                )}
-                {data.mixcloudUrl && (
-                  <OutboundLink
-                    href={data.mixcloudUrl}
-                    icon={Headphones}
-                    label="Mixcloud"
-                    detail={`@${data.mixcloudUser}`}
-                  />
-                )}
-                {data.discogsUrl && (
-                  <OutboundLink
-                    href={data.discogsUrl}
-                    icon={Disc3}
-                    label="Discogs"
-                    detail={
-                      data.discogsUrl.includes("/search")
-                        ? "Search Discogs for releases"
-                        : "Discography"
-                    }
-                  />
-                )}
-              </div>
-            </section>
-
-            <p className="px-1 text-[11px] leading-relaxed text-muted-foreground/70">
+            <p className="px-1 text-[11px] leading-relaxed text-muted-foreground/60">
               Sets are matched by name across SoundCloud, Mixcloud and the
-              Internet Archive, preferred in that order. Matching is strict on
-              purpose, so a missing player means &ldquo;not sure&rdquo; rather than
+              Internet Archive, preferred in that order. Matching is strict, so a
+              missing player means &ldquo;not sure&rdquo; rather than
               &ldquo;nothing exists&rdquo;.
             </p>
           </>

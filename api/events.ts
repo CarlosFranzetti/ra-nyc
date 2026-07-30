@@ -112,7 +112,11 @@ export default async function handler(
         res,
         200,
         { date, events, count: events.length } satisfies EventsResponse,
-        "public, max-age=0, s-maxage=300, stale-while-revalidate=3600",
+        // s-maxage: fresh window. SWR: how long the edge may serve a stale
+        // copy *instantly* while refreshing behind it. A full day of SWR means
+        // a cold region or an RA outage degrades to slightly-old listings
+        // rather than an error state.
+        "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
       );
     } finally {
       clearTimeout(timeout);

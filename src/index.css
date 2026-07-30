@@ -186,14 +186,28 @@
   background: hsl(var(--primary) / 0.5);
 }
 
-/* Smooth transitions */
+/* Smooth transitions. The easing is iOS's sheet curve — it decelerates late,
+   which is what makes a drag release feel like it settles rather than stops. */
 .transition-smooth {
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.18s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* Theme transition - smooth color changes */
+/* Theme transition — smooth colour changes when switching themes.
+   box-shadow is deliberately NOT in this list: transitioning it on every element
+   in the document forces a repaint per frame, which is exactly what made the
+   drawer feel heavy while dragging. Elements that actually want an animated glow
+   opt in below. */
 *, *::before, *::after {
-  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.glow-primary,
+.glow-primary-sm,
+.glow-primary-hover,
+.transition-smooth {
+  transition-property: background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 0.2s;
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Glow effects */

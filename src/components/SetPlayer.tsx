@@ -28,9 +28,9 @@ export function SetPlayer({ set }: SetPlayerProps) {
     return (
       <button
         onClick={() => setActive(true)}
-        className="glow-primary-hover flex w-full items-center justify-center gap-2 rounded-lg border border-primary/40 bg-primary/10 py-6 text-sm font-medium text-foreground transition-smooth active:scale-[0.99]"
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card py-5 text-sm font-medium text-foreground transition-smooth hover:bg-accent active:bg-accent active:scale-[0.99]"
       >
-        <Play className="h-5 w-5 text-primary" />
+        <Play className="h-4 w-4 text-primary" />
         Play on {PROVIDER_LABELS[set.provider]}
       </button>
     );
