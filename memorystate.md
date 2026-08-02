@@ -52,7 +52,10 @@ Vercel Analytics · two Vercel Node 22 functions.
 | `/api/events?date=YYYY-MM-DD[&area=8]` | Function | Cached proxy to RA GraphQL |
 | `/api/image?u=<https url>` | Function | Flyer proxy fallback, host-allowlisted |
 | `/api/artist?id=<ra id>&name=<name>` | Function | Resolves a DJ to sets + profile links |
-| `/artist/:id?name=<name>` | SPA | Artist page: set player, sets list, profiles |
+
+The app is a single route. The event and artist views are stacked sheets, not
+pages — tapping a DJ opens the artist *over* the event, and dismissing returns
+to it.
 
 ---
 
@@ -236,6 +239,57 @@ typography settings change the resolved body font; density, nav style and
 persistence across reload; settings drawer, details drawer, calendar popover,
 bottom nav, minimal-mode swipe hint; no uncaught page errors. Screenshotted each
 theme against stubbed listings.
+
+### 2026-07-30 — Artist becomes a stacked sheet, not a page
+
+**The artist view is no longer a route.** Tapping a DJ opened `/artist/:id`,
+which unmounted the listings and read as leaving the app. It's now an
+`ArtistSheet` stacked *over* the still-open event sheet, so dismissing returns
+straight to the event with its scroll position intact. `ArtistPage.tsx` and the
+route are gone; `App.tsx` has one route again.
+
+Stacking needed `drawer.tsx` to take a `layer` prop — both a portal's overlay
+*and* its content have to sit above the sheet beneath, so a single z-index on
+the content isn't enough.
+
+Everything renders in-app: the RA bio is fetched server-side and rendered in the
+app's own styling rather than linked out, and sets swap in place without
+leaving. The only outbound links left are the explicit "Elsewhere" rows, which
+were requested.
+
+**The event sheet closes on any tap that isn't a control** — same treatment the
+preferences sheet got. It's mostly text, so most of it wasn't interactive and
+tapping the flyer or the venue line did nothing.
+
+**Slide timing, 5% slower.** vaul ships
+`transition: transform .5s cubic-bezier(.32,.72,0,1)` plus a matching
+`animation-duration: .5s` on `[data-vaul-drawer]`. Both are now 0.525s. Two
+details make that safe:
+- **Specificity, not `!important`.** `[data-vaul-drawer][data-vaul-drawer-direction]`
+  beats vaul's single-attribute rule regardless of stylesheet order, while still
+  losing to the inline styles vaul writes *during a drag* — so the sheet keeps
+  tracking the finger exactly instead of easing behind it. `!important` would
+  have broken dragging.
+- **The overlay is retimed to match.** Otherwise the backdrop finishes before the
+  sheet and the two read as separate movements.
+
+The easing is left as vaul's, which is iOS's own sheet curve — it decelerates
+late, and giving that tail 5% more room is most of what "smoother" means here.
+In-app transitions moved in step: `.transition-smooth` 0.18s → 0.19s, the glow
+group 0.2s → 0.21s, and the stagger 0.3s → 0.315s, all on the same curve.
+
+**A testing note worth keeping.** The first e2e run failed on a "pointer events
+intercepted" error that looked like a z-index bug. It wasn't: `EventCard` is
+itself a `<button>` whose text contains the lineup, so Playwright's
+`button:has-text("Move D")` matched the *card behind the drawer* before the chip
+inside it. `document.elementFromPoint` at the chip's centre returned the chip,
+which is what proved the app was fine. In-sheet selectors are now scoped with
+`[role="dialog"]`.
+
+Verified 15/15 in mobile Chromium: sheet stacks without a URL change, sets
+selectable in place, bio in-app, Back returns to the still-open event sheet,
+tapping event text dismisses it, and the computed transition duration is
+0.525s at runtime.
 
 ### 2026-07-30 — Subdued artist page, 3 sets, 5 links, and a real speed pass
 

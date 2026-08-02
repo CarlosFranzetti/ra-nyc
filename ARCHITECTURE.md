@@ -101,11 +101,10 @@ api/
 
 src/
   main.tsx          React root + QueryClientProvider + ThemeProvider.
-  App.tsx           Router + Vercel Analytics. One route today: "/".
+  App.tsx           Router + Vercel Analytics. One route — the event and
+                    artist views are stacked sheets, not pages.
   pages/HomePage.tsx    Date state, loading/error/empty states, event list,
                         swipe handling, drawer orchestration, density classes.
-  pages/ArtistPage.tsx  Set player, switchable set list, profile links. Lazy
-                        route — most visits never open it.
   components/
     Header.tsx          Sticky blurred bar: title, calendar, settings.
     DatePicker.tsx      8-day strip. Prefetches a day on touchstart/hover, so
@@ -122,7 +121,9 @@ src/
     EmptyState.tsx      No events for this date.
     ErrorState.tsx      Failure + the API's real message + retry.
     SplashScreen.tsx    Covers first paint until the first day lands.
-    SetPlayer.tsx       Mixcloud iframe, mounted only after an explicit tap.
+    ArtistSheet.tsx     Artist view as a sheet stacked over the event sheet:
+                        set player, switchable sets, in-app bio, links.
+    SetPlayer.tsx       Provider iframe, mounted only after an explicit tap.
     ui/drawer.tsx       Thin vaul wrapper — the one headless-UI dependency.
   context/
     ThemeContext.tsx    Preferences state, localStorage persistence, and the

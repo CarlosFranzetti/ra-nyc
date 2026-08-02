@@ -9,26 +9,40 @@ import { cn } from "@/lib/utils";
  * velocity is most of what makes a bottom sheet feel native, and that is not
  * worth reimplementing. This is the only headless-UI dependency in the project;
  * the rest of the original's shadcn tree was left behind.
+ *
+ * `layer` exists so sheets can stack: the artist sheet opens *over* an already
+ * open event sheet, and both a portal's overlay and its content need to sit
+ * above the one beneath.
  */
 export const Drawer = DrawerPrimitive.Root;
 export const DrawerTrigger = DrawerPrimitive.Trigger;
 export const DrawerClose = DrawerPrimitive.Close;
 export const DrawerTitle = DrawerPrimitive.Title;
 
+const LAYERS = {
+  base: { overlay: "z-50", content: "z-50" },
+  over: { overlay: "z-[60]", content: "z-[60]" },
+} as const;
+
 export function DrawerContent({
   className,
   children,
   direction = "bottom",
+  layer = "base",
   ...props
 }: ComponentProps<typeof DrawerPrimitive.Content> & {
   direction?: "bottom" | "right";
+  layer?: keyof typeof LAYERS;
 }) {
+  const z = LAYERS[layer];
+
   return (
     <DrawerPrimitive.Portal>
-      <DrawerPrimitive.Overlay className="fixed inset-0 z-50 bg-black/70" />
+      <DrawerPrimitive.Overlay className={cn("fixed inset-0 bg-black/70", z.overlay)} />
       <DrawerPrimitive.Content
         className={cn(
-          "fixed z-50 flex flex-col bg-background border-border",
+          "fixed flex flex-col bg-background border-border",
+          z.content,
           // Promote to its own layer so dragging composites instead of
           // repainting, and never animate width/height during a drag.
           "will-change-transform",

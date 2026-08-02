@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
-import { Link } from "react-router-dom";
 import {
   ChevronDown,
   ChevronUp,
@@ -21,12 +20,14 @@ import { EventThumb } from "@/components/EventThumb";
 import { usePrefetchArtist } from "@/hooks/useArtist";
 import { formatTime } from "@/lib/formatTime";
 import { cn } from "@/lib/utils";
-import type { Event } from "@/types/event";
+import type { Artist, Event } from "@/types/event";
 
 interface EventDetailsSheetProps {
   event: Event | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Opens the artist sheet over this one, keeping the event underneath. */
+  onSelectArtist: (artist: Artist) => void;
 }
 
 /** Chips shown before the lineup collapses behind a "+N more". */
@@ -44,6 +45,7 @@ export function EventDetailsSheet({
   event,
   open,
   onOpenChange,
+  onSelectArtist,
 }: EventDetailsSheetProps) {
   const prefetchArtist = usePrefetchArtist();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -90,6 +92,21 @@ export function EventDetailsSheet({
     : event.artists.slice(0, LINEUP_PREVIEW);
   const hiddenArtists = event.artists.length - artists.length;
 
+  /**
+   * Tap-to-dismiss on dead space.
+   *
+   * The sheet is mostly text, so most of it isn't a control — tapping the
+   * flyer, the venue line or the padding did nothing, which reads as stuck.
+   * Anything that isn't a control now slides it away. `closest` means a tap on
+   * an icon inside a button still counts as the button.
+   */
+  const closeUnlessInteractive = (clickEvent: React.MouseEvent<HTMLDivElement>) => {
+    const target = clickEvent.target as HTMLElement;
+    if (!target.closest("button, a, input, [role='button']")) {
+      onOpenChange(false);
+    }
+  };
+
   const scrollToMore = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -115,6 +132,7 @@ export function EventDetailsSheet({
             past its max height. */}
         <div
           ref={scrollRef}
+          onClick={closeUnlessInteractive}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
           <div
@@ -195,15 +213,15 @@ export function EventDetailsSheet({
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {artists.map((artist) => (
-                    <Link
+                    <button
                       key={artist.id || artist.name}
-                      to={`/artist/${encodeURIComponent(artist.id)}?name=${encodeURIComponent(artist.name)}`}
+                      onClick={() => onSelectArtist(artist)}
                       onTouchStart={() => prefetchArtist(artist.id, artist.name)}
                       onMouseEnter={() => prefetchArtist(artist.id, artist.name)}
                       className="rounded-full border border-border/60 bg-secondary px-2.5 py-1 text-sm text-secondary-foreground transition-smooth hover:border-primary hover:text-primary active:scale-95"
                     >
                       {artist.name}
-                    </Link>
+                    </button>
                   ))}
                   {hiddenArtists > 0 && (
                     <button
