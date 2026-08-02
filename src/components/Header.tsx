@@ -17,10 +17,7 @@ interface HeaderProps {
 
 export function Header({ selectedDate, onDateChange }: HeaderProps) {
   return (
-    /* Sticks below the transport bar rather than at the viewport top, and hands
-       the safe-area inset over to it while it's there — --player-h is 0px
-       whenever nothing is playing, so both are flush by default. */
-    <header className="sticky top-[var(--player-h)] z-40 bg-background/80 backdrop-blur-lg border-b border-border/50 pt-header-safe">
+    <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border/50 pt-safe">
       <div className="px-4 py-4 flex items-center justify-between">
         <h1 className="text-xl font-bold tracking-tight">RA NYC Events</h1>
         <div className="flex items-center gap-1">

@@ -123,7 +123,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                       {sets.length > 1 ? `${sets.length} sets` : "Set"}
                     </SectionLabel>
                     <span className="text-[0.625rem] uppercase tracking-wide text-muted-foreground/70">
-                      Plays above
+                      Plays below
                     </span>
                   </div>
 
