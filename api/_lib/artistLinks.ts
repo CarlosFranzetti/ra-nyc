@@ -29,9 +29,15 @@ import { getSql } from "./db.js";
 
 export type SetProvider = "soundcloud" | "mixcloud" | "archive" | "youtube";
 
-/** How many sets we show per artist. Deliberately small — this is a listings
- *  app with a taster attached, not a music player. */
-export const MAX_SETS = 3;
+/**
+ * How many sets an artist's queue can hold.
+ *
+ * This used to be 3, back when a set was a taster embedded in the artist sheet.
+ * With a persistent transport, `next` is expected to keep going — so the queue
+ * is the artist's catalogue, not a sample of it. The sheet still shows a short
+ * list by default; the cap here only bounds the payload and the upstream calls.
+ */
+export const MAX_SETS = 50;
 
 export interface ArtistSet {
   provider: SetProvider;
@@ -86,8 +92,19 @@ export interface ArtistLinks {
 }
 
 const UPSTREAM_TIMEOUT_MS = 7_000;
-/** Fetch a few extra per provider so the cap can prefer better sources. */
-const PER_PROVIDER = 4;
+
+/**
+ * SoundCloud and Mixcloud are where a DJ actually posts, so we pull their
+ * catalogue rather than a sample — that is what makes `next` keep working.
+ */
+const CATALOGUE_LIMIT = 50;
+
+/**
+ * Archive and YouTube are fallbacks for artists the first two don't cover, and
+ * their matching is the loosest of the four. Pulling fifty guesses would bury a
+ * real catalogue under near-misses, so they stay small.
+ */
+const FALLBACK_LIMIT = 4;
 
 // ─── Name matching ──────────────────────────────────────────────────────────
 
@@ -293,16 +310,16 @@ async function resolveSoundcloud(
     userSearch = `${base}/users?q=${q}&limit=5`;
     trackSearch = (userId) =>
       userId
-        ? `${base}/users/${userId}/tracks?limit=${PER_PROVIDER}`
-        : `${base}/tracks?q=${q}&limit=${PER_PROVIDER}`;
+        ? `${base}/users/${userId}/tracks?limit=${CATALOGUE_LIMIT}`
+        : `${base}/tracks?q=${q}&limit=${CATALOGUE_LIMIT}`;
   } else {
     const base = "https://api-v2.soundcloud.com";
     const credential = `&client_id=${encodeURIComponent(clientId)}`;
     userSearch = `${base}/search/users?q=${q}&limit=5${credential}`;
     trackSearch = (userId) =>
       userId
-        ? `${base}/users/${userId}/tracks?limit=${PER_PROVIDER}${credential}`
-        : `${base}/search/tracks?q=${q}&limit=${PER_PROVIDER}${credential}`;
+        ? `${base}/users/${userId}/tracks?limit=${CATALOGUE_LIMIT}${credential}`
+        : `${base}/search/tracks?q=${q}&limit=${CATALOGUE_LIMIT}${credential}`;
   }
 
   // The official API returns bare arrays; api-v2 wraps them in `collection`.
@@ -414,7 +431,7 @@ async function resolveMixcloud(
   const [profile, casts] = await Promise.all([
     fetchJson<McUser>(`https://api.mixcloud.com/${encodeURIComponent(username)}/`, signal),
     fetchJson<McCloudcasts>(
-      `https://api.mixcloud.com/${encodeURIComponent(username)}/cloudcasts/?limit=${PER_PROVIDER}`,
+      `https://api.mixcloud.com/${encodeURIComponent(username)}/cloudcasts/?limit=${CATALOGUE_LIMIT}`,
       signal,
     ),
   ]);
@@ -463,7 +480,7 @@ async function resolveArchive(
   const url =
     `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}` +
     `&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=downloads&fl%5B%5D=date` +
-    `&rows=${PER_PROVIDER}&page=1&output=json`;
+    `&rows=${FALLBACK_LIMIT}&page=1&output=json`;
 
   const json = await fetchJson<IaSearch>(url, signal);
 
@@ -504,7 +521,7 @@ async function resolveYouTube(
 
   const q = encodeURIComponent(`${name} dj set`);
   const json = await fetchJson<YtSearch>(
-    `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoDuration=long&maxResults=${PER_PROVIDER}&q=${q}&key=${encodeURIComponent(key)}`,
+    `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoDuration=long&maxResults=${FALLBACK_LIMIT}&q=${q}&key=${encodeURIComponent(key)}`,
     signal,
   );
 
@@ -644,10 +661,9 @@ function buildFallbackLinks(name: string) {
     soundcloudUrl: `https://soundcloud.com/search?q=${q}`,
     discogsUrl: `https://www.discogs.com/search/?type=artist&q=${q}`,
     raUrl: `https://ra.co/search?searchTerm=${q}`,
-    // Neither Bandcamp nor Beatport exposes a keyless artist search API, so
-    // these are honest search links rather than resolved profiles.
+    // Bandcamp has no keyless artist search API, so this is an honest search
+    // link rather than a resolved profile.
     bandcampUrl: `https://bandcamp.com/search?q=${q}&item_type=b`,
-    beatportUrl: `https://www.beatport.com/search/artists?q=${q}`,
   };
 }
 
@@ -655,13 +671,12 @@ function buildFallbackLinks(name: string) {
  * Builds the link list shown under the bio.
  *
  * Resolved profiles sort ahead of search URLs — a real Discogs page is worth
- * more than a Beatport query — and the whole thing is capped so the page stays
- * a short read rather than a link farm.
+ * more than a name search — and the whole thing is capped so the page stays a
+ * short read rather than a link farm.
  */
 function buildLinkList(parts: {
   discogs: { url: string; resolved: boolean };
   bandcamp: string;
-  beatport: string;
   soundcloud: { url: string; user: string | null };
   mixcloud: { url: string | null; user: string | null };
 }): ArtistLink[] {
@@ -675,12 +690,6 @@ function buildLinkList(parts: {
     {
       label: "Bandcamp",
       url: parts.bandcamp,
-      detail: "Search releases",
-      resolved: false,
-    },
-    {
-      label: "Beatport",
-      url: parts.beatport,
       detail: "Search releases",
       resolved: false,
     },
@@ -802,7 +811,7 @@ async function writeCached(links: ArtistLinks): Promise<void> {
 
 // ─── Entry point ────────────────────────────────────────────────────────────
 
-/** SoundCloud first, then Mixcloud, then the rest — capped at MAX_SETS. */
+/** Tie-break only: SoundCloud first, then Mixcloud, then the fallbacks. */
 const PROVIDER_RANK: Record<SetProvider, number> = {
   soundcloud: 0,
   mixcloud: 1,
@@ -810,12 +819,33 @@ const PROVIDER_RANK: Record<SetProvider, number> = {
   youtube: 3,
 };
 
+function releasedAt(set: ArtistSet): number | null {
+  if (!set.createdAt) return null;
+  const at = Date.parse(set.createdAt);
+  return Number.isNaN(at) ? null : at;
+}
+
+/**
+ * Newest first, then provider, then plays.
+ *
+ * Ordering used to be provider-then-plays, which put a decade-old SoundCloud
+ * favourite ahead of last weekend's set. Date is what people actually mean by
+ * "the newest mix", and it also sorts itself out across providers: SoundCloud
+ * and Mixcloud both report a real date, while Archive items usually don't — so
+ * undated sets fall to the back and the fallbacks land after the catalogue
+ * without needing a rule that says so.
+ */
 export function orderSets(sets: ArtistSet[]): ArtistSet[] {
   return [...sets]
     .sort((a, b) => {
+      const dateA = releasedAt(a);
+      const dateB = releasedAt(b);
+      if (dateA !== null && dateB !== null && dateA !== dateB) return dateB - dateA;
+      if (dateA !== null && dateB === null) return -1;
+      if (dateA === null && dateB !== null) return 1;
       const rank = PROVIDER_RANK[a.provider] - PROVIDER_RANK[b.provider];
       if (rank !== 0) return rank;
-      // Within a provider, most-played first — a proxy for "the good one".
+      // Undated and same provider: most-played first, a proxy for "the good one".
       return (b.plays ?? 0) - (a.plays ?? 0);
     })
     .slice(0, MAX_SETS);
@@ -872,7 +902,6 @@ export async function getArtistLinks(
         resolved: Boolean(discogs?.url),
       },
       bandcamp: fallback.bandcampUrl,
-      beatport: fallback.beatportUrl,
       soundcloud: {
         url: soundcloud?.url ?? fallback.soundcloudUrl,
         user: soundcloud?.user ?? null,

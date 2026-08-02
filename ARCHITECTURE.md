@@ -187,15 +187,33 @@ types, so `npm run dev` runs the production handler with no adapter in between.
 
 ## DJ sets
 
-`/api/artist` resolves a name to at most **3** sets, preferring providers in this
-order:
+`/api/artist` resolves a name to an artist's set catalogue, ordered **newest
+first** and capped at `MAX_SETS` (50):
 
-| Provider | Search | Embed | Key |
+| Provider | Search | Fetch depth | Key |
 | --- | --- | --- | --- |
-| **SoundCloud** | official API or `api-v2` | widget | **required** — see below |
-| **Mixcloud** | public API | widget | none |
-| **Internet Archive** | `advancedsearch` | `/embed/` | none |
-| **YouTube** | Data API v3 | `/embed/` | optional — `YOUTUBE_API_KEY` |
+| **SoundCloud** | official API or `api-v2` | `CATALOGUE_LIMIT` (50) | **required** — see below |
+| **Mixcloud** | public API | `CATALOGUE_LIMIT` (50) | none |
+| **Internet Archive** | `advancedsearch` | `FALLBACK_LIMIT` (4) | none |
+| **YouTube** | Data API v3 | `FALLBACK_LIMIT` (4) | optional — `YOUTUBE_API_KEY` |
+
+**Depth is split on purpose.** SoundCloud and Mixcloud are where a DJ actually
+posts, so we pull their catalogue — that is what makes `next` keep working past
+the first few tracks. Archive and YouTube are fallbacks for artists the first two
+don't cover, and their matching is the loosest of the four, so pulling fifty
+guesses would bury a real catalogue under near-misses.
+
+**Ordering is by date, not provider.** It used to be provider-then-plays, which
+put a decade-old SoundCloud favourite ahead of last weekend's set. Date is what
+people mean by "the newest mix", and it sorts the providers out for free:
+SoundCloud and Mixcloud both report a real date, Archive items usually don't, so
+undated sets fall to the back and the fallbacks land after the catalogue without
+a rule that says so. Provider rank and play count survive only as tie-breaks
+among undated sets.
+
+The artist sheet still shows a short list (six) with a *Show all* expander, but
+the **queue is always the full catalogue** — the list is a read, the transport is
+the player.
 
 SoundCloud is first because it holds the most DJ sets, and it is the only
 provider here that needs credentials. It issues two incompatible kinds, and the
@@ -236,10 +254,11 @@ player — someone else's set under a DJ's name — is worse than an empty list,
 near miss shows an empty state pointing at search links.
 
 **Links** under the bio are capped at 5 and ranked resolved-profile-first, so a
-real Discogs page outranks a Beatport search. RA is excluded from the list because
-it *is* the bio — its URL is the bio's attribution. Bandcamp and Beatport have no
-keyless artist search, so they are labelled as searches rather than presented as
-profiles.
+real Discogs page outranks a name search. RA is excluded from the list because
+it *is* the bio — its URL is the bio's attribution. Bandcamp has no keyless
+artist search, so it is labelled as a search rather than presented as a profile.
+Beatport was dropped: it is a store rather than somewhere a DJ posts, and every
+entry was a search URL padding out a list meant to be a short read.
 
 **Bio** is the first available of: RA's `biography`, the artist's Mixcloud
 `biog`, their SoundCloud description, or Discogs prose — attributed in the UI to

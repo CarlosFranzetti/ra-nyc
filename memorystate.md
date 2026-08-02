@@ -303,12 +303,16 @@ on `bg-card`.
 links, which matches how you actually read it.
 
 **5 links under the bio** (`MAX_LINKS`), in a new `links` array built server-side
-by `buildLinkList`. Providers: Discogs, SoundCloud, Mixcloud, **Bandcamp**,
-**Beatport**. RA is excluded because it *is* the bio — its link is the bio's
-attribution. Resolved profiles sort ahead of search URLs, so a real Discogs page
-outranks a Beatport query. Neither Bandcamp nor Beatport has a keyless artist
-search API, so those are honestly labelled "Search releases" rather than dressed
-up as profiles.
+by `buildLinkList`. Providers: Discogs, SoundCloud, Mixcloud, **Bandcamp**. RA is
+excluded because it *is* the bio — its link is the bio's attribution. Resolved
+profiles sort ahead of search URLs, so a real Discogs page outranks a name
+search. Bandcamp has no keyless artist search API, so it is honestly labelled
+"Search releases" rather than dressed up as a profile.
+
+> **Beatport was here and was removed** (Aug 2026, at the user's request). Worth
+> recording *why* it never earned its slot: it's a store, not somewhere a DJ
+> posts, and with no keyless search every entry was a search URL. It padded a
+> list whose whole point was being a short read.
 
 **Speed and caching — the substantive part.**
 
@@ -343,10 +347,11 @@ gets its own compositor layer.
 Migration `0003_artist_link_list.sql` adds the `links` jsonb column and forces one
 re-resolve of non-manual rows (they predate both the link list and the 3-set cap).
 
-Verified: 14/14 in mobile Chromium — 3 sets, exactly 5 links, resolved-first
-ordering, Bandcamp and Beatport present, bio attributed and clamped, subdued
-player styling, prefetch-on-hover, and cache restore before the network settles.
-Plus 5/5 cap and ordering assertions against the compiled module.
+Verified at the time: 14/14 in mobile Chromium — 3 sets, exactly 5 links,
+resolved-first ordering, bio attributed and clamped, subdued player styling,
+prefetch-on-hover, and cache restore before the network settles. Plus 5/5 cap and
+ordering assertions against the compiled module. (The 3-set cap and the Beatport
+link have both since been superseded — see below.)
 
 ### 2026-07-30 — Multi-source sets: SoundCloud first, 4 per DJ, plus bios
 
@@ -763,6 +768,45 @@ stays correct with no conditionals.
 Verified 26/26 in mobile Chromium with the providers stubbed, including the
 thing that matters: the timeline keeps advancing across dismissing the artist
 sheet *and* the event sheet under it.
+
+### The queue is the catalogue, and Beatport is gone
+
+Two follow-ups once the transport existed.
+
+**`next` now walks everything.** `MAX_SETS` went 3 → 50, and the per-provider
+fetch split in two: `CATALOGUE_LIMIT` (50) for SoundCloud and Mixcloud, where a
+DJ actually posts, and `FALLBACK_LIMIT` (4) for Archive and YouTube, whose
+matching is the loosest of the four — fifty guesses there would bury a real
+catalogue under near-misses. The 3-cap made sense when a set was a taster
+embedded in the sheet; with a persistent transport, `next` is expected to keep
+going.
+
+**Ordering is now by date, newest first**, replacing provider-then-plays — which
+had been putting a decade-old SoundCloud favourite ahead of last weekend's set.
+Nice property: it sorts the providers out for free. SoundCloud and Mixcloud both
+report a real date and Archive items usually don't, so undated sets fall to the
+back and the fallbacks land after the catalogue *without a rule saying so*.
+Provider rank and plays survive only as tie-breaks among undated sets.
+
+**The list and the queue are now different things.** The sheet shows six with a
+*Show all N* expander; the queue is always the full catalogue. Showing fifty rows
+would have buried the bio and links under a wall of set titles, and the whole
+point of the earlier subduing pass was that the artist page is a read.
+
+Beatport removed from the link list — see the note in the 2026-07-30 entry for
+why it never earned its slot.
+
+**The Playwright suite is checked in** at `tests/player.e2e.mjs`, `npm run
+test:e2e`. It boots its own dev server, stubs `/api/*` and the SoundCloud widget
+API, and runs mobile-emulated. The dependency is **`playwright-core`, not
+`playwright`** — deliberately: `playwright`'s postinstall pulls a ~150 MB browser
+down, which Vercel would pay for on every deploy since it installs devDeps.
+Point it at a Chromium with `PLAYWRIGHT_CHROMIUM_PATH` or run
+`npx playwright install chromium`.
+
+Verified 26/26 e2e (including that the queue holds all 9 fixture sets while the
+list shows 6, and that `next` walks past the collapsed list) plus 7/7 ordering
+assertions against the compiled resolver.
 
 ## 4 · Map of the code
 
