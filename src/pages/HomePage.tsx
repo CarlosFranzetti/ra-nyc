@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { addDays, format, subDays } from "date-fns";
 import { BottomNav } from "@/components/BottomNav";
 
@@ -57,10 +57,12 @@ export default function HomePage() {
     onSwipeRight: () => setSelectedDate((d) => subDays(d, 1)),
   });
 
-  const handleEventSelect = (event: Event) => {
+  // Stable, or memoising EventCard achieves nothing — a fresh function
+  // reference each render invalidates every card.
+  const handleEventSelect = useCallback((event: Event) => {
     setSelectedEvent(event);
     setSheetOpen(true);
-  };
+  }, []);
 
   const spacingClass = cn(
     layoutDensity === "tight" && "space-y-1",

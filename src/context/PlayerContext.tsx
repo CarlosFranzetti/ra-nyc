@@ -200,7 +200,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const seek = useCallback((seconds: number) => {
-    handleRef.current?.seek(seconds);
+    // Guarded like `toggle`. Between a track change and the adapter resolving,
+    // there is a window where the timeline already has a length (seeded from
+    // the set's own metadata) but no player to drive — optional-chaining the
+    // call would drop the seek while `setPosition` still moved the playhead,
+    // so the bar would show a position playback never went to.
+    const handle = handleRef.current;
+    if (!handle) return;
+    handle.seek(seconds);
     setPosition(seconds);
   }, []);
 

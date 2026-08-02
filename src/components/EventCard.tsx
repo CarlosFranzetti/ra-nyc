@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Users, MapPin, Clock } from "lucide-react";
 import { EventThumb } from "@/components/EventThumb";
 import { formatTime } from "@/lib/formatTime";
@@ -13,8 +14,14 @@ interface EventCardProps {
  *
  * The dense layout is the point — you can scan a whole night without scrolling
  * much, which a full-width flyer card can't do.
+ *
+ * Memoised, because a busy Saturday renders ~50 of these and every one of them
+ * was reconciling whenever any HomePage state changed — opening settings, the
+ * calendar, dismissing a sheet — which are exactly the moments you are also
+ * likely to be mid-scroll. Only worth it because `onSelect` is stable; an
+ * inline handler would defeat it silently.
  */
-export function EventCard({ event, onSelect }: EventCardProps) {
+function EventCardRow({ event, onSelect }: EventCardProps) {
   return (
     <button onClick={() => onSelect(event)} className="block w-full text-left group">
       <article className="press flex gap-3 bg-card rounded-lg overflow-hidden hover:bg-accent active:bg-accent border border-border/50 p-2 glow-primary-hover">
@@ -71,3 +78,5 @@ export function EventCard({ event, onSelect }: EventCardProps) {
     </button>
   );
 }
+
+export const EventCard = memo(EventCardRow);

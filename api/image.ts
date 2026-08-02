@@ -73,6 +73,13 @@ export default async function handler(
 
     try {
       const upstream = await fetch(parsed.toString(), {
+        // The host allowlist above is checked once, against the URL the caller
+        // supplied. Node follows redirects by default, and the hop target is
+        // never re-checked — so an open redirect on an allowed host would walk
+        // this proxy straight off the allowlist and relay whatever it landed
+        // on, from our origin, under our immutable cache header. Refusing to
+        // follow keeps the allowlist meaning what it says.
+        redirect: "manual",
         headers: {
           "User-Agent":
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
@@ -82,6 +89,12 @@ export default async function handler(
         signal: controller.signal,
       });
 
+      // `manual` surfaces the 3xx rather than throwing, so reject it explicitly.
+      // RA serves flyers directly; a redirect here means something changed and
+      // is worth failing loudly over rather than chasing.
+      if (upstream.status >= 300 && upstream.status < 400) {
+        return fail(res, 502, "Upstream redirected; refusing to follow");
+      }
       if (!upstream.ok) {
         return fail(res, 502, `Upstream responded with ${upstream.status}`);
       }
