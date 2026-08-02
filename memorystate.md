@@ -382,7 +382,20 @@ name only, never a value. **If SoundCloud sets are missing, check that field
 first.** `off` means the env var never reached the running deployment; `api-v2`
 with a portal pair means the secret is missing. Note also that Vercel does *not*
 redeploy when you add an environment variable — the running deployment keeps the
-old (empty) env until something triggers a new build.
+old (empty) env until something triggers a new build. That is what actually kept
+sets empty the first time: the key was set, but the deployment predated it.
+
+**Production currently runs in `api-v2` mode** — a lone client id — and it works:
+Nina Kraviz returns three real SoundCloud sets with plays and durations, and
+SoundCloud supplies her bio. The `official` path is built and correct but is not
+the one in use, so it is the less-exercised of the two.
+
+**A matched profile with no uploads is not the same as no sets.** Marcel Dettmann
+resolved to `soundcloud.com/marceldettmann` and still returned zero SoundCloud
+sets, because plenty of DJs post through labels, radio shows or playlists rather
+than uploading to their own account, and `/users/{id}/tracks` only sees their own
+uploads. When the matched user's uploads come back empty we now fall back to the
+scoped track search — with strict filtering, since those are search hits.
 
 **Providers now, in preference order:**
 
