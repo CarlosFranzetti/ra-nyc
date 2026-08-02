@@ -51,11 +51,3 @@ export const PROVIDER_LABELS: Record<SetProvider, string> = {
   archive: "Internet Archive",
   youtube: "YouTube",
 };
-
-/** Providers need different iframe heights to render usably. */
-export const PROVIDER_EMBED_HEIGHT: Record<SetProvider, number> = {
-  soundcloud: 166,
-  mixcloud: 120,
-  archive: 170,
-  youtube: 220,
-};

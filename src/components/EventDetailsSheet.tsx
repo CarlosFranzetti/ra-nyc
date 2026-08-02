@@ -117,7 +117,13 @@ export function EventDetailsSheet({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className={expanded ? "max-h-[100dvh] h-[100dvh]" : undefined}>
+      <DrawerContent
+        className={
+          expanded
+            ? "max-h-[calc(100dvh_-_var(--player-h))] h-[calc(100dvh_-_var(--player-h))]"
+            : undefined
+        }
+      >
         <DrawerClose asChild>
           <button
             aria-label="Close"

@@ -375,6 +375,85 @@
   }
 }
 
+/* ── Transport bar ─────────────────────────────────────────────────────────
+   The player docks above the header, so the header has to stick *below* it
+   instead of at the viewport top. PlayerBar measures itself and publishes the
+   height here; the default keeps the header flush when nothing is playing.
+   Deliberately outside @layer: layered custom CSS gets tree-shaken when
+   Tailwind can't find the selector in the content globs, which is what silently
+   removed the themes once already. */
+:root {
+  --player-h: 0px;
+}
+
+/* Whichever element is actually at the top of the screen owns the notch inset.
+   With the player docked, the header is no longer at the top, so it gives the
+   inset back — otherwise a notched device pads it twice and the header grows a
+   dead band while a set is playing. */
+.pt-header-safe {
+  padding-top: max(0px, calc(env(safe-area-inset-top) - var(--player-h)));
+}
+
+/* The native range input is unusable at this size on mobile — a hairline track
+   and a system thumb that ignores the theme entirely. The element stays 20px
+   tall for the touch target while the visible track is drawn at 3px, and the
+   fill is a gradient stop driven by --progress, so the played portion tracks
+   the playhead without a second element behind it. */
+.player-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+.player-range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    hsl(var(--primary)) var(--progress, 0%),
+    hsl(var(--muted)) var(--progress, 0%)
+  );
+}
+.player-range::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    hsl(var(--primary)) var(--progress, 0%),
+    hsl(var(--muted)) var(--progress, 0%)
+  );
+}
+.player-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  /* Centres a 12px thumb on a 3px track. */
+  margin-top: -4.5px;
+  border: none;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+}
+.player-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+}
+/* A provider with no scrub support shows the elapsed fill but no handle, so the
+   bar reads as a progress indicator rather than a control that ignores you. */
+.player-range:disabled {
+  cursor: default;
+}
+.player-range:disabled::-webkit-slider-thumb {
+  opacity: 0;
+}
+.player-range:disabled::-moz-range-thumb {
+  opacity: 0;
+}
+
 /* The glow and stagger animations are the app's whole personality, but they are
    also exactly what motion sensitivity reacts to. */
 @media (prefers-reduced-motion: reduce) {

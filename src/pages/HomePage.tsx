@@ -17,6 +17,7 @@ import { ArtistSheet } from "@/components/ArtistSheet";
 import { EventDetailsSheet } from "@/components/EventDetailsSheet";
 import { EventSkeleton } from "@/components/EventSkeleton";
 import { Header } from "@/components/Header";
+import { PlayerBar } from "@/components/PlayerBar";
 import { SplashScreen } from "@/components/SplashScreen";
 import { useTheme } from "@/context/ThemeContext";
 import { useEvents } from "@/hooks/useEvents";
@@ -94,6 +95,11 @@ export default function HomePage() {
         )}
         {...swipe}
       >
+        {/* Above the header, and in flow rather than fixed, so it occupies its
+            own space instead of covering the top of the listings. Renders
+            nothing until something is playing. */}
+        <PlayerBar />
+
         <Header selectedDate={selectedDate} onDateChange={setSelectedDate} />
 
         {navStyle !== "minimal" && (
