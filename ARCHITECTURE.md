@@ -192,19 +192,37 @@ order:
 
 | Provider | Search | Embed | Key |
 | --- | --- | --- | --- |
-| **SoundCloud** | `api-v2` | widget | **required** — `SOUNDCLOUD_CLIENT_ID` |
+| **SoundCloud** | official API or `api-v2` | widget | **required** — see below |
 | **Mixcloud** | public API | widget | none |
 | **Internet Archive** | `advancedsearch` | `/embed/` | none |
 | **YouTube** | Data API v3 | `/embed/` | optional — `YOUTUBE_API_KEY` |
 
-SoundCloud is first because it holds the most DJ sets — but its API registration
-has been closed to new apps for years. The tempting workaround is to scrape a
-`client_id` out of their web bundle; this deliberately does not, because that
-circumvents an access control on purpose and breaks whenever they rebuild.
-SoundCloud search is therefore opt-in via a key you already have, and without one
-it degrades to a search link while Mixcloud and the Internet Archive still fill
-the list. Embedding an already-resolved SoundCloud URL needs no key, so playback
-is identical either way.
+SoundCloud is first because it holds the most DJ sets, and it is the only
+provider here that needs credentials. It issues two incompatible kinds, and the
+resolver branches on which environment variables are present:
+
+| Mode | Variables | Host | Auth |
+| --- | --- | --- | --- |
+| `official` | `SOUNDCLOUD_CLIENT_ID` **+** `SOUNDCLOUD_CLIENT_SECRET` | `api.soundcloud.com` | OAuth token, minted via `client_credentials` and cached in module memory until an minute before it expires |
+| `api-v2` | `SOUNDCLOUD_CLIENT_ID` alone | `api-v2.soundcloud.com` | `client_id` query param |
+| `off` | neither | — | — |
+
+Developer-portal credentials only work in `official` mode; since 2021 a bare
+client id is rejected on `api.soundcloud.com`. This is worth branching on rather
+than probing because the failure is silent — every request 401s, `sets` comes
+back without SoundCloud entries, and that is indistinguishable from the DJ
+genuinely having nothing there. `/api/artist` therefore reports the live mode in
+its `soundcloud` field (the mode name only, never a value), so a misconfiguration
+is one request away from being obvious. In `official` mode a failed token
+exchange returns nothing rather than falling back to `api-v2`, which would only
+401 less visibly.
+
+This deliberately does *not* scrape a `client_id` out of their web bundle: that
+circumvents an access control on purpose and breaks whenever they rebuild. Search
+is therefore opt-in via credentials you hold, and without them SoundCloud
+degrades to a search link while Mixcloud and the Internet Archive still fill the
+list. Embedding an already-resolved SoundCloud URL needs no key, so playback is
+identical either way — only discovery is gated.
 
 Every provider yields a plain iframe URL, so playback needs no SDK — only a
 per-provider height, since a SoundCloud widget and a YouTube player disagree

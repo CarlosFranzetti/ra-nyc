@@ -11,16 +11,17 @@ import { getSql } from "./db.js";
  *
  * | Provider | Search | Embed | Needs a key? |
  * | --- | --- | --- | --- |
- * | SoundCloud | api-v2 via client id | widget, keyless | **yes** — `SOUNDCLOUD_CLIENT_ID` |
+ * | SoundCloud | official API or api-v2 | widget, keyless | **yes** — see `soundcloudMode` |
  * | Mixcloud | public API | widget | no |
  * | Internet Archive | advancedsearch | `/embed/` | no |
  * | YouTube | Data API v3 | `/embed/` | optional — `YOUTUBE_API_KEY` |
  *
- * SoundCloud is first because it has the most DJ sets, but its API registration
- * has been closed to new apps for years. Rather than scrape a `client_id` out of
- * their web bundle — which works around an access control on purpose and breaks
- * constantly — SoundCloud search is enabled only when a key is supplied. Without
- * one it degrades to a search link, and Mixcloud + Archive still fill the list.
+ * SoundCloud is first because it has the most DJ sets, but it is also the only
+ * provider here that needs credentials, and it issues two incompatible kinds —
+ * see `soundcloudMode` for how we tell them apart. We do not scrape a
+ * `client_id` out of their web bundle: that works around an access control they
+ * put up on purpose, and breaks whenever they rebuild. Without a key SoundCloud
+ * degrades to a search link and Mixcloud + Archive still fill the list.
  *
  * Embedding a *known* SoundCloud URL needs no key, so once a track is resolved
  * playback works the same either way.
@@ -147,12 +148,17 @@ function titleMentions(artistName: string, title: string): boolean {
   return a.length >= 4 && normalizeName(title).includes(a);
 }
 
-async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T | null> {
+async function fetchJson<T>(
+  url: string,
+  signal?: AbortSignal,
+  headers?: Record<string, string>,
+): Promise<T | null> {
   try {
     const res = await fetch(url, {
       headers: {
         Accept: "application/json",
         "User-Agent": "ra-nyc/1.0 (+https://ra-nyc.vercel.app)",
+        ...headers,
       },
       signal,
     });
@@ -188,6 +194,74 @@ function soundcloudEmbed(trackUrl: string): string {
   )}&color=%23ffffff&auto_play=false&hide_related=true&show_comments=false&show_user=true&visual=false`;
 }
 
+/**
+ * Which SoundCloud credential shape is configured.
+ *
+ * SoundCloud has two different APIs and the credentials look deceptively alike:
+ *
+ * - `official` — a client id *and* secret from their developer portal. These
+ *   only work against `api.soundcloud.com`, and only after exchanging them for
+ *   a bearer token; since 2021 a bare client id is rejected there.
+ * - `api-v2` — a lone client id, which is what their own web player uses
+ *   against `api-v2.soundcloud.com`.
+ *
+ * Guessing wrong fails silently — every request 401s and SoundCloud looks like
+ * it simply has nothing, which is indistinguishable from no key at all. So we
+ * branch on which variables are present rather than probing.
+ */
+export function soundcloudMode(): "official" | "api-v2" | "off" {
+  if (!process.env.SOUNDCLOUD_CLIENT_ID) return "off";
+  return process.env.SOUNDCLOUD_CLIENT_SECRET ? "official" : "api-v2";
+}
+
+/**
+ * Cached client-credentials token.
+ *
+ * Tokens last an hour, so re-minting one per artist lookup would roughly double
+ * the request count for no benefit. Module memory means per-instance rather
+ * than global, which is fine — the worst case is a few extra token calls after
+ * a cold start.
+ */
+let scToken: { value: string; expiresAt: number } | null = null;
+
+async function soundcloudAccessToken(signal?: AbortSignal): Promise<string | null> {
+  const clientId = process.env.SOUNDCLOUD_CLIENT_ID;
+  const clientSecret = process.env.SOUNDCLOUD_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+
+  if (scToken && scToken.expiresAt > Date.now()) return scToken.value;
+
+  try {
+    const res = await fetch("https://secure.soundcloud.com/oauth/token", {
+      method: "POST",
+      headers: {
+        Accept: "application/json; charset=utf-8",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
+      }),
+      signal,
+    });
+    if (!res.ok) {
+      // Worth a log line: a bad secret is otherwise invisible downstream.
+      console.warn("[soundcloud] token request failed", res.status);
+      return null;
+    }
+    const json = (await res.json()) as { access_token?: string; expires_in?: number };
+    if (!json.access_token) return null;
+
+    // Expire a minute early so a token can't lapse mid-request.
+    const ttl = (json.expires_in ?? 3600) * 1000 - 60_000;
+    scToken = { value: json.access_token, expiresAt: Date.now() + Math.max(ttl, 0) };
+    return scToken.value;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveSoundcloud(
   name: string,
   signal?: AbortSignal,
@@ -197,27 +271,58 @@ async function resolveSoundcloud(
   description: string | null;
   sets: ArtistSet[];
 } | null> {
-  const clientId = process.env.SOUNDCLOUD_CLIENT_ID;
-  if (!clientId) return null;
+  const mode = soundcloudMode();
+  if (mode === "off") return null;
 
-  const base = "https://api-v2.soundcloud.com";
+  const clientId = process.env.SOUNDCLOUD_CLIENT_ID as string;
   const q = encodeURIComponent(name);
 
-  const users = await fetchJson<{ collection?: ScUser[] }>(
-    `${base}/search/users?q=${q}&limit=5&client_id=${encodeURIComponent(clientId)}`,
+  // The two APIs differ in host, auth and search paths, but return close enough
+  // shapes that everything below this block is shared.
+  let auth: Record<string, string> | undefined;
+  let userSearch: string;
+  let trackSearch: (userId: number | undefined) => string;
+
+  if (mode === "official") {
+    const token = await soundcloudAccessToken(signal);
+    // A configured-but-broken secret must not silently fall through to api-v2:
+    // that would 401 too, just less obviously.
+    if (!token) return null;
+    const base = "https://api.soundcloud.com";
+    auth = { Authorization: `OAuth ${token}` };
+    userSearch = `${base}/users?q=${q}&limit=5`;
+    trackSearch = (userId) =>
+      userId
+        ? `${base}/users/${userId}/tracks?limit=${PER_PROVIDER}`
+        : `${base}/tracks?q=${q}&limit=${PER_PROVIDER}`;
+  } else {
+    const base = "https://api-v2.soundcloud.com";
+    const credential = `&client_id=${encodeURIComponent(clientId)}`;
+    userSearch = `${base}/search/users?q=${q}&limit=5${credential}`;
+    trackSearch = (userId) =>
+      userId
+        ? `${base}/users/${userId}/tracks?limit=${PER_PROVIDER}${credential}`
+        : `${base}/search/tracks?q=${q}&limit=${PER_PROVIDER}${credential}`;
+  }
+
+  // The official API returns bare arrays; api-v2 wraps them in `collection`.
+  const rawUsers = await fetchJson<ScUser[] | { collection?: ScUser[] }>(
+    userSearch,
     signal,
+    auth,
   );
-  const user = users?.collection?.find(
+  const candidates = Array.isArray(rawUsers) ? rawUsers : (rawUsers?.collection ?? []);
+  const user = candidates.find(
     (u) => u.username && isPlausibleMatch(name, u.username),
   );
 
   // Prefer the matched user's own tracks; fall back to a scoped track search so
   // a DJ without a profile match can still surface a set.
-  const trackUrl = user?.id
-    ? `${base}/users/${user.id}/tracks?limit=${PER_PROVIDER}&client_id=${encodeURIComponent(clientId)}`
-    : `${base}/search/tracks?q=${q}&limit=${PER_PROVIDER}&client_id=${encodeURIComponent(clientId)}`;
-
-  const raw = await fetchJson<ScTrack[] | { collection?: ScTrack[] }>(trackUrl, signal);
+  const raw = await fetchJson<ScTrack[] | { collection?: ScTrack[] }>(
+    trackSearch(user?.id),
+    signal,
+    auth,
+  );
   const tracks = Array.isArray(raw) ? raw : (raw?.collection ?? []);
 
   const sets: ArtistSet[] = tracks

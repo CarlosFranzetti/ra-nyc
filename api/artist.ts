@@ -1,11 +1,21 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { getArtistLinks, type ArtistLinks } from "./_lib/artistLinks.js";
+import {
+  getArtistLinks,
+  soundcloudMode,
+  type ArtistLinks,
+} from "./_lib/artistLinks.js";
 import { isDbEnabled } from "./_lib/db.js";
 import { clientIp, rateLimit, rateLimitHeaders } from "./_lib/rateLimit.js";
 
 export interface ArtistResponse extends ArtistLinks {
   /** Whether a database is configured — surfaced so the UI can be honest. */
   persisted: boolean;
+  /**
+   * Which SoundCloud credential shape is configured. Names the mode only, never
+   * a value. Here because a missing or wrong key looks exactly like SoundCloud
+   * having no sets for a DJ, and that ambiguity has cost real debugging time.
+   */
+  soundcloud: "official" | "api-v2" | "off";
 }
 
 /**
@@ -76,7 +86,11 @@ export default async function handler(
     return send(
       res,
       200,
-      { ...links, persisted: isDbEnabled() } satisfies ArtistResponse,
+      {
+        ...links,
+        persisted: isDbEnabled(),
+        soundcloud: soundcloudMode(),
+      } satisfies ArtistResponse,
       "public, max-age=3600, s-maxage=604800, stale-while-revalidate=2592000",
     );
   } catch (error) {
