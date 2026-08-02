@@ -316,21 +316,36 @@ async function resolveSoundcloud(
     (u) => u.username && isPlausibleMatch(name, u.username),
   );
 
-  // Prefer the matched user's own tracks; fall back to a scoped track search so
-  // a DJ without a profile match can still surface a set.
-  const raw = await fetchJson<ScTrack[] | { collection?: ScTrack[] }>(
-    trackSearch(user?.id),
-    signal,
-    auth,
-  );
-  const tracks = Array.isArray(raw) ? raw : (raw?.collection ?? []);
+  const readTracks = async (userId: number | undefined): Promise<ScTrack[]> => {
+    const raw = await fetchJson<ScTrack[] | { collection?: ScTrack[] }>(
+      trackSearch(userId),
+      signal,
+      auth,
+    );
+    return Array.isArray(raw) ? raw : (raw?.collection ?? []);
+  };
+
+  // Prefer the matched user's own uploads.
+  let ownUploads = Boolean(user?.id);
+  let tracks = await readTracks(user?.id);
+
+  // A matched profile with no uploads is common and used to end the search
+  // here, which is how a DJ with an obvious SoundCloud page ended up showing
+  // none of their sets: plenty of them post through labels, radio shows or
+  // playlists rather than uploading to their own account. Falling back to the
+  // scoped search picks those up. It re-enters strict filtering, since these
+  // are search hits rather than the artist's own uploads.
+  if (ownUploads && tracks.length === 0) {
+    ownUploads = false;
+    tracks = await readTracks(undefined);
+  }
 
   const sets: ArtistSet[] = tracks
     .filter((t): t is ScTrack & { permalink_url: string } => Boolean(t.permalink_url))
     .filter(
       (t) =>
         // Trust the user's own uploads; be strict about search hits.
-        Boolean(user?.id) ||
+        ownUploads ||
         titleMentions(name, t.title ?? "") ||
         isPlausibleMatch(name, t.user?.username ?? ""),
     )
