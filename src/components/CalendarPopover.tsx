@@ -60,7 +60,7 @@ export function CalendarPopover({
               month_grid: "w-full border-collapse mt-1",
               weekdays: "flex",
               weekday:
-                "w-8 text-[10px] font-medium uppercase text-muted-foreground",
+                "w-8 text-[0.625rem] font-medium uppercase text-muted-foreground",
               week: "flex w-full mt-0.5",
               day: "w-8 h-8 text-center text-xs",
               day_button:

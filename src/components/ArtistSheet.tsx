@@ -39,7 +39,7 @@ const COLLAPSED_SETS = 6;
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+    <h3 className="px-1 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
       {children}
     </h3>
   );
@@ -122,7 +122,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                     <SectionLabel>
                       {sets.length > 1 ? `${sets.length} sets` : "Set"}
                     </SectionLabel>
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                    <span className="text-[0.625rem] uppercase tracking-wide text-muted-foreground/70">
                       Plays above
                     </span>
                   </div>
@@ -172,10 +172,10 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                             )}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] text-foreground">
+                            <span className="block truncate text-[0.8125rem] text-foreground">
                               {set.title}
                             </span>
-                            <span className="block truncate text-[11px] text-muted-foreground">
+                            <span className="block truncate text-[0.6875rem] text-muted-foreground">
                               {meta}
                             </span>
                           </span>
@@ -217,7 +217,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                 <section className="space-y-2">
                   <div className="flex items-baseline justify-between gap-2">
                     <SectionLabel>Bio</SectionLabel>
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                    <span className="text-[0.625rem] uppercase tracking-wide text-muted-foreground/70">
                       {data.bio.source}
                     </span>
                   </div>
@@ -253,10 +253,10 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                           className="flex items-center gap-3 px-3 py-2.5 transition-smooth hover:bg-accent active:bg-accent"
                         >
                           <span className="min-w-0 flex-1">
-                            <span className="block text-[13px] text-foreground">
+                            <span className="block text-[0.8125rem] text-foreground">
                               {link.label}
                             </span>
-                            <span className="block text-[11px] text-muted-foreground">
+                            <span className="block text-[0.6875rem] text-muted-foreground">
                               {link.detail}
                             </span>
                           </span>
@@ -268,7 +268,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                 </section>
               )}
 
-              <p className="pb-safe px-1 text-[11px] leading-relaxed text-muted-foreground/60">
+              <p className="pb-safe px-1 text-[0.6875rem] leading-relaxed text-muted-foreground/60">
                 Swipe down or tap Back to return to the event.
               </p>
             </>

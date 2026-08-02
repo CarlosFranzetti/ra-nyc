@@ -1,18 +1,18 @@
 export const COLOR_THEMES = ["neon", "vapor", "matrix", "sunset"] as const;
 export const DENSITIES = ["tight", "default", "airy"] as const;
 export const TYPOGRAPHIES = ["system", "mono", "display"] as const;
-export const NAV_STYLES = ["standard", "tabs", "minimal"] as const;
+export const TEXT_SIZES = ["smaller", "default", "larger"] as const;
 
 export type ColorTheme = (typeof COLOR_THEMES)[number];
 export type LayoutDensity = (typeof DENSITIES)[number];
 export type Typography = (typeof TYPOGRAPHIES)[number];
-export type NavStyle = (typeof NAV_STYLES)[number];
+export type TextSize = (typeof TEXT_SIZES)[number];
 
 export interface ThemeSettings {
   colorTheme: ColorTheme;
   layoutDensity: LayoutDensity;
   typography: Typography;
-  navStyle: NavStyle;
+  textSize: TextSize;
 }
 
 /** Swatch colours for the settings UI, mirroring each theme's `--primary`. */
@@ -32,11 +32,12 @@ export const DENSITY_OPTIONS: { value: LayoutDensity; label: string; desc: strin
 export const TYPOGRAPHY_OPTIONS: { value: Typography; label: string; desc: string }[] = [
   { value: "system", label: "System", desc: "Clean & native" },
   { value: "mono", label: "Mono", desc: "JetBrains Mono" },
-  { value: "display", label: "Display", desc: "Bold headlines" },
+  { value: "display", label: "Display", desc: "Space Grotesk" },
 ];
 
-export const NAV_OPTIONS: { value: NavStyle; label: string; desc: string }[] = [
-  { value: "standard", label: "Standard", desc: "Date strip" },
-  { value: "tabs", label: "Tabs", desc: "Bottom bar" },
-  { value: "minimal", label: "Minimal", desc: "Swipe only" },
+/** Separate from density: this scales type only, that scales spacing only. */
+export const TEXT_SIZE_OPTIONS: { value: TextSize; label: string; desc: string }[] = [
+  { value: "smaller", label: "Smaller", desc: "More per screen" },
+  { value: "default", label: "Default", desc: "Balanced" },
+  { value: "larger", label: "Larger", desc: "Easier to read" },
 ];

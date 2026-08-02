@@ -10,7 +10,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { cn } from "@/lib/utils";
 import {
   DENSITY_OPTIONS,
-  NAV_OPTIONS,
+  TEXT_SIZE_OPTIONS,
   THEME_OPTIONS,
   TYPOGRAPHY_OPTIONS,
 } from "@/types/preferences";
@@ -80,8 +80,8 @@ export function SettingsSheet() {
     setLayoutDensity,
     typography,
     setTypography,
-    navStyle,
-    setNavStyle,
+    textSize,
+    setTextSize,
   } = useTheme();
 
   /**
@@ -140,7 +140,7 @@ export function SettingsSheet() {
                     )}
                     style={{ background: opt.color }}
                   />
-                  <span className="text-[10px] font-medium">{opt.label}</span>
+                  <span className="text-[0.625rem] font-medium">{opt.label}</span>
                 </button>
               ))}
             </OptionGroup>
@@ -169,19 +169,19 @@ export function SettingsSheet() {
               ))}
             </OptionGroup>
 
-            <OptionGroup title="Navigation" columns={3}>
-              {NAV_OPTIONS.map((opt) => (
+            <OptionGroup title="Text size" columns={3}>
+              {TEXT_SIZE_OPTIONS.map((opt) => (
                 <OptionButton
                   key={opt.value}
-                  active={navStyle === opt.value}
-                  onClick={() => setNavStyle(opt.value)}
+                  active={textSize === opt.value}
+                  onClick={() => setTextSize(opt.value)}
                   label={opt.label}
                   description={opt.desc}
                 />
               ))}
             </OptionGroup>
 
-            <p className="text-[11px] text-muted-foreground px-1">
+            <p className="text-[0.6875rem] text-muted-foreground px-1">
               Swipe left or right on the list to change day. The colour theme is
               picked at random each time you open the app.
             </p>

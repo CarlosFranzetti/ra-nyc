@@ -130,29 +130,57 @@
   letter-spacing: -0.02em;
 }
 
+/* Display was Outfit for body with Bebas Neue headings — condensed, all-caps,
+   tight-tracked. Distinctive, and close to the worst case for reading a venue
+   name at 2am in a dark room: condensed forms narrow the counters, capitals
+   remove the word shapes you skim by, and the extra tracking pulls words apart.
+   Space Grotesk instead: still has a voice, but a tall x-height and open
+   apertures, and it stays lowercase so titles keep their silhouette. One family
+   for headings and body, so it is also one fewer font to download. */
 .type-display {
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
 }
 
 .type-display h1,
 .type-display h2,
 .type-display h3 {
-  font-family: 'Bebas Neue', 'Impact', sans-serif;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
-/* Density variants */
-.density-default {
-  --spacing-unit: 1;
-}
+/* Density and text size.
 
+   Two separate knobs on purpose. --space multiplies every spacing utility
+   (padding, margin, gap, and the width/height scale); --text-scale multiplies
+   the root font size and therefore every rem-based type size. Spacing is px so
+   the two never multiply each other. */
 .density-tight {
-  --spacing-unit: 0.7;
+  --space: 0.86;
+}
+
+.density-default {
+  /* 1.04, not 1: four percent looser than the layout shipped with. */
+  --space: 1.04;
 }
 
 .density-airy {
-  --spacing-unit: 1.4;
+  --space: 1.28;
+}
+
+.text-smaller {
+  --text-scale: 0.92;
+}
+
+.text-default {
+  --text-scale: 1;
+}
+
+.text-larger {
+  --text-scale: 1.12;
+}
+
+html {
+  font-size: calc(16px * var(--text-scale, 1));
 }
 
 
@@ -281,25 +309,6 @@
   );
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
-}
-
-/* Bottom nav spacing */
-.has-bottom-nav {
-  padding-bottom: calc(72px + env(safe-area-inset-bottom));
-}
-
-/* Minimal nav swipe indicator */
-.swipe-active::after {
-  content: '';
-  position: fixed;
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 48px;
-  height: 5px;
-  background: hsl(var(--primary) / 0.4);
-  border-radius: 3px;
-  box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity));
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

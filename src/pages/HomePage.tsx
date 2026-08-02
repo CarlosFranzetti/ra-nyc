@@ -1,14 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { addDays, format, subDays } from "date-fns";
-import { BottomNav } from "@/components/BottomNav";
-
-// Lazy here too, or the static import defeats Header's dynamic one and
-// react-day-picker stays in the main chunk.
-const CalendarPopover = lazy(() =>
-  import("@/components/CalendarPopover").then((m) => ({
-    default: m.CalendarPopover,
-  })),
-);
 import { DatePicker } from "@/components/DatePicker";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -32,9 +23,8 @@ export default function HomePage() {
   const [selectedArtist, setSelectedArtist] = useState<Artist | null>(null);
   const [artistOpen, setArtistOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
-  const [calendarOpen, setCalendarOpen] = useState(false);
 
-  const { navStyle, layoutDensity } = useTheme();
+  const { layoutDensity } = useTheme();
   const dateString = format(selectedDate, "yyyy-MM-dd");
   const { data, isLoading, isFetching, error, refetch } = useEvents(dateString);
 
@@ -90,11 +80,7 @@ export default function HomePage() {
       <SplashScreen isVisible={showSplash} />
 
       <div
-        className={cn(
-          "min-h-screen bg-background",
-          navStyle === "tabs" && "has-bottom-nav",
-          navStyle === "minimal" && "swipe-active",
-        )}
+        className="min-h-screen bg-background"
         {...swipe}
       >
         {/* Above the header, and in flow rather than fixed, so it occupies its
@@ -104,11 +90,9 @@ export default function HomePage() {
 
         <Header selectedDate={selectedDate} onDateChange={setSelectedDate} />
 
-        {navStyle !== "minimal" && (
-          <div className="py-2 border-b border-border/50">
-            <DatePicker selectedDate={selectedDate} onDateChange={setSelectedDate} />
-          </div>
-        )}
+        <div className="py-2 border-b border-border/50">
+          <DatePicker selectedDate={selectedDate} onDateChange={setSelectedDate} />
+        </div>
 
         <div className={cn("py-2 flex items-center justify-between gap-2", padX)}>
           <p className="text-xs text-muted-foreground">
@@ -116,12 +100,6 @@ export default function HomePage() {
               ? `${data!.count} event${data!.count !== 1 ? "s" : ""} · ${format(selectedDate, "EEE, MMM d")}`
               : format(selectedDate, "EEE, MMM d")}
           </p>
-          {/* Minimal mode hides the strip, so the swipe hint has to live here. */}
-          {navStyle === "minimal" && (
-            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">
-              Swipe to change day
-            </span>
-          )}
         </div>
 
         <main className={mainPadding}>
@@ -172,26 +150,6 @@ export default function HomePage() {
           open={artistOpen}
           onOpenChange={setArtistOpen}
         />
-
-        {navStyle === "tabs" && (
-          <>
-            <BottomNav onCalendarClick={() => setCalendarOpen((v) => !v)} />
-            {calendarOpen && (
-              <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50">
-                <Suspense fallback={null}>
-                  <CalendarPopover
-                    selectedDate={selectedDate}
-                    onDateChange={(date) => {
-                      setSelectedDate(date);
-                      setCalendarOpen(false);
-                    }}
-                    align="center"
-                  />
-                </Suspense>
-              </div>
-            )}
-          </>
-        )}
       </div>
     </>
   );
