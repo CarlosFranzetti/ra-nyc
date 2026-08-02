@@ -21,9 +21,9 @@ deployed on [Vercel](https://vercel.com).
 - 🧭 **3 navigation modes** — Standard strip, bottom Tabs, or Minimal (swipe only).
 - 📅 **Jump to any date** with the calendar, beyond the 8-day strip.
 - 🔥 **Busiest first** — sorted by attendance, with RA Picks flagged.
-- 🎧 **Tap a DJ to hear a set** — up to 3 sets from SoundCloud, Mixcloud and the
-  Internet Archive, then their bio and up to 5 links (Discogs, Bandcamp,
-  Beatport…).
+- 🎧 **Tap a DJ to hear a set** — their SoundCloud and Mixcloud catalogue, newest
+  first, in a transport bar that keeps playing while you browse. Plus their bio
+  and up to 5 links (Discogs, Bandcamp…).
 - ⚡ **Instant on return** — the query cache is persisted, so your last day
   paints from disk before the network answers.
 - 🎭 **Curated for NYC** — underground, rooftop, and secret warehouse events.

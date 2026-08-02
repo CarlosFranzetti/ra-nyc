@@ -34,6 +34,9 @@ const PROVIDER_ICON: Record<SetProvider, typeof Music> = {
   youtube: MonitorPlay,
 };
 
+/** How many sets the list shows before it needs asking. */
+const COLLAPSED_SETS = 6;
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -60,15 +63,20 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
   const { data, isLoading, error } = useArtist(artist?.id, artist?.name ?? "");
   const { playSets, toggle, isCurrent, playing } = usePlayer();
   const [bioExpanded, setBioExpanded] = useState(false);
+  const [allSetsShown, setAllSetsShown] = useState(false);
 
   // Reset per artist, or the next one opens with the previous one's bio already
-  // expanded.
+  // expanded and its set list unrolled.
   useEffect(() => {
     setBioExpanded(false);
+    setAllSetsShown(false);
   }, [artist?.id]);
 
   const sets = data?.sets ?? [];
   const links = data?.links ?? [];
+  // The list is a short read by default; the *queue* is always the full
+  // catalogue, so `next` keeps going past whatever is on screen.
+  const shownSets = allSetsShown ? sets : sets.slice(0, COLLAPSED_SETS);
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -120,7 +128,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                   </div>
 
                   <div className="space-y-1.5">
-                    {sets.map((set, position) => {
+                    {shownSets.map((set, position) => {
                       const live = isCurrent(set.id);
                       const Icon = PROVIDER_ICON[set.provider];
                       const meta = [
@@ -181,6 +189,17 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                       );
                     })}
                   </div>
+
+                  {sets.length > COLLAPSED_SETS && (
+                    <button
+                      onClick={() => setAllSetsShown((shown) => !shown)}
+                      className="px-1 text-xs font-medium text-primary active:opacity-70"
+                    >
+                      {allSetsShown
+                        ? "Show fewer"
+                        : `Show all ${sets.length} sets`}
+                    </button>
+                  )}
                 </section>
               ) : (
                 <section className="rounded-lg border border-border/50 bg-card p-4 text-center">
