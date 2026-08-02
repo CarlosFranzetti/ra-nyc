@@ -199,8 +199,10 @@ export function EventDetailsSheet({
               </span>
             </div>
 
-            <div className="flex items-center gap-2 text-sm text-foreground">
-              <MapPin className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+            {/* Same treatment as the card, so the venue reads the same way
+                whichever screen you're on. */}
+            <div className="flex items-center gap-2 text-sm font-semibold text-venue">
+              <MapPin className="h-4 w-4 flex-shrink-0" />
               <span>{event.venue.name}</span>
             </div>
 

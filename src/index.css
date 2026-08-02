@@ -35,6 +35,8 @@
   --radius: 0.5rem;
   --glow-color: 185 100% 50%;
   --glow-intensity: 0.4;
+  /* Cyan primary, so the venue takes the other half of a neon sign. */
+  --venue: 310 90% 68%;
 }
 
 /* Vapor Theme - Pink/Magenta Vaporwave */
@@ -60,6 +62,8 @@
   --ring: 320 100% 60%;
   --glow-color: 320 100% 60%;
   --glow-intensity: 0.35;
+  /* The aqua half of the vaporwave pair. */
+  --venue: 190 95% 68%;
 }
 
 /* Matrix Theme - Terminal Green */
@@ -85,6 +89,8 @@
   --ring: 120 100% 50%;
   --glow-color: 120 100% 50%;
   --glow-intensity: 0.35;
+  /* Amber: the other phosphor a terminal ever came in. */
+  --venue: 45 100% 60%;
 }
 
 /* Sunset Theme - Orange Neon */
@@ -110,6 +116,8 @@
   --ring: 30 100% 55%;
   --glow-color: 30 100% 55%;
   --glow-intensity: 0.4;
+  /* The violet already in this theme's --accent: sunset sky above the orange. */
+  --venue: 285 85% 72%;
 }
 
 /* Typography variants */
@@ -347,17 +355,41 @@
   }
 
   body {
-    /* Stops the whole document rubber-banding, which is what makes a web app
-       feel like a web page. */
-    overscroll-behavior-y: none;
+    /* `contain`, not `none`. Both stop the scroll chaining that lets an inner
+       list drag the whole page around, but `none` also kills the bounce — and
+       a list that stops dead at the top is the giveaway that you're in a web
+       page. Every native iOS list rubber-bands at both ends; this keeps that
+       and drops only the chaining. */
+    overscroll-behavior-y: contain;
   }
 
   /* Kill the grey tap flash and the legacy double-tap zoom delay, so taps
      register immediately rather than feeling laggy. */
   a,
-  button {
+  button,
+  [role="button"] {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    /* A press-and-hold on a native control does nothing. On the web it raises
+       the callout menu and starts a text selection with the magnifier, which
+       is the single loudest tell that this is a web page — and it fires on any
+       slightly slow tap, not just a deliberate long press. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Prose stays selectable — the exemption is for chrome, not content. */
+  p,
+  [data-selectable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Momentum on inner scrollers for older iOS, where it is opt-in. */
+  [class*="overflow-y-auto"],
+  [class*="overflow-auto"] {
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -373,6 +405,17 @@
   .pb-nav-safe {
     padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
+}
+
+/* Press feedback. The scale is deliberately tiny — enough to acknowledge the
+   tap, not enough to read as an animation — and it settles fast, because what
+   makes a native control feel responsive is that it reacts before you have
+   finished pressing, not that it animates nicely afterwards. */
+.press {
+  transition: transform 140ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.press:active {
+  transform: scale(0.985);
 }
 
 /* ── Transport bar ─────────────────────────────────────────────────────────
