@@ -73,7 +73,9 @@ export function PlayerBar() {
 
   const length = duration ?? 0;
   const shown = Math.min(scrubbing ?? position, length || Number.MAX_SAFE_INTEGER);
-  const canSeek = seekable && length > 0;
+  // Not while loading: there is no player to seek yet, so the handle would
+  // move and playback wouldn't.
+  const canSeek = seekable && length > 0 && !loading;
   const percent = length > 0 ? Math.min(100, (shown / length) * 100) : 0;
 
   const commitScrub = () => {
