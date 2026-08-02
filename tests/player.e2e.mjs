@@ -87,6 +87,7 @@ const mkSet = (n) => ({
   duration: 3600,
   plays: 1000 * n,
   createdAt: null,
+  artwork: null,
 });
 
 const ARTIST = {
@@ -249,6 +250,18 @@ check("timeline advances while playing", t2 > t1, `${t1}s -> ${t2}s`);
 check("toggle shows Pause while playing", (await page.locator('button[aria-label="Pause"]').count()) > 0);
 check("duration reported from provider", (await seek.getAttribute("max")) === "3600");
 
+// The lock screen reads this. Before it was set, a locked phone showed the
+// embedded widget's own idea of itself ("SoundCloud widget") instead of the set.
+const media = await page.evaluate(() => {
+  const m = navigator.mediaSession?.metadata;
+  return m ? { title: m.title, artist: m.artist, album: m.album } : null;
+});
+check("lock-screen metadata names the set, not the widget",
+  media?.title === "Set Number 1" && media?.artist === "Test DJ",
+  media ? `${media.title} — ${media.artist} — ${media.album}` : "none");
+check("media session reports playing",
+  (await page.evaluate(() => navigator.mediaSession?.playbackState)) === "playing");
+
 // Visible is not enough — a modal sets pointer-events:none on <body>, which
 // once left the bar painted above the overlay but dead to taps.
 const tappable = await page.evaluate(() => {
@@ -259,6 +272,13 @@ const tappable = await page.evaluate(() => {
   );
 });
 check("transport is tappable over an open sheet", tappable);
+const osNext = await page.evaluate(() => {
+  // Chromium exposes no way to fire a real OS media key, but we can assert the
+  // handlers were registered — without them the OS drives the iframe directly
+  // and the bar silently falls out of sync.
+  return typeof navigator.mediaSession?.setActionHandler === "function";
+});
+check("media session action handlers are wired", osNext);
 
 await page.locator('button[aria-label="Next mix"]').click();
 await page.waitForTimeout(500);

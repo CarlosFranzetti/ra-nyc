@@ -12,6 +12,8 @@ export interface ArtistSet {
   duration: number | null;
   plays: number | null;
   createdAt: string | null;
+  /** Cover art, for the OS lock screen via the Media Session API. */
+  artwork: string | null;
 }
 
 export interface ArtistBio {
