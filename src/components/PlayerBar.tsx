@@ -6,16 +6,20 @@ import { cn } from "@/lib/utils";
 import { PROVIDER_LABELS } from "@/types/artist";
 
 const controlClass =
-  "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-foreground " +
+  "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-foreground " +
   "transition-smooth active:scale-90 disabled:opacity-30 disabled:active:scale-100";
 
 /**
- * The transport bar.
+ * The transport bar, docked to the bottom.
  *
- * Sits in normal flow at the very top of the page and sticks there, rather than
- * being `fixed` — so it takes up its own space and nothing has to be padded
- * down to compensate. It publishes its height as `--player-h` for the one
- * element that does need to know: the header, which sticks directly beneath it.
+ * `fixed` rather than in flow: at the bottom of a `min-h-screen` page there is
+ * no "last element" to stick to, and a bar that scrolls away is not a
+ * persistent player. The page and the sheets both clear it using `--player-h`,
+ * which this publishes from its own measured height.
+ *
+ * Progress sits above the controls — at the bottom of the screen the scrubber
+ * wants to be the furthest thing from the home indicator, not sandwiched
+ * against it.
  *
  * It holds no player. The iframe or audio element lives in a body-level host
  * owned by PlayerProvider, which is what lets a set keep playing while sheets
@@ -97,8 +101,7 @@ export function PlayerBar() {
   return (
     /* z-[70] puts the bar above both drawer layers (z-50 base, z-[60] stacked).
        A transport you can't reach while a sheet is open isn't a transport, and
-       the sheets cap their own height against --player-h so nothing ends up
-       hidden underneath it.
+       the sheets sit on top of --player-h so nothing ends up hidden under it.
 
        Painting above isn't enough on its own, though. An open drawer is a modal:
        Radix sets pointer-events:none on <body> so everything outside the dialog
@@ -112,9 +115,33 @@ export function PlayerBar() {
          propagation keeps skipping a track from also closing the sheet you were
          reading. */
       onPointerDown={(event) => event.stopPropagation()}
-      className="pointer-events-auto sticky top-0 z-[70] border-b border-border/50 bg-background/95 pt-safe backdrop-blur-lg"
+      className="pointer-events-auto fixed inset-x-0 bottom-0 z-[70] border-t border-border/50 bg-background/95 pb-safe backdrop-blur-lg"
     >
-      <div className="flex items-center gap-1 px-2 py-2">
+      <div className="flex items-center gap-2 px-3 pt-2">
+        <span className="w-9 flex-shrink-0 text-right text-[0.5625rem] tabular-nums text-muted-foreground">
+          {formatClock(position)}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={length || 1}
+          step={1}
+          value={shown}
+          disabled={!canSeek}
+          onChange={(event) => setScrubbing(Number(event.target.value))}
+          onPointerUp={commitScrub}
+          onPointerCancel={commitScrub}
+          onKeyUp={commitScrub}
+          aria-label="Seek"
+          style={{ "--progress": `${percent}%` } as React.CSSProperties}
+          className="player-range min-w-0 flex-1"
+        />
+        <span className="w-9 flex-shrink-0 text-[0.5625rem] tabular-nums text-muted-foreground">
+          {formatClock(duration)}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1 px-2 pb-1.5">
         <button
           onClick={previous}
           disabled={!hasPrevious}
@@ -151,12 +178,12 @@ export function PlayerBar() {
         </button>
 
         <div className="mx-1 min-w-0 flex-1">
-          <p className="truncate text-[0.8125rem] font-medium leading-tight text-foreground">
+          <p className="truncate text-[0.75rem] font-medium leading-tight text-foreground">
             {current.title}
           </p>
           <p
             className={cn(
-              "truncate text-[0.6875rem] leading-tight",
+              "truncate text-[0.625rem] leading-tight",
               error ? "text-destructive" : "text-muted-foreground",
             )}
           >
@@ -171,30 +198,6 @@ export function PlayerBar() {
         >
           <X className="h-4 w-4" />
         </button>
-      </div>
-
-      <div className="flex items-center gap-2 px-3 pb-2">
-        <span className="w-10 flex-shrink-0 text-right text-[0.625rem] tabular-nums text-muted-foreground">
-          {formatClock(position)}
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={length || 1}
-          step={1}
-          value={shown}
-          disabled={!canSeek}
-          onChange={(event) => setScrubbing(Number(event.target.value))}
-          onPointerUp={commitScrub}
-          onPointerCancel={commitScrub}
-          onKeyUp={commitScrub}
-          aria-label="Seek"
-          style={{ "--progress": `${percent}%` } as React.CSSProperties}
-          className="player-range min-w-0 flex-1"
-        />
-        <span className="w-10 flex-shrink-0 text-[0.625rem] tabular-nums text-muted-foreground">
-          {formatClock(duration)}
-        </span>
       </div>
     </div>
   );

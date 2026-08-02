@@ -192,15 +192,30 @@ await page.route("**/images.ra.co/**", (route) => route.abort());
 const seek = page.locator('input[aria-label="Seek"]');
 const toggle = page.locator('button[aria-label="Play"], button[aria-label="Pause"]').first();
 const at = async () => Number(await seek.inputValue());
-const headerTop = () =>
-  page.evaluate(() => getComputedStyle(document.querySelector("header")).top);
+/** Distance from the bar's bottom edge to the bottom of the viewport. */
+const barGapFromBottom = () =>
+  page.evaluate(() => {
+    const bar = document.querySelector('input[aria-label="Seek"]')?.closest("div.fixed");
+    if (!bar) return null;
+    return Math.round(window.innerHeight - bar.getBoundingClientRect().bottom);
+  });
+const barHeight = () =>
+  page.evaluate(() => {
+    const bar = document.querySelector('input[aria-label="Seek"]')?.closest("div.fixed");
+    return bar ? Math.round(bar.getBoundingClientRect().height) : null;
+  });
+/** Bottom padding the page reserves so the last card clears the bar. */
+const pagePadBottom = () =>
+  page.evaluate(() =>
+    parseFloat(getComputedStyle(document.querySelector(".min-h-screen")).paddingBottom),
+  );
 
 await page.goto(BASE, { waitUntil: "domcontentloaded" });
 await page.waitForSelector("text=Test Night", { timeout: 20000 });
 await page.waitForTimeout(900); // splash
 
 check("no player bar before playback", (await seek.count()) === 0);
-check("header sticks flush when idle", (await headerTop()) === "0px");
+check("page reserves no bottom space when idle", (await pagePadBottom()) === 0);
 
 // ── event sheet → artist sheet
 await page.locator("text=Test Night").first().click();
@@ -256,7 +271,12 @@ check(
   (await page.locator('button[aria-label="Back to event"]').count()) > 0,
 );
 
-check("header sticks below the bar", parseFloat(await headerTop()) > 40);
+const gap = await barGapFromBottom();
+const height = await barHeight();
+check("transport is docked to the bottom", gap === 0, `${gap}px from bottom`);
+console.log(`  bar height: ${height}px`);
+check("page reserves room for the bar", (await pagePadBottom()) >= height - 1,
+  `padding ${await pagePadBottom()}px vs bar ${height}px`);
 
 // ── expanding shows the rest
 await page.locator(`text=Show all ${SET_COUNT} sets`).click();
@@ -329,7 +349,7 @@ check("seek jumps the playhead", seeked >= 1795 && seeked < 1830, `${seeked}s`);
 await page.locator('button[aria-label="Close player"]').click();
 await page.waitForTimeout(400);
 check("close dismisses the bar", (await seek.count()) === 0);
-check("header returns flush after close", (await headerTop()) === "0px");
+check("page stops reserving space after close", (await pagePadBottom()) === 0);
 check(
   "provider iframe torn down on close",
   (await page.evaluate(() => document.querySelectorAll("[data-player-host] iframe").length)) === 0,

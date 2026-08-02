@@ -79,15 +79,12 @@ export default function HomePage() {
     <>
       <SplashScreen isVisible={showSplash} />
 
+      {/* pb-[var(--player-h)]: the transport is fixed, so without this the last
+          card sits underneath it. The variable is 0px when nothing is playing. */}
       <div
-        className="min-h-screen bg-background"
+        className="min-h-screen bg-background pb-[var(--player-h)]"
         {...swipe}
       >
-        {/* Above the header, and in flow rather than fixed, so it occupies its
-            own space instead of covering the top of the listings. Renders
-            nothing until something is playing. */}
-        <PlayerBar />
-
         <Header selectedDate={selectedDate} onDateChange={setSelectedDate} />
 
         <div className="py-2 border-b border-border/50">
@@ -150,6 +147,10 @@ export default function HomePage() {
           open={artistOpen}
           onOpenChange={setArtistOpen}
         />
+
+        {/* Docked to the bottom, over everything. Renders nothing until
+            something is playing. */}
+        <PlayerBar />
       </div>
     </>
   );

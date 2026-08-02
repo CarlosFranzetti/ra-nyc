@@ -47,8 +47,8 @@ export function DrawerContent({
           // repainting, and never animate width/height during a drag.
           "will-change-transform",
           direction === "bottom"
-            ? "inset-x-0 bottom-0 mx-auto max-h-[calc(90vh_-_var(--player-h))] max-w-md rounded-t-2xl border-t"
-            : "inset-y-0 right-0 w-[320px] max-w-[85vw] border-l",
+            ? "inset-x-0 bottom-[var(--player-h)] mx-auto max-h-[calc(90vh_-_var(--player-h))] max-w-md rounded-t-2xl border-t"
+            : "inset-y-0 bottom-[var(--player-h)] right-0 w-[320px] max-w-[85vw] border-l",
           className,
         )}
         {...props}
