@@ -151,12 +151,12 @@ export function PlayerBar() {
         </button>
 
         <div className="mx-1 min-w-0 flex-1">
-          <p className="truncate text-[13px] font-medium leading-tight text-foreground">
+          <p className="truncate text-[0.8125rem] font-medium leading-tight text-foreground">
             {current.title}
           </p>
           <p
             className={cn(
-              "truncate text-[11px] leading-tight",
+              "truncate text-[0.6875rem] leading-tight",
               error ? "text-destructive" : "text-muted-foreground",
             )}
           >
@@ -174,7 +174,7 @@ export function PlayerBar() {
       </div>
 
       <div className="flex items-center gap-2 px-3 pb-2">
-        <span className="w-10 flex-shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">
+        <span className="w-10 flex-shrink-0 text-right text-[0.625rem] tabular-nums text-muted-foreground">
           {formatClock(position)}
         </span>
         <input
@@ -192,7 +192,7 @@ export function PlayerBar() {
           style={{ "--progress": `${percent}%` } as React.CSSProperties}
           className="player-range min-w-0 flex-1"
         />
-        <span className="w-10 flex-shrink-0 text-[10px] tabular-nums text-muted-foreground">
+        <span className="w-10 flex-shrink-0 text-[0.625rem] tabular-nums text-muted-foreground">
           {formatClock(duration)}
         </span>
       </div>

@@ -57,7 +57,7 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
                   : "bg-card hover:bg-accent active:bg-accent",
             )}
           >
-            <span className="text-[8px] font-medium uppercase tracking-wide">
+            <span className="text-[0.5rem] font-medium uppercase tracking-wide">
               {getDateLabel(date)}
             </span>
             <span
@@ -68,7 +68,7 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
             >
               {format(date, "d")}
             </span>
-            <span className="text-[7px] uppercase tracking-wider opacity-60">
+            <span className="text-[0.4375rem] uppercase tracking-wider opacity-60">
               {format(date, "MMM")}
             </span>
           </button>

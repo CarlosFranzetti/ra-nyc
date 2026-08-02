@@ -10,11 +10,11 @@ import {
 import {
   COLOR_THEMES,
   DENSITIES,
-  NAV_STYLES,
+  TEXT_SIZES,
   TYPOGRAPHIES,
   type ColorTheme,
   type LayoutDensity,
-  type NavStyle,
+  type TextSize,
   type ThemeSettings,
   type Typography,
 } from "@/types/preferences";
@@ -25,7 +25,7 @@ interface ThemeContextType extends ThemeSettings {
   setColorTheme: (theme: ColorTheme) => void;
   setLayoutDensity: (density: LayoutDensity) => void;
   setTypography: (typography: Typography) => void;
-  setNavStyle: (style: NavStyle) => void;
+  setTextSize: (size: TextSize) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -55,7 +55,7 @@ function readSettings(): ThemeSettings {
     colorTheme: randomColorTheme(),
     layoutDensity: "default",
     typography: "system",
-    navStyle: "standard",
+    textSize: "default",
   };
 
   try {
@@ -67,7 +67,7 @@ function readSettings(): ThemeSettings {
       colorTheme: randomColorTheme(),
       layoutDensity: oneOf(DENSITIES, parsed.layoutDensity, "default"),
       typography: oneOf(TYPOGRAPHIES, parsed.typography, "system"),
-      navStyle: oneOf(NAV_STYLES, parsed.navStyle, "standard"),
+      textSize: oneOf(TEXT_SIZES, parsed.textSize, "default"),
     };
   } catch {
     // Private-mode Safari throws on localStorage rather than returning null.
@@ -94,7 +94,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // `type-` not `font-`: `.font-mono` would collide with Tailwind's utility.
     root.classList.remove(...TYPOGRAPHIES.map((t) => `type-${t}`));
     root.classList.add(`type-${settings.typography}`);
-  }, [settings.colorTheme, settings.layoutDensity, settings.typography]);
+
+    root.classList.remove(...TEXT_SIZES.map((t) => `text-${t}`));
+    root.classList.add(`text-${settings.textSize}`);
+  }, [
+    settings.colorTheme,
+    settings.layoutDensity,
+    settings.typography,
+    settings.textSize,
+  ]);
 
   useEffect(() => {
     try {
@@ -116,8 +124,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     (typography: Typography) => setSettings((s) => ({ ...s, typography })),
     [],
   );
-  const setNavStyle = useCallback(
-    (navStyle: NavStyle) => setSettings((s) => ({ ...s, navStyle })),
+  const setTextSize = useCallback(
+    (textSize: TextSize) => setSettings((s) => ({ ...s, textSize })),
     [],
   );
 
@@ -127,9 +135,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setColorTheme,
       setLayoutDensity,
       setTypography,
-      setNavStyle,
+      setTextSize,
     }),
-    [settings, setColorTheme, setLayoutDensity, setTypography, setNavStyle],
+    [settings, setColorTheme, setLayoutDensity, setTypography, setTextSize],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

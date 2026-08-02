@@ -33,7 +33,7 @@ function EventCardRow({ event, onSelect }: EventCardProps) {
           />
 
           {event.isPick && (
-            <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] font-semibold px-1.5 py-0.5 rounded glow-primary-sm text-glow">
+            <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-[0.5625rem] font-semibold px-1.5 py-0.5 rounded glow-primary-sm text-glow">
               PICK
             </div>
           )}

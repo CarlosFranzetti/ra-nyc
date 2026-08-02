@@ -201,11 +201,63 @@ export async function fetchRAEvents({
     throw new RAError(json.errors[0]?.message ?? "GraphQL error", 502);
   }
 
-  return (json.data?.eventListings?.data ?? [])
-    .map(transformListing)
-    // Busiest first — with a 50-event cap and no pagination, popularity is a
-    // better ordering than whatever RA returns.
-    .sort((a, b) => b.attending - a.attending);
+  return (
+    dedupeById(
+      (json.data?.eventListings?.data ?? []).map(transformListing),
+    )
+      .filter((event) => startsOn(event, date))
+      // Busiest first — with a 50-event cap and no pagination, popularity is a
+      // better ordering than whatever RA returns.
+      .sort((a, b) => b.attending - a.attending)
+  );
+}
+
+/** The `YYYY-MM-DD` part of an RA timestamp, or null if there isn't one. */
+function dayOf(value: string | undefined | null): string | null {
+  if (!value) return null;
+  const day = value.slice(0, 10);
+  return DATE_RE.test(day) ? day : null;
+}
+
+/**
+ * Does this event *begin* on the requested day?
+ *
+ * RA's `listingDate` filter is a range overlap, so anything whose run covers the
+ * day comes back — and a residency listed once as Jul 30 → Aug 6 is therefore
+ * returned on all eight days. "Bear Happy Hour at Rawhide" was showing up every
+ * single day because of exactly this.
+ *
+ * An event belongs to the night it starts. That also keeps the case this must
+ * not break: a club night starting 22:00 Saturday and ending 04:00 Sunday still
+ * belongs to Saturday, which is how anyone would describe it.
+ *
+ * Deliberately string-compares the date prefix rather than parsing. RA sends
+ * naive timestamps with no zone, so `new Date()` would read them in the
+ * *server's* zone — UTC on Vercel — and silently shift evening events a day.
+ *
+ * Fails open: an event with no usable start date is kept. Showing one extra is
+ * a far smaller failure than silently dropping a night because RA changed a
+ * field.
+ */
+function startsOn(event: RAEvent, date: string): boolean {
+  const start = dayOf(event.startTime) ?? dayOf(event.date);
+  return start === null || start === date;
+}
+
+/**
+ * Second failsafe, independent of the first: one event, one card.
+ *
+ * If RA ever returns two listing rows for the same event on one day — which is
+ * what a multi-day run looks like from the other direction — the duplicate is
+ * dropped here regardless of what its dates say.
+ */
+function dedupeById(events: RAEvent[]): RAEvent[] {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    if (seen.has(event.id)) return false;
+    seen.add(event.id);
+    return true;
+  });
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
