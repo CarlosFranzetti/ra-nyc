@@ -52,6 +52,12 @@ export interface ArtistSet {
   duration: number | null;
   plays: number | null;
   createdAt: string | null;
+  /**
+   * Square-ish cover art. Only consumer is the OS lock screen / notification
+   * shade via the Media Session API, which is also why it is worth carrying:
+   * without it a locked phone shows a generic placeholder next to the title.
+   */
+  artwork: string | null;
 }
 
 export interface ArtistBio {
@@ -194,6 +200,7 @@ interface ScUser {
   username?: string;
   permalink_url?: string;
   description?: string | null;
+  avatar_url?: string | null;
 }
 interface ScTrack {
   id?: number;
@@ -202,7 +209,19 @@ interface ScTrack {
   duration?: number;
   playback_count?: number;
   created_at?: string;
+  artwork_url?: string | null;
   user?: ScUser;
+}
+
+/**
+ * SoundCloud hands back the `-large` variant, which is 100x100 — visibly soft
+ * blown up to lock-screen size. The size is just a filename token, so asking
+ * for the 500px one costs nothing. Falls back to the uploader's avatar, since
+ * plenty of DJ sets carry no per-track art.
+ */
+function soundcloudArtwork(track: ScTrack): string | null {
+  const raw = track.artwork_url ?? track.user?.avatar_url ?? null;
+  return raw ? raw.replace("-large.", "-t500x500.") : null;
 }
 
 function soundcloudEmbed(trackUrl: string): string {
@@ -375,6 +394,7 @@ async function resolveSoundcloud(
       duration: t.duration ? Math.round(t.duration / 1000) : null,
       plays: t.playback_count ?? null,
       createdAt: t.created_at ?? null,
+      artwork: soundcloudArtwork(t),
     }));
 
   if (!user && sets.length === 0) return null;
@@ -403,6 +423,7 @@ interface McCloudcasts {
     audio_length?: number;
     play_count?: number;
     created_time?: string;
+    pictures?: { large?: string; extra_large?: string; "1024wx1024h"?: string };
   }[];
 }
 
@@ -449,6 +470,11 @@ async function resolveMixcloud(
       duration: c.audio_length ?? null,
       plays: c.play_count ?? null,
       createdAt: c.created_time ?? null,
+      artwork:
+        c.pictures?.["1024wx1024h"] ??
+        c.pictures?.extra_large ??
+        c.pictures?.large ??
+        null,
     }));
 
   return {
@@ -497,6 +523,7 @@ async function resolveArchive(
       title: d.title,
       url: `https://archive.org/details/${d.identifier}`,
       embedUrl: `https://archive.org/embed/${encodeURIComponent(d.identifier)}`,
+      artwork: `https://archive.org/services/img/${encodeURIComponent(d.identifier)}`,
       duration: null,
       plays: d.downloads ?? null,
       createdAt: d.date ?? null,
@@ -508,7 +535,12 @@ async function resolveArchive(
 interface YtSearch {
   items?: {
     id?: { videoId?: string };
-    snippet?: { title?: string; publishedAt?: string; channelTitle?: string };
+    snippet?: {
+      title?: string;
+      publishedAt?: string;
+      channelTitle?: string;
+      thumbnails?: { high?: { url?: string }; medium?: { url?: string } };
+    };
   }[];
 }
 
@@ -534,6 +566,10 @@ async function resolveYouTube(
       title: i.snippet!.title!,
       url: `https://www.youtube.com/watch?v=${i.id!.videoId!}`,
       embedUrl: `https://www.youtube-nocookie.com/embed/${i.id!.videoId!}`,
+      artwork:
+        i.snippet?.thumbnails?.high?.url ??
+        i.snippet?.thumbnails?.medium?.url ??
+        null,
       duration: null,
       plays: null,
       createdAt: i.snippet?.publishedAt ?? null,

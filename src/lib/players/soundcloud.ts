@@ -60,14 +60,26 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
   // widget reports one.
   let duration = set.duration;
 
+  // If the first play() is swallowed, try once more. The widget occasionally
+  // reports ready a beat before it will actually accept a command, and a set
+  // that sits silent after you tapped it reads as broken rather than slow.
+  let started = false;
+  let retry: number | undefined;
+
   widget.bind(SC.Widget.Events.READY, () => {
     widget.getDuration((ms) => {
       if (ms > 0) duration = ms / 1000;
       events.onReady(duration);
     });
     widget.play();
+    retry = window.setTimeout(() => {
+      if (!started) widget.play();
+    }, 700);
   });
-  widget.bind(SC.Widget.Events.PLAY, () => events.onPlay());
+  widget.bind(SC.Widget.Events.PLAY, () => {
+    started = true;
+    events.onPlay();
+  });
   widget.bind(SC.Widget.Events.PAUSE, () => events.onPause());
   widget.bind(SC.Widget.Events.FINISH, () => events.onEnded());
   widget.bind(SC.Widget.Events.ERROR, () =>
@@ -85,6 +97,7 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
     pause: () => widget.pause(),
     seek: (seconds) => widget.seekTo(seconds * 1000),
     destroy: () => {
+      if (retry !== undefined) window.clearTimeout(retry);
       // The iframe may already be detached; pausing a dead widget throws.
       try {
         widget.pause();

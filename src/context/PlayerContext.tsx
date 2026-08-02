@@ -7,6 +7,12 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  bindHandlers,
+  publishMetadata,
+  publishPlaybackState,
+  publishPosition,
+} from "@/lib/mediaSession";
 import { playerFor, type PlayerHandle } from "@/lib/players";
 import type { ArtistSet } from "@/types/artist";
 
@@ -168,6 +174,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Lock screen / notification shade. Metadata follows the track; the handlers
+  // route the OS buttons back through our own transport so the two can't drift
+  // apart. Bound after `current` so the closures see the live queue.
+  useEffect(() => {
+    publishMetadata(current, artistName);
+  }, [current, artistName]);
+
+  useEffect(() => {
+    publishPlaybackState(playing);
+  }, [playing]);
+
+  useEffect(() => {
+    publishPosition(position, duration);
+  }, [position, duration]);
+
   const playSets = useCallback(
     (sets: ArtistSet[], startIndex: number, name: string | null) => {
       if (sets.length === 0) return;
@@ -224,6 +245,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setDuration(null);
     setError(null);
   }, []);
+
+  useEffect(() => {
+    if (!current) {
+      bindHandlers(null);
+      return undefined;
+    }
+    bindHandlers({
+      play: () => handleRef.current?.play(),
+      pause: () => handleRef.current?.pause(),
+      next,
+      previous,
+      seek,
+    });
+    return () => bindHandlers(null);
+  }, [current, next, previous, seek]);
 
   const isCurrent = useCallback(
     (setId: string) => current?.id === setId,
