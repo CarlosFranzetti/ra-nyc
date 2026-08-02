@@ -187,9 +187,10 @@
 }
 
 /* Smooth transitions. The easing is iOS's sheet curve — it decelerates late,
-   which is what makes a drag release feel like it settles rather than stops. */
+   which is what makes a drag release feel like it settles rather than stops.
+   0.19s is 0.18s + 5%, matching the sheet retiming below. */
 .transition-smooth {
-  transition: all 0.18s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: all 0.19s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Theme transition — smooth colour changes when switching themes.
@@ -206,7 +207,7 @@
 .glow-primary-hover,
 .transition-smooth {
   transition-property: background-color, border-color, box-shadow, transform, opacity;
-  transition-duration: 0.2s;
+  transition-duration: 0.21s;
   transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
@@ -275,7 +276,7 @@
 
 /* Animation classes */
 .animate-fade-slide-in {
-  animation: fade-slide-in 0.3s ease-out forwards;
+  animation: fade-slide-in 0.315s cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
 
 .animate-fade-slide-out {
@@ -289,7 +290,7 @@
 /* Staggered animations for lists */
 .stagger-animation > * {
   opacity: 0;
-  animation: fade-slide-in 0.3s ease-out forwards;
+  animation: fade-slide-in 0.315s cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
 
 .stagger-animation > *:nth-child(1) { animation-delay: 0ms; }
@@ -389,4 +390,33 @@
     opacity: 1;
     animation: none;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Sheet timing.
+
+   vaul ships `transition: transform .5s cubic-bezier(.32,.72,0,1)` and a
+   matching `animation-duration: .5s` on `[data-vaul-drawer]`. This raises both
+   by 5% to 0.525s.
+
+   Two details make this safe:
+   - Specificity, not `!important`. The extra attribute selector beats vaul's
+     single-attribute rule regardless of stylesheet order, while still losing to
+     the inline styles vaul writes during a drag — so the sheet keeps tracking
+     the finger exactly instead of easing behind it.
+   - The easing is left as vaul's (iOS's own sheet curve). It decelerates late,
+     which is what makes a release settle rather than stop; slowing it slightly
+     gives that tail more room to read as smooth.
+   ───────────────────────────────────────────────────────────────────────────── */
+[data-vaul-drawer][data-vaul-drawer-direction] {
+  transition: transform 0.525s cubic-bezier(0.32, 0.72, 0, 1);
+  animation-duration: 0.525s;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* The overlay should fade on the same clock, or the backdrop lands before the
+   sheet does and the two read as separate movements. */
+[data-vaul-overlay] {
+  animation-duration: 0.525s;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }

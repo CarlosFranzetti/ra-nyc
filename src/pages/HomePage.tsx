@@ -13,6 +13,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { EventCard } from "@/components/EventCard";
+import { ArtistSheet } from "@/components/ArtistSheet";
 import { EventDetailsSheet } from "@/components/EventDetailsSheet";
 import { EventSkeleton } from "@/components/EventSkeleton";
 import { Header } from "@/components/Header";
@@ -21,12 +22,14 @@ import { useTheme } from "@/context/ThemeContext";
 import { useEvents } from "@/hooks/useEvents";
 import { useSwipe } from "@/hooks/useSwipe";
 import { cn } from "@/lib/utils";
-import type { Event } from "@/types/event";
+import type { Artist, Event } from "@/types/event";
 
 export default function HomePage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [selectedArtist, setSelectedArtist] = useState<Artist | null>(null);
+  const [artistOpen, setArtistOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
@@ -148,6 +151,18 @@ export default function HomePage() {
           event={selectedEvent}
           open={sheetOpen}
           onOpenChange={setSheetOpen}
+          onSelectArtist={(artist) => {
+            setSelectedArtist(artist);
+            setArtistOpen(true);
+          }}
+        />
+
+        {/* Stacked above the event sheet, which stays open underneath so
+            dismissing returns to it with its scroll position intact. */}
+        <ArtistSheet
+          artist={selectedArtist}
+          open={artistOpen}
+          onOpenChange={setArtistOpen}
         />
 
         {navStyle === "tabs" && (
