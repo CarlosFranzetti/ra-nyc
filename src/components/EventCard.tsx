@@ -17,7 +17,7 @@ interface EventCardProps {
 export function EventCard({ event, onSelect }: EventCardProps) {
   return (
     <button onClick={() => onSelect(event)} className="block w-full text-left group">
-      <article className="flex gap-3 bg-card rounded-lg overflow-hidden transition-all duration-200 hover:bg-accent active:bg-accent border border-border/50 p-2 glow-primary-hover">
+      <article className="press flex gap-3 bg-card rounded-lg overflow-hidden hover:bg-accent active:bg-accent border border-border/50 p-2 glow-primary-hover">
         <div className="relative w-24 h-24 flex-shrink-0 rounded-md overflow-hidden bg-muted">
           <EventThumb
             imageUrl={event.imageUrl}
@@ -38,7 +38,10 @@ export function EventCard({ event, onSelect }: EventCardProps) {
           </h3>
 
           <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            <span className="flex items-center gap-0.5 min-w-0">
+            {/* Where it is, is the thing you scan for after what it is — so the
+                venue gets its own hue and weight rather than sitting in the
+                same muted grey as the time and the head count. */}
+            <span className="flex items-center gap-0.5 min-w-0 font-semibold text-venue">
               <MapPin className="w-3 h-3 flex-shrink-0" />
               <span className="truncate">{event.venue.name}</span>
             </span>

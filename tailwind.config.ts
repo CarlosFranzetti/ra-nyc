@@ -40,6 +40,9 @@ export default {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        // Venue names get their own hue per theme, off the primary, so they read
+        // as a distinct kind of information rather than another accent.
+        venue: "hsl(var(--venue))",
       },
       borderRadius: {
         lg: "var(--radius)",

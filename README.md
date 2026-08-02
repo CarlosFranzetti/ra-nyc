@@ -1,90 +1,58 @@
-# 🎛️ RA-NYC
+# RA-NYC
 
-🎶 *The hottest beats in the Big Apple, now at your fingertips.*
+A fast, mobile-first listing of **Resident Advisor**'s New York events. Pick a
+day, scan the lineups, tap a DJ to hear them, tap through to RA for tickets.
 
-A fast, mobile-first listing of tonight's **Resident Advisor** events in New York
-City. Pick a day, scroll the lineups, tap through to RA for tickets.
-
-Originally built on [Lovable](https://lovable.dev); now a plain Vite + React app
-deployed on [Vercel](https://vercel.com).
+**Live: [ra-nyc.vercel.app](https://ra-nyc.vercel.app)**
 
 ---
 
-## 🌟 Features
+## What it does
 
-- ⚡ **Quick and simple** — one screen, no login, no signup.
-- 📅 **Day-by-day** — yesterday through the next week, weekends highlighted.
-- 👆 **Swipe between days** in any navigation mode.
-- 🎨 **4 neon themes** — Neon, Vapor, Matrix, Sunset — each with its own glow.
-- 🔤 **3 typography settings** — System, Mono, Display.
-- 📐 **3 densities** — Tight, Default, Airy.
-- 🧭 **3 navigation modes** — Standard strip, bottom Tabs, or Minimal (swipe only).
-- 📅 **Jump to any date** with the calendar, beyond the 8-day strip.
-- 🔥 **Busiest first** — sorted by attendance, with RA Picks flagged.
-- 🎧 **Tap a DJ to hear a set** — their SoundCloud and Mixcloud catalogue, newest
-  first, in a transport bar that keeps playing while you browse. Plus their bio
-  and up to 5 links (Discogs, Bandcamp…).
-- ⚡ **Instant on return** — the query cache is persisted, so your last day
-  paints from disk before the network answers.
-- 🎭 **Curated for NYC** — underground, rooftop, and secret warehouse events.
+Every screen is built around one question — *what's on tonight, and is it worth
+going?* — so the whole app is a single scrolling list with no login, no signup
+and no navigation to learn.
 
-The colour theme is picked at random each time you open the app.
+**Listings.** One day at a time, yesterday through the next week, sorted busiest
+first with RA Picks flagged. Swipe left or right to change day, or jump to any
+date with the calendar. Tap an event for the full flyer, blurb and lineup.
 
-Preferences persist locally in the browser; there is no account and nothing is
-sent anywhere.
+**DJ sets.** Tap any name in a lineup and it resolves that artist to their
+SoundCloud and Mixcloud catalogue, newest first, plus a bio and up to five
+profile links. Sets play in a transport bar docked at the top — play/pause,
+next/previous, scrubbable timeline — and **keep playing while you browse**, so
+finding out what someone sounds like doesn't cost you your place in the listings.
 
----
+**Looks.** Four themes (Neon, Vapor, Matrix, Sunset), three typefaces, three
+densities, three navigation modes. The theme is picked at random each time you
+open it. Preferences persist locally; there is no account and nothing is sent
+anywhere.
 
-## 🧱 Stack
-
-| Layer    | Choice                                       |
-| -------- | -------------------------------------------- |
-| UI       | React 19 + TypeScript, Tailwind CSS 3         |
-| Data     | TanStack Query                                |
-| Build    | Vite 7                                        |
-| API      | Vercel serverless functions (`api/events.ts`, `api/image.ts`) |
-| Hosting  | Vercel                                        |
-| Analytics| Vercel Analytics (no cookies, no consent banner) |
-| Database | Optional Neon (artist links only). See [DATABASE.md](./DATABASE.md). |
+**Speed.** The query cache is persisted to disk, so returning to the app paints
+your last day before the network answers. Adjacent days are prefetched, and every
+API response is shared across visitors by Vercel's edge cache.
 
 ---
 
-## 🚀 Quick start
+## Stack
 
-```bash
-git clone https://github.com/CarlosFranzetti/ra-nyc
-cd ra-nyc
-npm install
-npm run dev          # http://localhost:8080 — serves the UI *and* /api/events
-```
+| Layer     | Choice |
+| --------- | ------ |
+| UI        | React 19 + TypeScript, Tailwind CSS 3 |
+| Data      | TanStack Query, persisted to `localStorage` |
+| Build     | Vite 7 |
+| API       | Vercel serverless functions (`api/`) |
+| Hosting   | Vercel |
+| Analytics | Vercel Analytics (no cookies, no consent banner) |
+| Database  | Optional Neon — artist links only, degrades to live lookups without it |
 
-**No environment variables are required.** The app talks to Resident Advisor's
-public GraphQL endpoint through our own serverless function; nothing is
-authenticated.
-
-Two are optional — see `.env.example`:
-
-| Variable | Effect if set |
-| --- | --- |
-| `DATABASE_URL` | Neon connection string. Caches resolved DJ links durably and enables hand corrections. See [DATABASE.md](./DATABASE.md). |
-| `SOUNDCLOUD_CLIENT_ID` (+ `SOUNDCLOUD_CLIENT_SECRET`) | Enables SoundCloud set search — the preferred source. Set **both** if your credentials came from SoundCloud's developer portal; set the id alone only for a web-player-style client id. Getting this wrong 401s silently and looks like SoundCloud having no sets — `GET /api/artist` reports the live mode in its `soundcloud` field. Without either, Mixcloud and the Internet Archive fill the list. |
-| `YOUTUBE_API_KEY` | Adds long-form YouTube sets as a further fallback. |
-| `DISCOGS_TOKEN` | Exact Discogs artist pages instead of search links, and Discogs prose as a bio fallback. |
-
-| Script              | What it does                                    |
-| ------------------- | ----------------------------------------------- |
-| `npm run dev`       | Vite dev server, with `api/` mounted as routes   |
-| `npm run build`     | Production build to `dist/`                      |
-| `npm run preview`   | Serve the built `dist/` (static only, no `/api`) |
-| `npm run typecheck` | Type-check both the app and the API functions    |
-
-> `npm run dev` runs the real `api/events.ts` handler through a small Vite
-> middleware (see `vite.config.ts`), so local behaviour matches production.
-> `vercel dev` works too if you have the Vercel CLI installed.
+Sets come from SoundCloud, Mixcloud, the Internet Archive and YouTube, each
+behind a common player interface. Only SoundCloud needs credentials; the rest are
+keyless.
 
 ---
 
-## 🔌 How it works
+## How it works
 
 ```
 Browser  ──GET /api/events?date=YYYY-MM-DD──▶  Vercel function
@@ -93,45 +61,34 @@ Browser  ──GET /api/events?date=YYYY-MM-DD──▶  Vercel function
                                                      │  (browser-like headers)
                                                      │
                                               ◀──────┘ JSON, cached at the edge
-                                                        for 5 min (SWR 1 h)
 ```
 
-The browser never calls `ra.co` directly. That matters:
+The browser never calls `ra.co` directly, for three reasons:
 
-- **CORS** — `ra.co/graphql` does not send `Access-Control-Allow-Origin`, so a
-  direct browser call is blocked by the browser.
+- **CORS** — `ra.co/graphql` sends no `Access-Control-Allow-Origin`, so a direct
+  browser call is blocked.
 - **Forbidden headers** — `User-Agent`, `Referer` and `Origin` cannot be set from
-  browser `fetch()`; browsers silently drop them. RA rejects requests that don't
-  look like a browser, so those headers have to be set server-side.
-- **Caching** — one function response is shared by every visitor via Vercel's
-  edge cache, instead of every visitor hammering RA.
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for details.
+  browser `fetch()`; browsers drop them silently. RA rejects requests that don't
+  look like a browser, so those have to be set server-side.
+- **Caching** — one function response is shared by every visitor at the edge,
+  instead of every visitor hitting RA.
 
 ---
 
-## 📚 Documentation
+## Documentation
 
-| File                                 | Contents                                                      |
-| ------------------------------------ | ------------------------------------------------------------- |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | How the pieces fit, request flow, caching, file map            |
-| [MIGRATION.md](./MIGRATION.md)       | Lovable → Vercel: what changed and how to finish the deploy    |
-| [DATABASE.md](./DATABASE.md)         | Do you need a database? Neon vs. local Postgres, schema, costs |
-| [ROADMAP.md](./ROADMAP.md)           | Planned: event search, DJ set playback, artist bios            |
-| [memorystate.md](./memorystate.md)   | Running project journal — decisions, state, open questions     |
-
----
-
-## 🚢 Deploying
-
-Push to `main` and Vercel builds it. First-time setup is in
-[MIGRATION.md](./MIGRATION.md#3--connect-the-repo-to-vercel).
+| File | Contents |
+| ---- | -------- |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | How the pieces fit: request flow, playback, caching, file map |
+| [DATABASE.md](./DATABASE.md) | Whether a database is needed at all, and what it would hold |
+| [ROADMAP.md](./ROADMAP.md) | What's planned next |
+| [memorystate.md](./memorystate.md) | Running project journal — decisions, state, open questions |
 
 ---
 
-## 🙏 A note on Resident Advisor
+## A note on Resident Advisor
 
-This app is an unofficial client for RA's public GraphQL API and links back to
+This is an unofficial client for RA's public GraphQL API, and it links back to
 `ra.co` for every event. It's polite by design: results are cached at the edge,
-so RA sees roughly one request per day-view per five minutes, not one per user.
-If RA publishes formal API terms or asks that this stop, honour that.
+so RA sees roughly one request per day-view per five minutes rather than one per
+visitor. If RA publishes formal API terms or asks that this stop, honour that.
