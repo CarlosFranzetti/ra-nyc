@@ -724,6 +724,46 @@ Two features requested for **future** revisions, specified in
 
 ---
 
+### Playback survives navigation — the transport bar
+
+Sets used to play in an embed inside the artist sheet, which meant dismissing the
+sheet killed the audio. **An iframe unmounts with the component that renders
+it**, so no amount of state juggling fixes this from inside a sheet. The player
+had to move out of React's tree: `PlayerProvider` (above the router) owns a 1×1
+host appended to `document.body`, and `PlayerBar` is pure UI reading context.
+
+That also required real control APIs, since an embed only gives you the
+provider's own controls inside their iframe. Each provider now sits behind one
+`PlayerHandle` (`play`/`pause`/`seek`/`destroy` + `seekable`): SoundCloud and
+Mixcloud via their widget APIs, YouTube via the IFrame API (polled — it has no
+progress event), and **Internet Archive natively**, because their `/embed/` has
+no API but they serve the audio file directly, so `<audio>` beats the embed
+outright. Adapters load on demand; no SDK is in the initial bundle.
+
+**Three traps, all of which presented as something else:**
+
+1. **The host must stay in the viewport.** `display:none` or off-screen and the
+   browser may treat the player as backgrounded and suspend it.
+2. **Painting above a sheet ≠ being tappable over one.** An open drawer is a
+   modal and Radix sets `pointer-events:none` on `<body>`. The bar rendered above
+   the overlay, looked completely fine, and silently ate every tap. Caught only
+   by hit-testing the actual pixel — `isVisible()` passed. Fixed with
+   `pointer-events-auto`, plus stopping pointer-down propagation, or tapping
+   *next* also counts as a click outside the dialog and dismisses the sheet.
+3. **Route stubs in the Playwright harness match last-registered-first**, so a
+   catch-all silently swallowed the specific `api.js` stub and playback appeared
+   broken when it wasn't. Not product code, but it cost a debugging round.
+
+Layout is driven by one variable: the bar publishes its measured height as
+`--player-h`, sheets cap themselves with `calc(... - var(--player-h))`, and the
+header sticks at `top: var(--player-h)` and gives up its safe-area inset while
+the bar is there. `--player-h` is `0px` when nothing is playing, so all of it
+stays correct with no conditionals.
+
+Verified 26/26 in mobile Chromium with the providers stubbed, including the
+thing that matters: the timeline keeps advancing across dismissing the artist
+sheet *and* the event sheet under it.
+
 ## 4 · Map of the code
 
 ```

@@ -6,13 +6,15 @@ import {
   Library,
   MonitorPlay,
   Music,
+  Pause,
+  Play,
 } from "lucide-react";
 import {
   Drawer,
   DrawerContent,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import { SetPlayer } from "@/components/SetPlayer";
+import { usePlayer } from "@/context/PlayerContext";
 import { useArtist } from "@/hooks/useArtist";
 import { formatDuration } from "@/lib/formatDuration";
 import { cn } from "@/lib/utils";
@@ -49,28 +51,28 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
  * away and read as leaving the app.
  *
  * Everything renders in-app and in the app's own styling: bio prose is fetched
- * server-side rather than linked out to RA, and sets play in an embedded widget.
+ * server-side rather than linked out to RA, and sets are queued into the
+ * transport bar rather than embedded here — an embed inside this sheet dies
+ * with the sheet, which is exactly what stopped playback on dismiss.
  * The only outbound links are the explicit "Elsewhere" rows at the bottom.
  */
 export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
   const { data, isLoading, error } = useArtist(artist?.id, artist?.name ?? "");
-  const [activeSetId, setActiveSetId] = useState<string | null>(null);
+  const { playSets, toggle, isCurrent, playing } = usePlayer();
   const [bioExpanded, setBioExpanded] = useState(false);
 
-  // Reset per artist, or the next one opens showing the previous artist's
-  // selected set and expanded bio.
+  // Reset per artist, or the next one opens with the previous one's bio already
+  // expanded.
   useEffect(() => {
-    setActiveSetId(null);
     setBioExpanded(false);
   }, [artist?.id]);
 
   const sets = data?.sets ?? [];
-  const activeSet = sets.find((s) => s.id === activeSetId) ?? sets[0] ?? null;
   const links = data?.links ?? [];
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent layer="over" className="max-h-[92vh]">
+      <DrawerContent layer="over" className="max-h-[calc(92vh_-_var(--player-h))]">
         {/* Sticky header so "back" is always reachable without scrolling up. */}
         <div className="flex flex-shrink-0 items-center gap-2 border-b border-border/50 px-3 pb-3 pt-1">
           <button
@@ -103,66 +105,82 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
 
           {data && (
             <>
-              {/* Sets — selectable in place, player swaps without leaving. */}
-              {activeSet ? (
+              {/* Sets are queue entries, not embeds. Tapping one hands the
+                  whole list to the player so next/previous walk this artist's
+                  sets, and playback carries on after this sheet closes. */}
+              {sets.length > 0 ? (
                 <section className="space-y-3">
                   <div className="flex items-baseline justify-between gap-2">
                     <SectionLabel>
                       {sets.length > 1 ? `${sets.length} sets` : "Set"}
                     </SectionLabel>
                     <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
-                      {PROVIDER_LABELS[activeSet.provider]}
+                      Plays above
                     </span>
                   </div>
 
-                  <p className="text-sm font-medium leading-snug text-foreground">
-                    {activeSet.title}
-                  </p>
-                  <SetPlayer key={activeSet.id} set={activeSet} />
-
-                  {sets.length > 1 && (
-                    <div className="space-y-1.5 pt-1">
-                      {sets.map((set) => {
-                        const isActive = set.id === activeSet.id;
-                        const Icon = PROVIDER_ICON[set.provider];
-                        const meta = [
-                          PROVIDER_LABELS[set.provider],
-                          formatDuration(set.duration),
-                          set.plays ? `${set.plays.toLocaleString()} plays` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ");
-                        return (
-                          <button
-                            key={set.id}
-                            onClick={() => setActiveSetId(set.id)}
-                            aria-pressed={isActive}
+                  <div className="space-y-1.5">
+                    {sets.map((set, position) => {
+                      const live = isCurrent(set.id);
+                      const Icon = PROVIDER_ICON[set.provider];
+                      const meta = [
+                        PROVIDER_LABELS[set.provider],
+                        formatDuration(set.duration),
+                        set.plays ? `${set.plays.toLocaleString()} plays` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
+                      return (
+                        <button
+                          key={set.id}
+                          onClick={() =>
+                            live
+                              ? toggle()
+                              : playSets(sets, position, artist?.name ?? null)
+                          }
+                          aria-pressed={live}
+                          aria-label={
+                            live && playing ? `Pause ${set.title}` : `Play ${set.title}`
+                          }
+                          className={cn(
+                            "flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-smooth active:scale-[0.99]",
+                            live
+                              ? "border-primary/50 bg-secondary"
+                              : "border-border/50 bg-card hover:bg-accent active:bg-accent",
+                          )}
+                        >
+                          <span
                             className={cn(
-                              "flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-smooth active:scale-[0.99]",
-                              isActive
-                                ? "border-primary/50 bg-secondary"
-                                : "border-border/50 bg-card hover:bg-accent active:bg-accent",
+                              "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full",
+                              live
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-secondary text-foreground",
                             )}
                           >
-                            <Icon
-                              className={cn(
-                                "h-3.5 w-3.5 flex-shrink-0",
-                                isActive ? "text-primary" : "text-muted-foreground",
-                              )}
-                            />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[13px] text-foreground">
-                                {set.title}
-                              </span>
-                              <span className="block text-[11px] text-muted-foreground">
-                                {meta}
-                              </span>
+                            {live && playing ? (
+                              <Pause className="h-3.5 w-3.5" />
+                            ) : (
+                              <Play className="h-3.5 w-3.5" />
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] text-foreground">
+                              {set.title}
                             </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                            <span className="block truncate text-[11px] text-muted-foreground">
+                              {meta}
+                            </span>
+                          </span>
+                          <Icon
+                            className={cn(
+                              "h-3.5 w-3.5 flex-shrink-0",
+                              live ? "text-primary" : "text-muted-foreground/70",
+                            )}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </section>
               ) : (
                 <section className="rounded-lg border border-border/50 bg-card p-4 text-center">

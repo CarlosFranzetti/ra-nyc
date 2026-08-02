@@ -247,6 +247,50 @@ whichever it came from. RA's field is an educated guess at their schema, so that
 query asks for it and retries without it on error; one unknown field fails an
 entire GraphQL query.
 
+## Playback
+
+Sets play in a persistent transport bar docked at the top of the page, not in an
+embed inside the artist sheet. The whole design follows from one constraint: an
+iframe unmounts with the component that renders it, so a player living inside a
+sheet stops the moment you dismiss the sheet — which is precisely when you want
+to carry on browsing.
+
+So `PlayerProvider` (mounted above the router) owns a 1×1 host appended to
+`document.body`, outside React's tree entirely. Nothing a sheet does can unmount
+it. `PlayerBar` is pure UI reading from context; it holds no player.
+
+**Providers sit behind one `PlayerHandle`** — `play`, `pause`, `seek`, `destroy`,
+plus a `seekable` flag — so the transport is provider-agnostic:
+
+| Provider | Control surface | Notes |
+| --- | --- | --- |
+| SoundCloud | Widget API (postMessage) | `auto_play=true` *and* an explicit `play()` on ready — the URL flag is what satisfies mobile autoplay policy |
+| Mixcloud | Widget API | Gated on a `ready` promise; control calls before it resolves are dropped |
+| Internet Archive | native `<audio>` | Their `/embed/` has no API, but Archive serves the file directly, so we skip the embed and resolve a URL from `/metadata/{id}` |
+| YouTube | IFrame API | Polls for position — the API reports state transitions but has no progress event |
+
+Adapters are loaded on demand, so no provider SDK is in the initial bundle.
+
+Two things here are non-obvious enough to be worth stating plainly, because both
+looked like something else entirely:
+
+1. **The host must stay in the viewport.** `display:none` and off-screen
+   positioning both risk the browser treating the player as backgrounded and
+   suspending it. It is 1×1 at zero opacity *in view* instead.
+2. **Painting above a sheet is not the same as being tappable over one.** An open
+   drawer is a modal, and Radix sets `pointer-events:none` on `<body>` — the bar
+   rendered above the overlay, looked fine, and silently ate every tap. It opts
+   back in with `pointer-events-auto`, and then stops pointer-down propagation,
+   or tapping *next* would also register as a click outside the dialog and
+   dismiss the sheet you were reading.
+
+The sheets cap their own height with `calc(... - var(--player-h))`, and the
+header sticks at `top: var(--player-h)`, so nothing ends up hidden underneath the
+bar. `--player-h` is `0px` whenever nothing is playing, which keeps every one of
+those rules correct with no conditional. The header also hands its safe-area
+inset to the bar while the bar is present — whichever element is actually at the
+top of the screen owns the notch.
+
 ## Caching and perceived speed
 
 Four layers, cheapest first:
