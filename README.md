@@ -67,7 +67,7 @@ Two are optional — see `.env.example`:
 | Variable | Effect if set |
 | --- | --- |
 | `DATABASE_URL` | Neon connection string. Caches resolved DJ links durably and enables hand corrections. See [DATABASE.md](./DATABASE.md). |
-| `SOUNDCLOUD_CLIENT_ID` | Enables SoundCloud set search — the preferred source. Their API registration has been closed to new apps for years, so this can't be self-served; without it Mixcloud and the Internet Archive fill the list. |
+| `SOUNDCLOUD_CLIENT_ID` (+ `SOUNDCLOUD_CLIENT_SECRET`) | Enables SoundCloud set search — the preferred source. Set **both** if your credentials came from SoundCloud's developer portal; set the id alone only for a web-player-style client id. Getting this wrong 401s silently and looks like SoundCloud having no sets — `GET /api/artist` reports the live mode in its `soundcloud` field. Without either, Mixcloud and the Internet Archive fill the list. |
 | `YOUTUBE_API_KEY` | Adds long-form YouTube sets as a further fallback. |
 | `DISCOGS_TOKEN` | Exact Discogs artist pages instead of search links, and Discogs prose as a bio fallback. |
 

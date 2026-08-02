@@ -358,16 +358,37 @@ and is now first in preference order — but their API registration has been clo
 to new apps for years. The common workaround is to scrape a `client_id` out of
 their web bundle; **deliberately not done here.** It circumvents an access
 control they put up on purpose and breaks every time they rebuild. So SoundCloud
-search is opt-in via `SOUNDCLOUD_CLIENT_ID` (only useful if you already have one).
-Without it, SoundCloud degrades to a search link. Embedding an
-*already-resolved* SoundCloud URL needs no key, so playback is identical either
-way — only discovery is gated.
+search is opt-in via credentials you already hold. Without them, SoundCloud
+degrades to a search link. Embedding an *already-resolved* SoundCloud URL needs
+no key, so playback is identical either way — only discovery is gated.
+
+**The two credential shapes — the thing that will bite you.** SoundCloud issues
+two kinds of credential and they are not interchangeable:
+
+- **Developer portal** → a client id **and** a secret. These only work against
+  `api.soundcloud.com`, and only after exchanging them for a bearer token via
+  `client_credentials`. A bare client id is rejected there (has been since 2021).
+- **Web-player style** → a lone client id, used against `api-v2.soundcloud.com`.
+
+`soundcloudMode()` branches on which variables are set: both → `official`, id
+alone → `api-v2`, neither → `off`. **Setting only `SOUNDCLOUD_CLIENT_ID` when you
+actually hold a portal id/secret pair is the likely mistake, and it fails
+silently** — every request 401s, SoundCloud contributes no sets, and that reads
+exactly like the DJ having nothing there. This cost real debugging time once
+already: a key was added, sets stayed empty, and nothing anywhere said why.
+
+So `/api/artist` now reports the live mode in a `soundcloud` field — the mode
+name only, never a value. **If SoundCloud sets are missing, check that field
+first.** `off` means the env var never reached the running deployment; `api-v2`
+with a portal pair means the secret is missing. Note also that Vercel does *not*
+redeploy when you add an environment variable — the running deployment keeps the
+old (empty) env until something triggers a new build.
 
 **Providers now, in preference order:**
 
 | Provider | Search | Embed | Key |
 | --- | --- | --- | --- |
-| SoundCloud | `api-v2` | widget | required (`SOUNDCLOUD_CLIENT_ID`) |
+| SoundCloud | official API or `api-v2` | widget | required (see below) |
 | Mixcloud | public API | widget | none |
 | Internet Archive | `advancedsearch` | `/embed/` | none |
 | YouTube | Data API v3 | `/embed/` | optional (`YOUTUBE_API_KEY`) |
