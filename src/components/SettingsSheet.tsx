@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Settings } from "lucide-react";
 import {
   Drawer,
@@ -71,6 +72,7 @@ function OptionButton({
 }
 
 export function SettingsSheet() {
+  const [open, setOpen] = useState(false);
   const {
     colorTheme,
     setColorTheme,
@@ -82,8 +84,23 @@ export function SettingsSheet() {
     setNavStyle,
   } = useTheme();
 
+  /**
+   * Close on any tap that isn't an option.
+   *
+   * vaul already dismisses on the overlay, but the panel itself has a lot of
+   * dead space — headings, gaps, the padding around the grids — and tapping
+   * those felt like the sheet was stuck. Anything that isn't an interactive
+   * control now closes it, so there is no way to tap and have nothing happen.
+   */
+  const closeUnlessOption = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (!target.closest("button, a, input, [role='button']")) {
+      setOpen(false);
+    }
+  };
+
   return (
-    <Drawer direction="right">
+    <Drawer direction="right" open={open} onOpenChange={setOpen}>
       <DrawerTrigger asChild>
         <button
           aria-label="Customize"
@@ -94,7 +111,9 @@ export function SettingsSheet() {
       </DrawerTrigger>
 
       <DrawerContent direction="right" className="overflow-y-auto">
-        <div className="p-4 pt-safe">
+        {/* min-h-full so the dead space below the options is still a close
+            target, rather than only the content box being tappable. */}
+        <div className="min-h-full p-4 pt-safe" onClick={closeUnlessOption}>
           <DrawerTitle className="text-base font-semibold text-foreground">
             Customize
           </DrawerTitle>
