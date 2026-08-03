@@ -517,18 +517,12 @@ async function resolveMixcloud(
   biog: string | null;
   sets: ArtistSet[];
 } | null> {
-  // Same as SoundCloud: a handle in the RA bio settles it outright. Mixcloud
-  // usernames are the URL path, so there is nothing to resolve.
-  let username = context.handles.mixcloud ?? null;
-  let match: NonNullable<McUserSearch["data"]>[number] | undefined;
-
-  if (!username) {
+  const searchForUser = async () => {
     const search = await fetchJson<McUserSearch>(
       `https://api.mixcloud.com/search/?q=${encodeURIComponent(name)}&type=user&limit=5`,
       signal,
     );
-
-    match = pickByContext(
+    return pickByContext(
       (search?.data ?? []).filter(
         (u) =>
           (u.username && isPlausibleMatch(name, u.username)) ||
@@ -537,17 +531,39 @@ async function resolveMixcloud(
       context,
       (u) => [u.username, u.name, u.biog],
     );
-    username = match?.username ?? null;
+  };
+
+  const load = async (username: string) =>
+    Promise.all([
+      fetchJson<McUser>(`https://api.mixcloud.com/${encodeURIComponent(username)}/`, signal),
+      fetchJson<McCloudcasts>(
+        `https://api.mixcloud.com/${encodeURIComponent(username)}/cloudcasts/?limit=${CATALOGUE_LIMIT}`,
+        signal,
+      ),
+    ]);
+
+  // Same as SoundCloud: a handle in the RA bio settles it outright. Mixcloud
+  // usernames are the URL path, so there is nothing to resolve.
+  let match: NonNullable<McUserSearch["data"]>[number] | undefined;
+  let username = context.handles.mixcloud ?? null;
+  let profile: McUser | null = null;
+  let casts: McCloudcasts | null = null;
+
+  if (username) {
+    [profile, casts] = await load(username);
+    // A handle lifted from a bio can be stale, or point at an account Mixcloud
+    // has since removed. Falling back to the search rather than giving up is
+    // the difference between one dead link costing this artist their sets and
+    // costing them nothing.
+    if (!profile && !casts?.data?.length) username = null;
   }
 
-  if (!username) return null;
-  const [profile, casts] = await Promise.all([
-    fetchJson<McUser>(`https://api.mixcloud.com/${encodeURIComponent(username)}/`, signal),
-    fetchJson<McCloudcasts>(
-      `https://api.mixcloud.com/${encodeURIComponent(username)}/cloudcasts/?limit=${CATALOGUE_LIMIT}`,
-      signal,
-    ),
-  ]);
+  if (!username) {
+    match = await searchForUser();
+    username = match?.username ?? null;
+    if (!username) return null;
+    [profile, casts] = await load(username);
+  }
 
   const sets: ArtistSet[] = (casts?.data ?? [])
     .filter((c): c is NonNullable<typeof c> & { key: string } => Boolean(c.key))
@@ -569,10 +585,9 @@ async function resolveMixcloud(
         null,
     }));
 
-  // A handle lifted from a bio can be stale or simply wrong. If Mixcloud knows
-  // nothing about it, say we found nothing rather than publishing a dead
-  // profile link under the artist's name.
-  if (!match && !profile && sets.length === 0) return null;
+  // Nothing behind the name at all — say so rather than publishing a dead
+  // profile link under the artist's.
+  if (!profile && sets.length === 0) return null;
 
   return {
     user: username,
@@ -1002,9 +1017,21 @@ export async function getArtistLinks(
     // what tells those two which of several same-named accounts to take. The
     // three sources that don't need it are started first and awaited after, so
     // the dependency costs an ordering rather than a round trip.
-    const archivePending = resolveArchive(name, controller.signal);
-    const youtubePending = resolveYouTube(name, controller.signal);
-    const discogsPending = resolveDiscogs(name, controller.signal);
+    //
+    // `settle` is what makes that safe. These three are in flight across an
+    // `await`, so if anything between here and their `await` throws, they
+    // become unhandled rejections and take the process down rather than the
+    // request. It logs instead of swallowing, because a side source that fails
+    // silently is precisely how the search-window bug hid for three rounds.
+    const settle = <T>(work: Promise<T>, label: string, fallback: T): Promise<T> =>
+      work.catch((error) => {
+        console.error(`[artistLinks] ${label} failed`, error);
+        return fallback;
+      });
+
+    const archivePending = settle(resolveArchive(name, controller.signal), "archive", []);
+    const youtubePending = settle(resolveYouTube(name, controller.signal), "youtube", []);
+    const discogsPending = settle(resolveDiscogs(name, controller.signal), "discogs", null);
 
     const ra = await resolveRa(artistId, controller.signal);
     // A failed or bio-less RA lookup yields an empty context, and matching
