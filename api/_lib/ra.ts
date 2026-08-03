@@ -309,9 +309,27 @@ export function isValidDate(value: string): boolean {
  */
 export const SEARCH_WINDOW_DAYS = 60;
 
-/** Pages per direction. Each is one request to RA; the edge cache absorbs repeats. */
+
+/** Requests per direction. Each is one call to RA; the edge cache absorbs repeats. */
 const SEARCH_PAGES = 3;
 const SEARCH_PAGE_SIZE = 100;
+
+/**
+ * Backward sub-windows, in days before today, each fetched with one request.
+ *
+ * Deliberately not equal spans. A page is 100 listings and NYC runs ~25 events
+ * a day, so a request only covers about four days — split the window evenly and
+ * the "nearest" slice is still 20 days wide, of which you see the oldest four.
+ * That is how a search for someone who played last week answered with a gig
+ * from two months ago.
+ *
+ * Doubling spans instead: the last four days are covered completely, and
+ * coverage thins out as the results get less interesting. It is still sampling
+ * rather than exhaustive — without a real search API on RA's side it cannot be
+ * anything else — but it samples the end people are actually asking about, and
+ * `truncated` tells the UI to say so.
+ */
+const PAST_BOUNDARIES = [0, 4, 12, 28, 60] as const;
 
 /** Most results anyone scrolls; also bounds the response size. */
 export const SEARCH_LIMIT = 60;
@@ -352,28 +370,25 @@ function matchesTerm(event: RAEvent, normalizedTerm: string): boolean {
   return haystacks.some((value) => normalizeName(value).includes(normalizedTerm));
 }
 
+/** Runs a set of range/page requests in parallel and flattens the results. */
 async function collect(
-  from: string,
-  to: string,
+  requests: { from: string; to: string; page: number }[],
   areaId: number,
   signal?: AbortSignal,
 ): Promise<{ events: RAEvent[]; full: boolean }> {
   const pages = await Promise.all(
-    Array.from({ length: SEARCH_PAGES }, (_, i) =>
+    requests.map((request) =>
       fetchListings({
-        from,
-        to,
+        ...request,
         areaId,
         pageSize: SEARCH_PAGE_SIZE,
-        page: i + 1,
         signal,
       }).catch(() => [] as RAListing[]),
     ),
   );
-  const listings = pages.flat();
   return {
-    events: dedupeById(listings.map(transformListing)),
-    // Every page came back full, so RA very likely had more to give.
+    events: dedupeById(pages.flat().map(transformListing)),
+    // Every request came back full, so RA very likely had more to give.
     full: pages.every((page) => page.length >= SEARCH_PAGE_SIZE),
   };
 }
@@ -393,9 +408,34 @@ export async function searchRAEvents(options: {
   const today = shiftDate(0);
   const normalized = normalizeName(options.term);
 
+  // Forward and backward are paged differently, and the reason is not symmetry.
+  //
+  // RA returns a range in ascending date order, so paging one wide range gives
+  // you its *earliest* listings. Ahead, that is exactly right — the soonest
+  // events are the ones you want. Behind, it is precisely wrong: three pages of
+  // a 60-day backward range returned events from two months ago while the gig
+  // last week was never fetched, which is the opposite of "when did they last
+  // play". So the backward direction is split into consecutive sub-windows and
+  // the nearest one is fetched first.
   const [ahead, behind] = await Promise.all([
-    collect(today, shiftDate(SEARCH_WINDOW_DAYS), areaId, options.signal),
-    collect(shiftDate(-SEARCH_WINDOW_DAYS), today, areaId, options.signal),
+    collect(
+      Array.from({ length: SEARCH_PAGES }, (_, i) => ({
+        from: today,
+        to: shiftDate(SEARCH_WINDOW_DAYS),
+        page: i + 1,
+      })),
+      areaId,
+      options.signal,
+    ),
+    collect(
+      PAST_BOUNDARIES.slice(1).map((edge, i) => ({
+        from: shiftDate(-edge),
+        to: shiftDate(-PAST_BOUNDARIES[i]!),
+        page: 1,
+      })),
+      areaId,
+      options.signal,
+    ),
   ]);
 
   const matching = (bucket: RAEvent[]) =>
