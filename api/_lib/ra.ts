@@ -388,8 +388,11 @@ async function collect(
   );
   return {
     events: dedupeById(pages.flat().map(transformListing)),
-    // Every request came back full, so RA very likely had more to give.
-    full: pages.every((page) => page.length >= SEARCH_PAGE_SIZE),
+    // Any saturated request means RA had more in that window than we took.
+    // `some`, not `every`: the trailing page of a window is usually short even
+    // when earlier windows were cut off, and reporting "complete" then would be
+    // a lie in the direction that matters.
+    full: pages.some((page) => page.length >= SEARCH_PAGE_SIZE),
   };
 }
 
@@ -428,11 +431,16 @@ export async function searchRAEvents(options: {
       options.signal,
     ),
     collect(
-      PAST_BOUNDARIES.slice(1).map((edge, i) => ({
-        from: shiftDate(-edge),
-        to: shiftDate(-PAST_BOUNDARIES[i]!),
-        page: 1,
-      })),
+      PAST_BOUNDARIES.slice(1).flatMap((edge, i) => {
+        const range = { from: shiftDate(-edge), to: shiftDate(-PAST_BOUNDARIES[i]!) };
+        // Two pages for the nearest window, one for the rest. Four days of NYC
+        // is ~125 listings against a 100-row page, so a single page stopped a
+        // day or two short — which is exactly the day or two anyone searching
+        // for a past gig cares about most.
+        return i === 0
+          ? [{ ...range, page: 1 }, { ...range, page: 2 }]
+          : [{ ...range, page: 1 }];
+      }),
       areaId,
       options.signal,
     ),
