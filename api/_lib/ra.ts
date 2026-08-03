@@ -312,24 +312,29 @@ export const SEARCH_WINDOW_DAYS = 60;
 
 /** Requests per direction. Each is one call to RA; the edge cache absorbs repeats. */
 const SEARCH_PAGES = 3;
-const SEARCH_PAGE_SIZE = 200;
+const SEARCH_PAGE_SIZE = 100;
 
 /**
- * Backward sub-windows, in days before today, each fetched with one request.
+ * How the recent past is covered: one request per day, for this many days back.
  *
- * Deliberately not equal spans. A page is 100 listings and NYC runs ~25 events
- * a day, so a request only covers about four days — split the window evenly and
- * the "nearest" slice is still 20 days wide, of which you see the oldest four.
- * That is how a search for someone who played last week answered with a gig
- * from two months ago.
+ * RA returns a date range in ascending order, so paging a wide backward range
+ * hands you its *oldest* listings — the opposite of "when did they last play".
+ * Narrowing the range helps but is hard to size, because NYC generates roughly
+ * a hundred listing *rows* a day: every day of a multi-day run is its own row,
+ * the same quirk behind the repeating-event bug. A four-day window at 100 rows
+ * a page reached back only as far as day two.
  *
- * Doubling spans instead: the last four days are covered completely, and
- * coverage thins out as the results get less interesting. It is still sampling
- * rather than exhaustive — without a real search API on RA's side it cannot be
- * anything else — but it samples the end people are actually asking about, and
- * `truncated` tells the UI to say so.
+ * A day per request is exact rather than estimated, and it covers the window
+ * people actually ask about. Beyond it, coverage degrades to sampling — which
+ * is what `truncated` exists to admit.
  */
-const PAST_BOUNDARIES = [0, 4, 12, 28, 60] as const;
+const PAST_DAYS_EXACT = 4;
+
+/** Sampled ranges beyond the day-by-day window, as [from, to] days before today. */
+const PAST_SAMPLED: readonly (readonly [number, number])[] = [
+  [14, PAST_DAYS_EXACT],
+  [40, 14],
+];
 
 /** Most results anyone scrolls; also bounds the response size. */
 export const SEARCH_LIMIT = 60;
@@ -383,7 +388,16 @@ async function collect(
         areaId,
         pageSize: SEARCH_PAGE_SIZE,
         signal,
-      }).catch(() => [] as RAListing[]),
+      }).catch((cause: unknown) => {
+        // One dead window must not fail the whole search, but swallowing it
+        // silently is how a rejected pageSize looked exactly like "this artist
+        // has no past gigs" for three rounds of debugging.
+        console.warn(
+          `[search] window ${request.from}..${request.to} p${request.page} failed`,
+          cause instanceof Error ? cause.message : cause,
+        );
+        return [] as RAListing[];
+      }),
     ),
   );
   return {
@@ -431,16 +445,18 @@ export async function searchRAEvents(options: {
       options.signal,
     ),
     collect(
-      PAST_BOUNDARIES.slice(1).flatMap((edge, i) => {
-        const range = { from: shiftDate(-edge), to: shiftDate(-PAST_BOUNDARIES[i]!) };
-        // Two pages for the nearest window, one for the rest. NYC produces far
-        // more listing rows per day than events — every day of a multi-day run
-        // is its own row — so the nearest window needs the depth. This is the
-        // day or two anyone searching for a past gig cares about most.
-        return i === 0
-          ? [{ ...range, page: 1 }, { ...range, page: 2 }]
-          : [{ ...range, page: 1 }];
-      }),
+      [
+        // One request per day for the recent past: exact, not estimated.
+        ...Array.from({ length: PAST_DAYS_EXACT }, (_, i) => {
+          const day = shiftDate(-(i + 1));
+          return { from: day, to: day, page: 1 };
+        }),
+        ...PAST_SAMPLED.map(([from, to]) => ({
+          from: shiftDate(-from),
+          to: shiftDate(-to),
+          page: 1,
+        })),
+      ],
       areaId,
       options.signal,
     ),
