@@ -8,7 +8,8 @@ get productive without re-deriving anything.
 otherwise have to reverse-engineer from a diff, append it to the log.
 
 **Last updated:** 2026-08-03
-**Branch:** `claude/lovable-vercel-migration-hyp0a1`
+**Branch:** `claude/lovable-vercel-migration-hyp0a1` (name set by the session
+harness; see §5)
 
 ---
 
@@ -28,13 +29,13 @@ seconds on a phone on the subway?"
 
 | | |
 | --- | --- |
-| **Hosting** | Vercel (migrated from Lovable) |
+| **Hosting** | Vercel (migrated from a hosted app builder) |
 | **Build** | ✅ `npm run build` passes |
 | **Types** | ✅ `npm run typecheck` passes (app + api) |
 | **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
 | **Database** | Optional Neon, caches artist links only. See [DATABASE.md](./DATABASE.md) |
 | **Env vars** | None required; `DATABASE_URL` and `DISCOGS_TOKEN` optional |
-| **Tests** | ✅ 64 Vitest units + 45 Playwright assertions (`npm run test:all`) |
+| **Tests** | ✅ 86 Vitest units + 71 Playwright assertions (`npm run test:all`) |
 | **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
 
@@ -42,7 +43,7 @@ seconds on a phone on the subway?"
 
 React 19 · TypeScript 5.9 · Vite 7 · Tailwind 3.4 · TanStack Query 5 ·
 React Router 7 · date-fns 4 · lucide-react · vaul · react-day-picker ·
-Vercel Analytics · four Vercel Node 22 functions. Dev-only: Vitest,
+Vercel Analytics · five Vercel Node 22 functions. Dev-only: Vitest,
 playwright-core.
 
 ### Routes
@@ -64,22 +65,24 @@ it. Sets play in a transport bar docked to the bottom, which outlives every shee
 
 | Command | What it runs |
 | --- | --- |
-| `npm test` | 64 Vitest units over the pure functions in `api/_lib` and `src/lib` |
+| `npm test` | 86 Vitest units over the pure functions in `api/_lib` and `src/lib` |
 | `npm run test:e2e` | 32 Playwright assertions for the transport bar |
 | `npm run test:search` | 21 Playwright assertions for search and venue maps |
-| `npm run test:all` | all three |
+| `npm run test:layout` | 18 Playwright assertions for responsive layout and preferences |
+| `npm run test:all` | all four |
 
 ---
 
 ## 3 · Decision log
 
-### 2026-07-29 — Migrated Lovable → Vercel
+### 2026-07-29 — Migrated to Vercel
 
-Full detail in [MIGRATION.md](./MIGRATION.md). The decisions worth remembering:
+The migration doc it was written up in has since been retired; the operational
+parts live in [INSTALL.md](./INSTALL.md). The decisions worth remembering:
 
 **The repo did not build.** `package.json` had `tailwindcss@^4` while every
 config and stylesheet was written for v3. `npm run build` failed outright on a
-clean checkout. Lovable's sandbox hid it.
+clean checkout. The builder's preview sandbox hid it.
 → **Pinned Tailwind to `^3.4`** rather than upgrading forward. A hosting
 migration and a framework upgrade in one commit means a failure has two possible
 causes. v4 is logged in [ROADMAP.md](./ROADMAP.md) as its own task.
@@ -95,7 +98,7 @@ independent reasons, any one sufficient:
    Now one edge-cached response serves everyone for 5 minutes.
 
 **Deleted Supabase.** Zero tables in the generated types, zero imports in the
-app. Pure Lovable scaffolding. Also dropped `class-variance-authority` (unused).
+app. Pure generator scaffolding. Also dropped `class-variance-authority` (unused).
 → This is also the direct answer to "do I even need a database?": **you already
 had one, and the app never touched it.**
 
@@ -105,7 +108,7 @@ invokes and what connect middleware provides, so no adapter is needed.
 → Chosen over requiring `vercel dev` so that `npm run dev` alone gives a
 faithful local environment. `vercel dev` still works if preferred.
 
-**Changed `server.host` from `"::"` to `true`.** Lovable's IPv6-literal bind
+**Changed `server.host` from `"::"` to `true`.** The IPv6-literal bind
 crashes with `EAFNOSUPPORT` on hosts without IPv6 — including the container this
 migration was done in.
 
@@ -130,7 +133,7 @@ route-segment config, not `vercel.json`.
 needs no declaration. Node major version moved to `engines.node` in
 `package.json`, which also overrides the dashboard setting — so it lives in git
 instead of in project state. Full writeup in
-[MIGRATION.md §7](./MIGRATION.md#7--troubleshooting-the-import).
+[INSTALL.md](./INSTALL.md#troubleshooting).
 
 ### 2026-07-29 — First deploy crashed: wrong function signature
 
@@ -191,7 +194,7 @@ and the budget headers; the image proxy keeps a separate bucket.
 
 ### 2026-07-30 — The original was recovered, and merged in
 
-The user supplied `LOVES.zip`: a full export of the original Lovable project,
+The user supplied `LOVES.zip`: a full export of the original project,
 including the Supabase edge function and the shadcn tree. This is the code that
 `27c90a2`'s commit message described and that neither git remote still had.
 
@@ -585,13 +588,13 @@ Also installed **Vercel Analytics** (`<Analytics />` in `App.tsx`, inside
 banner. Worth having now: ROADMAP §2's database phase hinges on whether anyone
 actually taps DJ names.
 
-### 2026-07-29 — Recovering the original Lovable app
+### 2026-07-29 — Recovering the original app
 
 The user reported missing "themes and preferences". They were right, and the
 earlier conclusion here — that no such feature ever existed — was wrong. It was
 drawn from this repo's git history, which turned out not to be the whole story.
 
-Lovable's project edit log (`list_edits`) still records commit `27c90a2`
+The builder's project edit log (`list_edits`) still records commit `27c90a2`
 (2026-01-29), whose message describes the real original:
 
 > shadcn/ui components with Tailwind CSS · **Dynamic theming system (4 colour
@@ -601,13 +604,13 @@ Lovable's project edit log (`list_edits`) still records commit `27c90a2`
 > details sheets, and skeletons
 
 **That code is gone.** Verified three ways:
-- Lovable `read_file`/`get_diff` at those SHAs → `404 commit_not_found`; the
+- The builder's `read_file`/`get_diff` at those SHAs → `404 commit_not_found`; the
   objects were dropped when `531b20e "Recreated project scaffold"` ran.
 - `git fetch origin 27c90a2` → `upload-pack: not our ref`.
 - `refs/pull/*` on GitHub holds only PRs 1–3, all from this migration. The old
   log shows *different* PRs also numbered 1 and 2, so the GitHub repo was
   deleted and recreated — which is what wiped both lineages.
-- The published build at `ra-nyc.lovable.app` returns 403, so the bundle can't
+- The builder's published build returns 403, so the bundle can't
   be scraped either.
 
 → Rebuilt the feature set from that manifest rather than resurrecting the code.
@@ -653,8 +656,8 @@ browsers during Vercel builds. Committing a real suite is ROADMAP §0.
 
 ### 2026-07-29 — Touch, navigation and perceived speed
 
-Reported as "touch response is quite different than the original on Lovable".
-Investigated; the component code is byte-identical to the Lovable version, so
+Reported as "touch response is quite different than the original".
+Investigated; the component code is byte-identical to the original, so
 the difference was never the components. Real causes found and fixed:
 
 - **The date strip was clipped, not scrollable.** `DateSelector` had
@@ -680,8 +683,8 @@ overdue.
 
 **Still open:** the user also reports "missing themes and preferences". No
 theme switcher or preferences UI exists in *any* commit in this repo's history
-— checked all 15. If the Lovable sandbox has unsynced work, it needs to be
-exported; the Lovable MCP connector requires an approval this session could not
+— checked all 15. If the builder's sandbox has unsynced work, it needs to be
+exported; its MCP connector requires an approval this session could not
 grant.
 
 ### 2026-07-29 — Event images never loaded
@@ -690,7 +693,7 @@ Once events rendered, the flyers didn't. `EventCard` built the URL as
 `` `https://images.ra.co/${filename}` ``, but RA's `images[].filename` is
 usually **already an absolute URL** — so this produced
 `https://images.ra.co/https://images.ra.co/…`, which 404s. Carried over from
-the Lovable build; it had never worked.
+the original build; it had never worked.
 
 → `src/lib/raImage.ts` resolves both shapes (absolute, protocol-relative, bare
 path, leading slash, blank). A failed load now removes the `<img>` instead of
@@ -951,21 +954,192 @@ a one-off or TBA location) and *Open in Maps* still works from the name alone.
 `maps.apple.com` rather than `geo:` because it degrades to a web map everywhere
 that isn't iOS.
 
+### 2026-08-03 — Matching gets a second signal, and the desktop gets a layout
+
+**The prefix rule was a hole, and it was wider than it looked.**
+`isPlausibleMatch` accepted any candidate that started with the artist's
+normalised name once that name reached five characters. So `Cosmo` matched
+`cosmonaut`, `Lakuti` matched `lakutifanpage`. Not near misses — different
+accounts.
+
+The damage was not one bad set. Matching a *profile* sets `ownUploads`, and that
+switches off the per-track filter entirely (`artistLinks.ts`, the
+`ownUploads || titleMentions(…)` filter). One wrong profile adopts a whole
+catalogue and presents it as the artist's.
+
+A length cap does not fix it. `cosmonaut` is four characters longer than
+`cosmo` — *shorter* than the legitimate `music` in `avalonemersonmusic`. So the
+test is on **what** the extra characters are: a small allowlist of decorations
+real accounts add (`music`, `official`, `dj`, `uk`, `nyc`, …), up to two
+stacked. Anything carrying meaning of its own — `naut`, `fanpage`, `edits` —
+fails. Made symmetric while there, so `djstingray` works the same as
+`objektsound`; the old rule accepted a *shorter* candidate too, which meant
+`Marcel Dettmann` would take an account called `marcel`.
+
+**Names alone cannot go further than that.** Two DJs called Cosmo produce
+identical strings; no tightening separates them. What separates them is
+context, and RA already publishes it in the biography we fetch for the artist
+sheet and then use for nothing else. New `api/_lib/artistContext.ts`:
+
+- **Handles.** `soundcloud.com/objekt` in a bio is not corroboration, it is the
+  answer — it skips the name search entirely via `/resolve`.
+- **Terms.** Places, labels, collectives, radio shows. These only ever *rank*
+  candidates that already passed the name test. Rescuing a name-failing
+  candidate on keyword overlap would trade a rare wrong answer for a common one.
+
+The parenthetical is the part worth remembering: RA disambiguates same-named
+artists as `Cosmo (NY)`, and `normalizeName` strips it before matching ever sees
+it. It costs nothing, needs no bio, and it is the single most useful fact RA
+will hand over about which Cosmo this is.
+
+Ordering changed for it: RA now resolves *before* SoundCloud and Mixcloud, with
+Archive/YouTube/Discogs started first and awaited after, so the dependency costs
+an ordering rather than a round trip.
+
+> **Honest limit.** RA's `biography` field is a guess at their schema and often
+> comes back empty. With no bio the context is empty and matching behaves
+> exactly as it did before — minus the tightened prefix rule. The parenthetical
+> is the only signal that always survives.
+
+Migration `0006` clears `sets`, `soundcloud_user` and `mixcloud_user` on every
+non-manual row. Clearing the *user* columns is the point: a bad
+`soundcloud_user` is what produced the bad sets, and leaving it would have the
+next resolve trust the same account again.
+
+**Spacing and text size were decoupled, and that was the wrong fix.** Spacing is
+px so that scaling type doesn't scale padding one-for-one — an early version did
+and "Larger" blew the layout apart. But *fully* independent meant that at
+"Larger" the type grew 12% inside padding that hadn't moved, so cards read
+cramped, and at "Smaller" the same padding read empty. `--space` is now
+`--density × (1 + (--text-scale − 1) × 0.6)`: coupled at 60% strength. Measured
+across all nine combinations, padding-to-type spread fell from 0.10 to 0.04.
+Steps are geometric now too, so a step down is the same size of change as a step
+up.
+
+**The desktop had no layout, only a stretched phone.** Each card ran the full
+window width, so a two-line title sat in a metre of space and the eye travelled
+the whole way back for the next row. `.shell` caps and centres every band —
+header, date strip, count, listings, transport — at the same widths; the
+listings became a grid that goes 1 → 2 → 3 columns; base type steps 16px → 17.5px
+at `lg`, multiplying whatever text size was chosen rather than replacing it. The
+date strip stops growing separately, because eight chips filling a laptop are
+eight 160px slabs around a two-digit number.
+
+**Third typeface, third attempt.** Bebas Neue was distinctive and unreadable at
+2am. Space Grotesk fixed legibility and lost the distinctiveness — next to
+system-ui at a glance it read as the same font. Bricolage Grotesque is visibly
+irregular in a single word but was drawn for text as well as display.
+
+**Stagger entrance.** Same effect, better motion. It used the iOS *sheet* curve,
+which starts at a slope of 0.32 and leaps from a standstill — that curve exists
+to catch a finger already in motion, and nothing here is being dragged. Ease-out
+quint over 0.44s and 10px starts from rest and spends its time decelerating.
+Delays now cover fourteen cards at 34ms instead of clumping everything past the
+eighth at 400ms.
+
+**Installability.** A manifest with `display: standalone` plus
+`window-controls-overlay` in `display_override`, and a maskable icon so Android
+doesn't crop the mark. Nothing changes in a normal tab; it's opt-in at install.
+
+Docs: `MIGRATION.md` deleted, its still-useful operational content moved to
+`INSTALL.md`. Every "Lovable" reference is gone from the tree — the branch name
+is the one exception and it is not ours to change (§5).
+
+### 2026-08-03 — What the review caught
+
+A Sonnet review of the change above found nine things. Six were real; all six
+are fixed. Two are worth carrying forward.
+
+**Every cache-invalidation migration since 0002 has been a no-op — and worse.**
+Migrations 0002, 0003, 0004 and 0005 all end with some version of
+
+```sql
+update artist_links set sets = '[]', resolved_at = to_timestamp(0)
+ where link_source <> 'manual';
+```
+
+and every one of them believed it was scheduling a re-resolve. None was.
+`readCached` returns whatever row it finds and **never reads `resolved_at`**;
+`getArtistLinks` only bypasses the cache on `refresh: true`, and nothing in the
+codebase passes it. So those statements did not invalidate anything — they
+permanently emptied the set list of every artist already cached, and the
+resolver has been serving those empty rows as *hits* ever since.
+
+That is very likely part of why artists have been showing up with no sets.
+
+Deleting the row is the only invalidation this schema supports: a missing row is
+a cache miss, and a cache miss resolves live and writes back. `0006` is a
+`delete`, which also repairs everything 0002–0005 emptied.
+
+> **The lesson.** The four earlier migrations each carried a confident comment
+> explaining what they invalidated. The comment was wrong in all four, and
+> nothing contradicted it, because a cache that returns stale data looks exactly
+> like a cache that is working. Writing `resolved_at` is only invalidation if
+> something *reads* `resolved_at`.
+
+**Two-letter affixes reopened the hole they were meant to close.** The first
+allowlist included `ny`, `la`, `us`, `de`, `it`. Those are not rare geographic
+tags; they are how ordinary English words end. Verified: `Harmony` matched an
+account called `harmo`, `Cosmo` matched `cosmola` — the same class of wrong
+account as `cosmonaut`, arriving through a two-character coincidence instead of
+an unbounded suffix. Trailing decorations are now three characters minimum, and
+`dj` survives only as a *leading* one, since position is real information. The
+accepted cost is `objektuk`.
+
+Splitting leading from trailing also paid for itself twice: it made room to add
+the scene cities the first list omitted — the original stopped at `nyc` and
+`berlin`, quietly ruling that a Chicago handle was less legitimate than a Berlin
+one — and, with a closed set of decorations doing the work, the name floor could
+drop from five characters to four, so Or:la and DVS1 can now reach `orlamusic`
+instead of matching nothing but themselves.
+
+The rest, briefly:
+
+- **One abort deadline for a now-sequential pipeline.** A single 7s controller
+  was correct while all six sources raced it. Once RA became a prerequisite, a
+  slow-but-*successful* RA lookup could hand SoundCloud and Mixcloud an already
+  aborted signal — the two sources a DJ actually posts to, returning nothing,
+  with a successful call as the cause. Each stage now gets its own deadline; RA
+  is held to 3s because it blocks.
+- **The place sweep dropped `nyc` and `usa`** to a length floor meant for
+  accidental tokens from the proper-noun sweep. On an app called ra-nyc.
+- **`apple-touch-icon` pointed at an SVG**, which iOS does not rasterise — on
+  the one platform that meta block exists for. Now a PNG, generated with
+  zlib and struct because the sandbox has no image library.
+- **`.shell` was unlayered**, and unlayered author CSS beats every `@layer` rule
+  regardless of specificity, so a `max-w-*` utility placed beside it to widen one
+  instance would have silently lost. Moved into `@layer utilities` — safe
+  because, unlike the runtime-built `theme-${x}` names, `.shell` is written
+  literally in the JSX and survives the content scan. Verified in the built CSS.
+
 ## 4 · Map of the code
 
 ```
-api/_lib/ra.ts          RA GraphQL client. The query, the browser-like headers,
-                        error mapping, date validation. Server-only.
-api/events.ts           The one endpoint. Validates, calls, caches, maps errors.
+api/_lib/ra.ts           RA GraphQL client + event search. Query, browser-like
+                         headers, error mapping, date validation. Server-only.
+api/_lib/artistLinks.ts  DJ → sets/bio/links across four providers, and the
+                         name matcher. Owns the Neon cache read/write.
+api/_lib/artistContext.ts  RA biography → handles + corroborating terms. The
+                         only thing that can separate two same-named artists.
+api/_lib/normalize.ts    normalizeName / searchKey / withinEditDistance. Kept
+                         apart from artistLinks so ra.ts can use it without
+                         dragging in the database client.
+api/events.ts            Day listings. Validates, calls, caches, maps errors.
+api/artist.ts            /api/artist. api/search.ts, api/venue.ts, api/image.ts.
 
-src/pages/HomePage.tsx  Selected-date state + loading/error/empty states.
-src/components/         DateSelector (8-day strip), EventCard.
-src/hooks/useRAEvents   TanStack Query over /api/events.
-src/types/event.ts      RAEvent — the api ↔ src contract.
-src/index.css           Tailwind directives + HSL design tokens.
+src/pages/HomePage.tsx   Selected date + which sheets are open. Everything else
+                         is a sheet over it.
+src/context/PlayerContext.tsx  The queue and the provider handle. Reuses the
+                         handle across tracks — a fresh cross-origin iframe has
+                         no user activation and refuses to autoplay.
+src/lib/players/         One module per provider behind a common interface.
+src/lib/mediaSession.ts  Lock-screen metadata and transport handlers.
+src/index.css            Themes, typography, density/text-scale, .shell, the
+                         transport bar, sheet timing. Mostly OUTSIDE @layer —
+                         see the gotcha below.
 
-vite.config.ts          Build config + the dev-only api/ route mounter.
-vercel.json             Runtime, SPA rewrite, asset cache headers.
+vite.config.ts           Build config + the dev-only api/ route mounter.
+vercel.json              Runtime, SPA rewrite, asset cache headers.
 ```
 
 ### Gotchas a newcomer will hit
@@ -985,41 +1159,47 @@ vercel.json             Runtime, SPA rewrite, asset cache headers.
 
 ## 5 · Open questions & known issues
 
-Carried over from the Lovable build unless noted.
-
 1. **Timezone.** `HomePage` seeds from `new Date()` — the *visitor's* clock, not
    New York's. Someone in London at 01:00 sees NYC's tomorrow as "today".
    Related: when does the night roll over? A 2 a.m. set belongs to the previous
    evening in how people talk, but not in how the date strip counts.
 2. **Hard 50-event cap.** RA's first page only; no pagination. Busy Saturdays
    are being silently truncated.
-3. **RA may block Vercel's egress IPs.** Untested from production —
-   `ra.co` is unreachable from the sandbox this migration was built in
-   (`connect_rejected` at the network policy), so the upstream call is verified
-   only by its error path returning a correct 502. **Check `/api/events` on the
-   first deploy.** Mitigations, in order: raise `s-maxage`; warm the cache with
-   a cron job; fall back to a stored snapshot (→ database).
-4. **No tests.** Highest-leverage next task; see ROADMAP §0.
-5. **No error boundary.** A render crash blanks the page.
-6. **RA has no published API terms.** This is an unofficial client that links
+3. **Search coverage past four days is sampling, not coverage.** The last four
+   days get one request each; beyond that the windows widen and thin out. The
+   `truncated` flag exists to admit this rather than imply the result is
+   exhaustive. NYC produces roughly a hundred listing *rows* a day — every day
+   of a multi-day run is its own row — which is the number every mis-sizing of
+   this window came from.
+4. **No error boundary.** A render crash blanks the page.
+5. **`ownUploads` still disables per-track filtering.** Once a profile matches,
+   its whole catalogue is trusted. That is correct when the match is right and
+   total when it is wrong; the two matching fixes narrow how often it is wrong
+   but do not bound the blast radius. Scoring tracks independently of the
+   profile would.
+6. **The branch name still says `lovable`.**
+   `claude/lovable-vercel-migration-hyp0a1` is assigned by the session harness,
+   not chosen here, and renaming it mid-session breaks the harness's binding.
+   Every reference *inside* the tree is gone. To retire the name: merge, delete
+   the remote branch, and let a future session pick a new one.
+7. **RA has no published API terms.** This is an unofficial client that links
    back to `ra.co` for every event and caches aggressively to stay light. If RA
    objects, stop.
-7. **Is anyone actually tapping DJ names?** Unknown, and it decides whether
-   ROADMAP §2's database phase is worth building. Ship the no-DB version first
-   and find out.
+8. **Is anyone actually tapping DJ names?** Vercel Analytics is wired up and can
+   answer it. Worth checking before building anything else on the artist path.
 
 ---
 
 ## 6 · Next actions
 
-1. Import the repo into Vercel and deploy —
-   [MIGRATION.md §3](./MIGRATION.md#3--connect-the-repo-to-vercel).
-2. Verify `/api/events` against production (issue #3 above).
-3. Disconnect Lovable's GitHub integration; delete the empty Supabase project —
-   [MIGRATION.md §5](./MIGRATION.md#5--decommission-lovable).
-4. Add Vitest + a smoke test (ROADMAP §0).
-5. Build search phase 1a (ROADMAP §1). No backend needed.
-6. Build the DJ sheet with Mixcloud only (ROADMAP §2, steps 1–2). Still no
-   database.
-7. Re-read [DATABASE.md](./DATABASE.md) **only** when step 6 produces its first
-   wrong artist match that you want to correct by hand. That's the trigger.
+1. **Apply migration `0006`** against production — nothing else in this change
+   takes effect for an artist already in the cache.
+2. **Set the repo's Website field** to `https://ra-nyc.vercel.app`. The README
+   link is already right; the GitHub sidebar field is dashboard state and no
+   tool in these sessions can write it.
+3. Anchor dates to `America/New_York` (issue #1). It is the oldest open bug and
+   the one that silently shows the wrong day.
+4. Add an error boundary (issue #4). Small, and it converts a blank page into a
+   retry.
+5. Pagination past RA's first 50 (issue #2).
+6. Score SoundCloud tracks independently of the profile match (issue #5).

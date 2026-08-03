@@ -19,7 +19,7 @@ interface HeaderProps {
 export function Header({ selectedDate, onDateChange, onSearchClick }: HeaderProps) {
   return (
     <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border/50 pt-safe">
-      <div className="px-4 py-4 flex items-center justify-between">
+      <div className="shell px-4 py-4 flex items-center justify-between">
         <h1 className="text-xl font-bold tracking-tight">RA NYC Events</h1>
         <div className="flex items-center gap-1">
           {/* Left of the calendar. A button rather than an inline field: at this

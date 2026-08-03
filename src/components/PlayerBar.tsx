@@ -117,7 +117,7 @@ export function PlayerBar() {
       onPointerDown={(event) => event.stopPropagation()}
       className="pointer-events-auto fixed inset-x-0 bottom-0 z-[70] border-t border-border/50 bg-background/95 pb-safe backdrop-blur-lg"
     >
-      <div className="flex items-center gap-2 px-3 pt-2">
+      <div className="shell flex items-center gap-2 px-3 pt-2">
         <span className="w-9 flex-shrink-0 text-right text-[0.5625rem] tabular-nums text-muted-foreground">
           {formatClock(position)}
         </span>
@@ -141,7 +141,7 @@ export function PlayerBar() {
         </span>
       </div>
 
-      <div className="flex items-center gap-1 px-2 pb-1.5">
+      <div className="shell flex items-center gap-1 px-2 pb-1.5">
         <button
           onClick={previous}
           disabled={!hasPrevious}

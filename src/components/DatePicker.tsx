@@ -36,7 +36,11 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   };
 
   return (
-    <div className="flex gap-1 justify-between px-2">
+    // The strip fills a phone because eight chips is exactly what a phone
+    // holds. Left to fill a laptop it becomes eight 160px slabs of empty card
+    // around a two-digit number, so on desktop it stops growing and centres —
+    // a date chip has a natural size and it is close to the phone's.
+    <div className="flex gap-1 justify-between px-2 lg:mx-auto lg:max-w-xl">
       {dates.map((date) => {
         const isSelected = isSameDay(date, selectedDate);
         const isWeekend = date.getDay() === 0 || date.getDay() === 6;

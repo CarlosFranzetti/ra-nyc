@@ -130,15 +130,19 @@
   letter-spacing: -0.02em;
 }
 
-/* Display was Outfit for body with Bebas Neue headings — condensed, all-caps,
-   tight-tracked. Distinctive, and close to the worst case for reading a venue
-   name at 2am in a dark room: condensed forms narrow the counters, capitals
-   remove the word shapes you skim by, and the extra tracking pulls words apart.
-   Space Grotesk instead: still has a voice, but a tall x-height and open
-   apertures, and it stays lowercase so titles keep their silhouette. One family
-   for headings and body, so it is also one fewer font to download. */
+/* The third slot has to do two jobs that usually fight: be obviously different
+   from the system font, and stay readable at 2am.
+
+   It started as Bebas Neue — condensed, all-caps, tight-tracked, and close to
+   the worst case for reading a venue name in a dark room. Space Grotesk fixed
+   the legibility and lost the distinctiveness; next to system-ui at a glance it
+   read as the same font. Bricolage Grotesque is the one that does both: the
+   asymmetric terminals and slightly irregular widths are visible in a single
+   word, but it was drawn for text as well as display, so the x-height is tall
+   and the apertures stay open. Lowercase throughout, so titles keep the word
+   shapes you actually skim by. */
 .type-display {
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
 }
 
 .type-display h1,
@@ -150,25 +154,43 @@
 
 /* Density and text size.
 
-   Two separate knobs on purpose. --space multiplies every spacing utility
-   (padding, margin, gap, and the width/height scale); --text-scale multiplies
-   the root font size and therefore every rem-based type size. Spacing is px so
-   the two never multiply each other. */
+   Two knobs, deliberately not independent.
+
+   --text-scale multiplies the root font size, and therefore every rem-based
+   type size. --space multiplies every spacing utility. Spacing is expressed in
+   px rather than rem so that scaling type does not scale padding *one for one*
+   — an early version did, and picking "Larger" blew the layout apart.
+
+   But fully decoupling them is the opposite mistake, and it is what the app
+   shipped with: at "Larger" the type grew 12% inside padding that had not
+   moved, so cards read cramped, and at "Smaller" the same padding read empty.
+   Spacing now tracks type at 60% strength, which keeps the ratio of ink to air
+   roughly constant across all nine combinations without letting the two
+   multiply into something absurd.
+
+   The steps themselves are geometric rather than the ad-hoc −8%/+12% they were,
+   so a step down looks like the same size of change as a step up. */
+:root {
+  --density: 1.04;
+  --text-scale: 1;
+  --space: calc(var(--density) * (1 + (var(--text-scale) - 1) * 0.6));
+}
+
 .density-tight {
-  --space: 0.86;
+  --density: 0.87;
 }
 
 .density-default {
   /* 1.04, not 1: four percent looser than the layout shipped with. */
-  --space: 1.04;
+  --density: 1.04;
 }
 
 .density-airy {
-  --space: 1.28;
+  --density: 1.25;
 }
 
 .text-smaller {
-  --text-scale: 0.92;
+  --text-scale: 0.909;
 }
 
 .text-default {
@@ -176,11 +198,21 @@
 }
 
 .text-larger {
-  --text-scale: 1.12;
+  --text-scale: 1.1;
 }
 
 html {
   font-size: calc(16px * var(--text-scale, 1));
+}
+
+/* A phone is held at arm's length and a laptop sits further away on a bigger
+   panel, so the same 16px that reads correctly on a handset reads small on a
+   desktop. The preference multiplies this rather than replacing it, so someone
+   who chose "Larger" gets larger on both. */
+@media (min-width: 1024px) {
+  html {
+    font-size: calc(17.5px * var(--text-scale, 1));
+  }
 }
 
 
@@ -266,7 +298,7 @@ html {
 @keyframes fade-slide-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -283,21 +315,47 @@ html {
   }
 }
 
-/* Staggered animations for lists */
+/* Staggered list entrance.
+
+   Same effect and roughly the same clock as the original — cards rise into
+   place one after another, the whole run finishing in under half a second.
+   Three changes make it read as smooth rather than merely quick:
+
+   - **Curve.** It used the iOS sheet curve, which starts at a slope of 0.32
+     and so *leaps* from a standstill. That curve exists to catch a finger
+     already in motion; nothing here is being dragged. An ease-out quint starts
+     from rest and spends its time decelerating, which is the shape the eye
+     reads as gliding.
+   - **Duration.** 0.315s over 8px is quick enough that the middle of the
+     movement is a blur and only the endpoints register. 0.44s over 10px puts
+     enough frames on screen to see the deceleration.
+   - **Steps.** The delays ended at 400ms and every card past the eighth
+     started together, so a busy Saturday resolved into a clump. 34ms steps
+     across fourteen cards cover more of the list, finish sooner, and put the
+     arrivals close enough together to read as one wave.
+   ───────────────────────────────────────────────────────────────────────── */
 .stagger-animation > * {
   opacity: 0;
-  animation: fade-slide-in 0.315s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  animation: fade-slide-in 0.44s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .stagger-animation > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-animation > *:nth-child(2) { animation-delay: 50ms; }
-.stagger-animation > *:nth-child(3) { animation-delay: 100ms; }
-.stagger-animation > *:nth-child(4) { animation-delay: 150ms; }
-.stagger-animation > *:nth-child(5) { animation-delay: 200ms; }
-.stagger-animation > *:nth-child(6) { animation-delay: 250ms; }
-.stagger-animation > *:nth-child(7) { animation-delay: 300ms; }
-.stagger-animation > *:nth-child(8) { animation-delay: 350ms; }
-.stagger-animation > *:nth-child(n+9) { animation-delay: 400ms; }
+.stagger-animation > *:nth-child(2) { animation-delay: 34ms; }
+.stagger-animation > *:nth-child(3) { animation-delay: 68ms; }
+.stagger-animation > *:nth-child(4) { animation-delay: 102ms; }
+.stagger-animation > *:nth-child(5) { animation-delay: 136ms; }
+.stagger-animation > *:nth-child(6) { animation-delay: 170ms; }
+.stagger-animation > *:nth-child(7) { animation-delay: 204ms; }
+.stagger-animation > *:nth-child(8) { animation-delay: 238ms; }
+.stagger-animation > *:nth-child(9) { animation-delay: 272ms; }
+.stagger-animation > *:nth-child(10) { animation-delay: 306ms; }
+.stagger-animation > *:nth-child(11) { animation-delay: 323ms; }
+.stagger-animation > *:nth-child(12) { animation-delay: 340ms; }
+.stagger-animation > *:nth-child(13) { animation-delay: 357ms; }
+/* The tail compresses rather than extending: past this you are scrolling to
+   reach them anyway, and a card that animates after you arrive is a card that
+   looks broken. */
+.stagger-animation > *:nth-child(n+14) { animation-delay: 374ms; }
 
 /* Enhanced skeleton loading */
 .skeleton-glow {
@@ -373,6 +431,45 @@ html {
   /* Bottom nav has to clear the home indicator too. */
   .pb-nav-safe {
     padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ── Desktop measure ───────────────────────────────────────────────────────
+   The app was drawn for a phone and then simply stretched: on a laptop each
+   card ran the full width of the window, so a two-line title sat in a metre of
+   empty space and the eye had to travel the whole way back for the next row.
+
+   `.shell` caps and centres every band of the page — header, date strip, count,
+   listings — at the same widths, so they stay in one column rather than each
+   finding its own edge. The steps are wide enough to hold two and then three
+   card columns at a comfortable measure, and no wider: past that the listings
+   stop being a list.
+
+   Inside @layer utilities, unlike the themes above. The themes have to stay
+   unlayered because their class names are built at runtime (`theme-${x}`) and
+   Tailwind's scanner never sees them. `.shell` is written literally in the
+   JSX, so it survives the content scan — and being layered is what keeps it
+   *overridable*: unlayered author CSS beats every `@layer` rule of the same
+   origin regardless of specificity, so an unlayered `.shell` would silently
+   win against a `max-w-*` utility put beside it to widen one instance.
+   ───────────────────────────────────────────────────────────────────────── */
+@layer utilities {
+  .shell {
+    margin-inline: auto;
+    width: 100%;
+    max-width: 44rem;
+  }
+
+  @media (min-width: 1024px) {
+    .shell {
+      max-width: 66rem;
+    }
+  }
+
+  @media (min-width: 1536px) {
+    .shell {
+      max-width: 88rem;
+    }
   }
 }
 

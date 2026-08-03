@@ -19,20 +19,40 @@ date with the calendar. Tap an event for the full flyer, blurb and lineup.
 
 **DJ sets.** Tap any name in a lineup and it resolves that artist to their
 SoundCloud and Mixcloud catalogue, newest first, plus a bio and up to five
-profile links. Sets play in a transport bar docked at the top — play/pause,
+profile links. Sets play in a transport bar docked at the bottom — play/pause,
 next/previous, scrubbable timeline — and **keep playing while you browse**, so
 finding out what someone sounds like doesn't cost you your place in the listings.
+The set also reaches the lock screen with its real title and cover art, rather
+than announcing itself as a SoundCloud widget.
+
+Two DJs can share a name exactly, and then no amount of string matching can
+separate them. So resolution reads the artist's RA biography: a SoundCloud link
+written there settles it outright, and failing that the places, labels and
+residencies it mentions decide which of several same-named accounts to trust.
+When nothing corroborates, an empty set list is the answer — a confidently wrong
+one is worse.
 
 **Looks.** Four themes (Neon, Vapor, Matrix, Sunset), three typefaces, three
-densities and three text sizes. Venue names carry their own hue per theme, so
-where a night is reads apart from when it is. The theme is picked at random each
-time you open it. Preferences persist locally; there is no account and nothing is
-sent anywhere.
+densities and three text sizes. Spacing tracks type size at partial strength, so
+the ratio of ink to air stays roughly constant across all nine combinations
+rather than only looking right at the defaults. Venue names carry their own hue
+per theme, so where a night is reads apart from when it is. The theme is picked
+at random each time you open it. Preferences persist locally; there is no account
+and nothing is sent anywhere.
+
+**On a laptop.** The listings become two columns, then three, against a capped
+measure — wide enough to use the window, narrow enough that a list still reads as
+a list. Base type steps up with the viewport, on top of whatever text size you
+picked. Installed, it runs without an address bar or tab strip on every platform
+that supports it.
 
 **Search.** The magnifier next to the calendar searches NYC listings by DJ,
 party, promoter or venue — upcoming first, then past. Matching is accent- and
 leet-insensitive and tolerates a typo, so `bjork` finds Björk and `holo` finds
 h0l0. Picking a result jumps the listings to that night and opens it.
+
+**Sounds like.** Only SoundCloud tracks of 45 minutes or more count as sets;
+below that it's a single, not a night.
 
 **Where it is.** Tapping a venue name opens a map, with a link out to your phone's
 map app. Venue names carry their own colour per theme so they're easy to scan for.
@@ -82,17 +102,6 @@ The browser never calls `ra.co` directly, for three reasons:
   look like a browser, so those have to be set server-side.
 - **Caching** — one function response is shared by every visitor at the edge,
   instead of every visitor hitting RA.
-
----
-
-## Documentation
-
-| File | Contents |
-| ---- | -------- |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | How the pieces fit: request flow, playback, caching, file map |
-| [DATABASE.md](./DATABASE.md) | Whether a database is needed at all, and what it would hold |
-| [ROADMAP.md](./ROADMAP.md) | What's planned next |
-| [memorystate.md](./memorystate.md) | Running project journal — decisions, state, open questions |
 
 ---
 

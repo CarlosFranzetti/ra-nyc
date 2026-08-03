@@ -1,33 +1,76 @@
-> **Status note (Aug 2026).** Event search, DJ set playback and the persistent
-> transport bar are all shipped — see ARCHITECTURE.md and memorystate.md for how
-> they actually landed, which differs from the sketches below. The sections here
-> are kept as a record of the original plan.
-
 # Roadmap
-
-Planned features, in build order.
-
-The themes, densities, navigation modes, swipe, details sheet and skeletons
-listed as done in §3 were rebuilt on 2026-07-29 from the feature manifest of
-the lost original — see
-[memorystate.md](./memorystate.md#2026-07-29--recovering-the-original-lovable-app).
-Everything else below is still unbuilt.
 
 Legend: **P1** = next up · **P2** = after that · **P3** = nice to have.
 
 ---
 
-## 0 · Testing (prerequisite) — P1
+## What's next
 
-There are no tests. Before adding features that touch a third-party API and a
-database, get a floor under the project:
+Ordered by what actually costs a user something today.
 
-- **Vitest** for `api/_lib/ra.ts` (response parsing, error mapping, date
-  validation) with `fetch` stubbed. No network in tests.
-- **Testing Library** for `EventCard` and the search filter.
-- One Playwright smoke test: load `/`, click a date, assert cards render.
+### Anchor dates to New York time — P1
 
-Small, but it's what makes everything below safe to change.
+`HomePage` seeds from `new Date()`, the visitor's clock. Someone in London
+opening it at 01:00 sees NYC's tomorrow labelled "today" — the app is silently
+wrong for anyone outside the eastern US, and there is no hint that it is.
+
+Two decisions, not one. First, anchor "today" to `America/New_York`. Second,
+decide when the night rolls over: a 2 a.m. set belongs to the previous evening
+in how people talk about it, but not in how the date strip counts. Pick one and
+make the strip and the listings agree.
+
+### Error boundary — P1
+
+A render crash currently blanks the page. Small change, and it converts the
+worst failure mode into a retry button.
+
+### Pagination past RA's first 50 — P2
+
+Busy Saturdays are being truncated with no indication. Either page on scroll or
+say "showing the first 50 of N".
+
+### Score sets independently of the profile — P2
+
+Matching a SoundCloud profile sets `ownUploads`, which switches off per-track
+filtering entirely. Right when the match is right, total when it is wrong. The
+matcher and the RA-bio context narrow how often that happens but don't bound the
+consequence. Scoring each track on its own would.
+
+### A manual-correction route — P2
+
+`link_source = 'manual'` already exists and every automated write already
+refuses to clobber it — the column has been waiting for this since the schema
+was written. What's missing is any way to *set* it. The trigger to build it is
+the first wrong artist match worth fixing by hand.
+
+### Make cache invalidation possible at all — P2
+
+`readCached` never reads `resolved_at`, and nothing passes `refresh: true`, so
+the only way to invalidate an artist row is to delete it. Four migrations were
+written believing otherwise. Either honour `resolved_at` as a TTL in
+`readCached`, or drop the column so nobody writes another migration against it.
+
+### Smaller things — P3
+
+- **Filter chips** — genre, RA Pick only, free, before-midnight.
+- **City switcher.** `api/events.ts` already accepts `?area=`; the UI just
+  doesn't expose it. RA area ids are stable (8 = NYC).
+- **Offline.** The manifest is in place and the query cache already persists to
+  `localStorage`; a service worker would make the current week readable on the
+  subway with no signal. This is the one that best fits how the app is used.
+- **Open Graph images** per day, so shared links look like something.
+- **Tailwind v4 upgrade.** Pinned to v3 during the hosting migration. Its own
+  PR, never alongside a feature.
+
+---
+
+## Shipped
+
+Kept below as a record of the original plan, which differs from how these
+actually landed — see ARCHITECTURE.md and memorystate.md for what was built.
+
+Testing, listed here as a prerequisite and long unbuilt, now stands at 86 Vitest
+units and 71 Playwright assertions across four suites.
 
 ---
 
@@ -167,35 +210,15 @@ tap the DJ names?
 
 ## 3 · Smaller items
 
+Everything still open from this section has moved up to **What's next** at the
+top of the file, where it is ordered against the rest of the work rather than
+sitting in a bucket.
+
 **Done** (rebuilt 2026-07-29 from the lost original's feature manifest):
 themes, densities, navigation modes, swipe, details sheet, skeletons,
-adjacent-day prefetch.
-
-**P2**
-
-- **NYC-time dates.** `HomePage` seeds state from `new Date()` — the visitor's
-  local clock. Anchor to `America/New_York` so "today" means today *in NYC*.
-  Also decide when the night rolls over: a 2 a.m. set belongs to the previous
-  evening, and the date strip should agree with how people actually talk about
-  it.
-- **Pagination / infinite scroll.** Capped at RA's first 50 results per day.
-- **Error boundary.** A render crash currently blanks the page. (The retry
-  button and `prefers-reduced-motion` handling are done.)
-
-**P3**
-
-- **Filter chips** — genre, RA Pick only, free, before-midnight.
-- **City switcher.** `api/events.ts` already accepts `?area=`; the UI just
-  doesn't expose it. RA area ids are stable (8 = NYC).
-- **PWA / installable.** This is a phone app people open on the way out.
-  Offline-cache the current week.
-- **Open Graph images** per day so shared links look like something.
-- **Tailwind v4 upgrade.** Pinned to v3 during the migration; see
-  [MIGRATION.md](./MIGRATION.md#build-fixed). Do it as its own PR, never
-  alongside a feature.
-- ~~**Analytics**~~ — done: Vercel Analytics is wired up in `App.tsx`. Now
-  usable to answer "is anyone tapping DJ names?" before building ROADMAP §2's
-  database phase.
+adjacent-day prefetch. **Analytics** — Vercel Analytics is wired up in
+`App.tsx`. **Installable** — the manifest landed 2026-08-03; the offline half is
+still open and listed above.
 
 ---
 

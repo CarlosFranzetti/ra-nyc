@@ -1,0 +1,32 @@
+-- Force every artist to be resolved again, and fix the way earlier migrations
+-- tried to do the same thing.
+--
+-- Two matching changes only take effect on a re-resolve: `isPlausibleMatch` no
+-- longer accepts an unbounded suffix, so rows that latched onto a namesake or a
+-- fan account are wrong and will stay wrong; and resolution now reads the RA
+-- biography for handles and corroborating context, which no existing row was
+-- resolved with.
+--
+-- ## Why this is a DELETE
+--
+-- Migrations 0002 through 0005 each tried to invalidate the cache with
+--
+--     update artist_links set sets = '[]', resolved_at = to_timestamp(0) ...
+--
+-- and none of them worked. `readCached` returns whatever row it finds and never
+-- looks at `resolved_at`; `getArtistLinks` only bypasses the cache when passed
+-- `refresh: true`, which nothing does. So those updates did not schedule a
+-- re-resolve — they permanently emptied the set list of every artist already
+-- cached, and the resolver has been serving those empty rows as hits ever
+-- since. That is the opposite of what each of their comments claims.
+--
+-- Deleting the row is the only invalidation this schema actually supports: a
+-- missing row is a cache miss, and a cache miss resolves live and writes back.
+-- This also repairs the artists the earlier migrations emptied.
+--
+-- Hand corrections are untouched, same as always.
+--
+-- Apply with:  psql "$DATABASE_URL" -f migrations/0006_stricter_matching.sql
+
+delete from artist_links
+ where link_source <> 'manual';
