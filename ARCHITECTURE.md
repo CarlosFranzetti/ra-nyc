@@ -2,11 +2,15 @@
 
 ## One-paragraph summary
 
-RA-NYC is a static single-page React app plus three serverless functions. The SPA
+RA-NYC is a static single-page React app plus four serverless functions. The SPA
 is built by Vite into `dist/` and served from Vercel's CDN. `api/events.ts` is a
 thin, cached, validating proxy in front of Resident Advisor's public GraphQL
-endpoint; `api/image.ts` is a fallback proxy for flyer images the RA CDN won't
-serve to a browser directly. `api/artist.ts` resolves a DJ to playable Mixcloud sets and profile links.
+endpoint; `api/search.ts` searches a window of listings; `api/image.ts` is a
+fallback proxy for flyer images the RA CDN won't serve to a browser directly; and
+`api/artist.ts` resolves a DJ to playable sets, a bio and profile links.
+
+Sets play in a transport bar docked to the bottom of the screen, driven from a
+body-level host so playback survives every sheet opening and closing over it.
 
 There is no auth. The only persistent state is one optional Postgres table
 caching resolved artist links — absent a `DATABASE_URL` the app resolves live and
@@ -90,6 +94,11 @@ api/
                     Flyer proxy for when the RA CDN refuses a direct browser
                     request. Host-allowlisted, image/* only, 8 MB cap.
                     Fallback path only — see "Images" below.
+  search.ts         GET /api/search?q=<term>
+                    Windowed listing search: upcoming ascending, past by day.
+  _lib/normalize.ts normalizeName / searchKey / withinEditDistance. Separate
+                    from artistLinks so ra.ts can use it without pulling in
+                    the database client.
   _lib/rateLimit.ts Per-IP request budgets. Best-effort by design — see
                     "Rate limiting" below.
   _lib/db.ts        Optional Neon client. Returns null without DATABASE_URL,
@@ -110,22 +119,23 @@ src/
     DatePicker.tsx      8-day strip. Prefetches a day on touchstart/hover, so
                         the fetch is in flight before the tap lands.
     CalendarPopover     Jump to any date beyond the strip (react-day-picker).
-    BottomNav.tsx       Bottom bar for the "tabs" navigation style.
     EventCard.tsx       Compact row: 96px thumb, title, venue, time, lineup,
                         "N going", PICK badge. Opens the details drawer.
     EventThumb.tsx      Flyer <img>: CDN-direct → /api/image → venue initial.
     EventDetailsSheet   Full detail in a drawer; lineup as chips (the future
                         attachment point for DJ set playback).
-    SettingsSheet.tsx   Theme / density / typography / navigation preferences.
+    SettingsSheet.tsx   Theme / density / typography / text-size preferences.
     EventSkeleton.tsx   Shimmer placeholder matching EventCard's geometry.
     EmptyState.tsx      No events for this date.
     ErrorState.tsx      Failure + the API's real message + retry.
     SplashScreen.tsx    Covers first paint until the first day lands.
     ArtistSheet.tsx     Artist view as a sheet stacked over the event sheet:
                         set player, switchable sets, in-app bio, links.
-    SetPlayer.tsx       Provider iframe, mounted only after an explicit tap.
+    PlayerBar.tsx       The transport, docked bottom. Pure UI — holds no player.
+    SearchSheet.tsx     Event search: field, upcoming/past sections, jump-to-day.
     ui/drawer.tsx       Thin vaul wrapper — the one headless-UI dependency.
   context/
+    PlayerContext.tsx   Queue, transport state, and the body-level player host.
     ThemeContext.tsx    Preferences state, localStorage persistence, and the
                         theme-/density-/type- class writes on <html>.
   hooks/useEvents.ts    TanStack Query over GET /api/events, with +1/+2/-1 day
@@ -133,13 +143,16 @@ src/
   hooks/useSwipe.ts     Touch-based horizontal swipe; ignores mostly-vertical
                         gestures so scrolling never changes the day.
   hooks/useArtist.ts    TanStack Query over GET /api/artist.
+  hooks/useSearch.ts    Debounced TanStack Query over GET /api/search.
+  lib/players/*         One adapter per provider behind a common PlayerHandle.
+  lib/mediaSession.ts   Lock-screen metadata and OS transport handlers.
   types/event.ts        Event / EventsResponse — the contract between api/ and
                         src/. Keep in sync with api/_lib/ra.ts.
-  types/preferences.ts  Theme / density / typography / nav unions + labels.
+  types/preferences.ts  Theme / density / typography / text-size unions.
   lib/utils.ts          cn() — clsx + tailwind-merge.
   lib/images.ts         Builds the /api/image proxy URL.
   lib/formatTime.ts     RA sends ISO or bare HH:mm; renders both as "11pm".
-  index.css             The 4 themes, 3 densities, 3 typography variants, glow
+  index.css             The 4 themes, density + text-size scales, typography, glow
                         system, stagger + shimmer animations, touch base rules.
   assets/ra-logo.svg    Splash mark.
 
@@ -196,6 +209,13 @@ first** and capped at `MAX_SETS` (50):
 | **Mixcloud** | public API | `CATALOGUE_LIMIT` (50) | none |
 | **Internet Archive** | `advancedsearch` | `FALLBACK_LIMIT` (4) | none |
 | **YouTube** | Data API v3 | `FALLBACK_LIMIT` (4) | optional — `YOUTUBE_API_KEY` |
+
+**SoundCloud sets must be at least 45 minutes.** SoundCloud is a track host as
+much as a mix host, so an artist's uploads are a mix of both, and a four-minute
+single is not what "play a set" means. A missing duration counts as too short —
+an unknown length is far more often a single than an unlabelled two-hour set.
+Applied to SoundCloud only: Mixcloud is mixes by construction, and the Archive
+and YouTube fallbacks are already filtered hard on title.
 
 **Depth is split on purpose.** SoundCloud and Mixcloud are where a DJ actually
 posts, so we pull their catalogue — that is what makes `next` keep working past
@@ -290,6 +310,19 @@ plus a `seekable` flag — so the transport is provider-agnostic:
 
 Adapters are loaded on demand, so no provider SDK is in the initial bundle.
 
+**Changing track reuses the player rather than rebuilding it.** A handle carries
+its `provider` and an optional `load(set)`; when the next set is the same
+provider, `PlayerContext` calls `load` instead of destroying and recreating. This
+is not an optimisation — a *freshly created* cross-origin iframe carries no user
+activation, so its autoplay is refused, which is why every set after the first
+needed a second tap on play. An iframe that has already played keeps its
+activation.
+
+The consequence is that the track-change effect's cleanup must **not** destroy
+the handle: React runs the previous cleanup before the next effect, so tearing
+down there would kill the very iframe the next track wants. Teardown happens on
+provider change, on stop, and on unmount.
+
 Two things here are non-obvious enough to be worth stating plainly, because both
 looked like something else entirely:
 
@@ -309,6 +342,41 @@ bar. `--player-h` is `0px` whenever nothing is playing, which keeps every one of
 those rules correct with no conditional. The header also hands its safe-area
 inset to the bar while the bar is present — whichever element is actually at the
 top of the screen owns the notch.
+
+## Search
+
+`GET /api/search?q=` returns `{ upcoming, past, truncated }` in one response.
+
+**RA exposes no text filter this client can rely on**, so search means pulling a
+window of listings and matching them server-side. Two shapes, for opposite
+reasons:
+
+| Direction | How | Why |
+| --- | --- | --- |
+| Upcoming | one range, three pages | RA returns a range ascending, so paging forward *is* soonest-first |
+| Past | one request per day for four days, then two sampled ranges | paging a wide backward range returns its **oldest** listings — the opposite of "when did they last play" |
+
+The per-day requests are exact rather than estimated. NYC generates roughly a
+hundred listing **rows** a day — every day of a multi-day run is its own row —
+so any attempt to size a backward window in events-per-day was off by 4×.
+`pageSize` is capped at 100; RA *errors* on more rather than truncating.
+
+Beyond the exact window, coverage degrades to sampling. `truncated` exists to
+admit that in the UI rather than present a partial answer as complete.
+
+**Matching runs three passes, cheapest first:**
+
+1. Substring on the normalised text — `bjork` finds **Björk**.
+2. Substring on the *leet-folded* key — `holo` finds **h0l0**.
+3. Edit distance ≤ 1, per word, for terms of five characters or more.
+
+Leet folding lives in `searchKey`, deliberately **not** in `normalizeName`: that
+one also backs artist resolution, where folding digits would corrupt names that
+legitimately contain them (`320`, `8ULENTINA`, `Tommy Four Seven`).
+
+The looseness is the inverse of `isPlausibleMatch`. A wrong *auto-resolved* set
+is presented as fact and is worse than nothing; a loose search hit is something
+the user is actively scanning past.
 
 ## Caching and perceived speed
 

@@ -75,6 +75,7 @@ export const createArchivePlayer: CreatePlayer = async (mount, set, events) => {
 
   return {
     seekable: true,
+    provider: "archive",
     play: () => void audio.play().catch(() => undefined),
     pause: () => audio.pause(),
     seek: (seconds) => {

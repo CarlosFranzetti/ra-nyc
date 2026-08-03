@@ -1,4 +1,4 @@
-import type { ArtistSet } from "@/types/artist";
+import type { ArtistSet, SetProvider } from "@/types/artist";
 
 /**
  * A live, controllable player for one set.
@@ -17,6 +17,19 @@ export interface PlayerHandle {
   destroy(): void;
   /** False when the provider gives us no way to scrub, so the bar can say so. */
   seekable: boolean;
+  /** Which adapter built this, so the player knows when a handle is reusable. */
+  provider: SetProvider;
+  /**
+   * Swap the loaded track *without* rebuilding the iframe.
+   *
+   * This is what makes the second and every later set start on one tap. A newly
+   * created cross-origin iframe carries no user activation, so its autoplay is
+   * refused and the set sits silent until you press play — but an iframe that
+   * has already played keeps its activation, and loading into it just works.
+   *
+   * Optional: a provider without it falls back to being rebuilt.
+   */
+  load?(set: ArtistSet): void;
 }
 
 /**

@@ -40,3 +40,64 @@ export function normalizeName(value: string): string {
     .replace(/[^a-z0-9]+/g, "")
     .trim();
 }
+
+/**
+ * Digit-for-letter substitutions, for search only.
+ *
+ * Club and artist names in this scene are full of them — h0l0 is a real Ridgewood
+ * venue, and nobody types the zeroes. Folding both the query and the haystack
+ * through the same table makes "holo" find "h0l0" without either side having to
+ * know the other's spelling.
+ *
+ * Deliberately *not* part of `normalizeName`: that one also backs artist
+ * resolution, where folding digits would corrupt names that legitimately contain
+ * them — "320", "8ULENTINA", "Tommy Four Seven" — and quietly mismatch them.
+ */
+const LEET: Record<string, string> = {
+  "0": "o",
+  "1": "i",
+  "3": "e",
+  "4": "a",
+  "5": "s",
+  "7": "t",
+  "8": "b",
+  "@": "a",
+  $: "s",
+  "!": "i",
+};
+
+/** Search-only key: `normalizeName`, then digits folded to the letters they ape. */
+export function searchKey(value: string): string {
+  return normalizeName(value.replace(/[0134578@$!]/g, (c) => LEET[c] ?? c));
+}
+
+/**
+ * Levenshtein distance, abandoned once it exceeds `max`.
+ *
+ * Bounded because the only question ever asked is "within one edit?", and the
+ * early exit keeps a search over a few hundred events from doing real work.
+ */
+export function withinEditDistance(a: string, b: string, max: number): boolean {
+  if (Math.abs(a.length - b.length) > max) return false;
+  if (a === b) return true;
+
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const value = Math.min(
+        current[j - 1]! + 1,
+        previous[j]! + 1,
+        previous[j - 1]! + cost,
+      );
+      current.push(value);
+      if (value < best) best = value;
+    }
+    // Every path through this row already costs more than we allow.
+    if (best > max) return false;
+    previous = current;
+  }
+  return previous[b.length]! <= max;
+}

@@ -72,6 +72,7 @@ export const createMixcloudPlayer: CreatePlayer = async (mount, set, events) => 
 
   return {
     seekable: true,
+    provider: "mixcloud",
     play: () => void widget.play(),
     pause: () => void widget.pause(),
     seek: (seconds) => void widget.seek(seconds),

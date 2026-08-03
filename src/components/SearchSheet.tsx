@@ -69,7 +69,16 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[calc(92vh_-_var(--player-h))]">
+      {/* A fixed height, not a max-height. Two reasons, and the second is the
+          bug: content-hugging made the sheet only as tall as its results, so a
+          single hit left it ~340px tall with the dimmed listings page showing
+          through the overlay below it — which reads as a blank block rather
+          than as "the sheet ends here". It would also have resized on every
+          keystroke as results came and went.
+
+          dvh, not vh: the dynamic viewport shrinks when the keyboard opens, so
+          the sheet sits above it instead of extending behind it. */}
+      <DrawerContent className="h-[calc(88dvh_-_var(--player-h))] max-h-[calc(88dvh_-_var(--player-h))]">
         <DrawerTitle className="sr-only">Search events</DrawerTitle>
 
         <div className="flex flex-shrink-0 items-center gap-2 border-b border-border/50 px-3 pb-3 pt-1">
