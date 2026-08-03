@@ -10,6 +10,8 @@
  * getting `flyerFront` and `attending` back is what fixed missing flyers.
  */
 
+import { normalizeName } from "./normalize.js";
+
 export const RA_GRAPHQL_URL = "https://ra.co/graphql";
 
 /** RA's internal area id for New York City. */
@@ -156,12 +158,15 @@ export interface FetchEventsOptions {
   signal?: AbortSignal;
 }
 
-export async function fetchRAEvents({
-  date,
-  areaId = NYC_AREA_ID,
-  pageSize = 50,
-  signal,
-}: FetchEventsOptions): Promise<RAEvent[]> {
+/** One page of listings for a date range. The only place that talks to RA. */
+async function fetchListings(options: {
+  from: string;
+  to: string;
+  areaId: number;
+  pageSize: number;
+  page: number;
+  signal?: AbortSignal;
+}): Promise<RAListing[]> {
   const res = await fetch(RA_GRAPHQL_URL, {
     method: "POST",
     headers: {
@@ -178,14 +183,14 @@ export async function fetchRAEvents({
       query: EVENT_LISTINGS_QUERY,
       variables: {
         filters: {
-          areas: { eq: areaId },
-          listingDate: { gte: date, lte: date },
+          areas: { eq: options.areaId },
+          listingDate: { gte: options.from, lte: options.to },
         },
-        pageSize,
-        page: 1,
+        pageSize: options.pageSize,
+        page: options.page,
       },
     }),
-    signal,
+    signal: options.signal,
   });
 
   if (!res.ok) {
@@ -201,10 +206,26 @@ export async function fetchRAEvents({
     throw new RAError(json.errors[0]?.message ?? "GraphQL error", 502);
   }
 
+  return json.data?.eventListings?.data ?? [];
+}
+
+export async function fetchRAEvents({
+  date,
+  areaId = NYC_AREA_ID,
+  pageSize = 50,
+  signal,
+}: FetchEventsOptions): Promise<RAEvent[]> {
+  const listings = await fetchListings({
+    from: date,
+    to: date,
+    areaId,
+    pageSize,
+    page: 1,
+    signal,
+  });
+
   return (
-    dedupeById(
-      (json.data?.eventListings?.data ?? []).map(transformListing),
-    )
+    dedupeById(listings.map(transformListing))
       .filter((event) => startsOn(event, date))
       // Busiest first — with a 50-event cap and no pagination, popularity is a
       // better ordering than whatever RA returns.
@@ -273,4 +294,127 @@ export function isValidDate(value: string): boolean {
   const now = Date.now();
   const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
   return Math.abs(parsed.getTime() - now) <= YEAR_MS;
+}
+
+// ─── Search ─────────────────────────────────────────────────────────────────
+
+/**
+ * How far either side of today a search looks.
+ *
+ * RA's filter input has no text predicate that this client can rely on, so
+ * search means pulling a window of listings and matching them here. That makes
+ * the window a direct trade against upstream load, and 60 days each way covers
+ * the question people actually ask — "is X playing soon, and when were they
+ * last on?" — without paging through a year of listings for every query.
+ */
+export const SEARCH_WINDOW_DAYS = 60;
+
+/** Pages per direction. Each is one request to RA; the edge cache absorbs repeats. */
+const SEARCH_PAGES = 3;
+const SEARCH_PAGE_SIZE = 100;
+
+/** Most results anyone scrolls; also bounds the response size. */
+export const SEARCH_LIMIT = 60;
+
+export interface SearchResults {
+  upcoming: RAEvent[];
+  past: RAEvent[];
+  /** True when the window was exhausted, so the UI can say the list is partial. */
+  truncated: boolean;
+}
+
+function shiftDate(days: number): string {
+  const at = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  return at.toISOString().slice(0, 10);
+}
+
+/**
+ * Does this event match a search term?
+ *
+ * Matches title, venue and lineup, which between them cover what people search
+ * for: a DJ, a party, a promoter (whose name is nearly always in the title) or
+ * a venue. Runs on the same normaliser the artist matcher uses, so accents and
+ * punctuation don't decide whether you find something — searching "bjork"
+ * finds "Björk", and "bossa nova" finds "Bossa Nova Civic Club".
+ *
+ * Substring, not the strict `isPlausibleMatch` used for artist resolution. The
+ * asymmetry is deliberate: a wrong *auto-resolved* set is presented as fact and
+ * is worse than nothing, whereas a loose search hit is something the user is
+ * actively scanning and can dismiss at a glance.
+ */
+function matchesTerm(event: RAEvent, normalizedTerm: string): boolean {
+  if (!normalizedTerm) return false;
+  const haystacks = [
+    event.title,
+    event.venue.name,
+    ...event.artists.map((a) => a.name),
+  ];
+  return haystacks.some((value) => normalizeName(value).includes(normalizedTerm));
+}
+
+async function collect(
+  from: string,
+  to: string,
+  areaId: number,
+  signal?: AbortSignal,
+): Promise<{ events: RAEvent[]; full: boolean }> {
+  const pages = await Promise.all(
+    Array.from({ length: SEARCH_PAGES }, (_, i) =>
+      fetchListings({
+        from,
+        to,
+        areaId,
+        pageSize: SEARCH_PAGE_SIZE,
+        page: i + 1,
+        signal,
+      }).catch(() => [] as RAListing[]),
+    ),
+  );
+  const listings = pages.flat();
+  return {
+    events: dedupeById(listings.map(transformListing)),
+    // Every page came back full, so RA very likely had more to give.
+    full: pages.every((page) => page.length >= SEARCH_PAGE_SIZE),
+  };
+}
+
+/**
+ * Events matching a term, upcoming first and then past.
+ *
+ * Both directions are fetched in parallel — a search is one user action and
+ * should not cost two round trips in series.
+ */
+export async function searchRAEvents(options: {
+  term: string;
+  areaId?: number;
+  signal?: AbortSignal;
+}): Promise<SearchResults> {
+  const areaId = options.areaId ?? NYC_AREA_ID;
+  const today = shiftDate(0);
+  const normalized = normalizeName(options.term);
+
+  const [ahead, behind] = await Promise.all([
+    collect(today, shiftDate(SEARCH_WINDOW_DAYS), areaId, options.signal),
+    collect(shiftDate(-SEARCH_WINDOW_DAYS), today, areaId, options.signal),
+  ]);
+
+  const matching = (bucket: RAEvent[]) =>
+    bucket.filter((event) => matchesTerm(event, normalized));
+
+  // An event on today's date can arrive from both windows; treat it as upcoming
+  // and keep it out of the past list rather than showing it twice.
+  const upcoming = matching(ahead.events)
+    .filter((event) => (event.date.slice(0, 10) ?? "") >= today)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, SEARCH_LIMIT);
+
+  const upcomingIds = new Set(upcoming.map((event) => event.id));
+  const past = matching(behind.events)
+    .filter((event) => !upcomingIds.has(event.id) && event.date.slice(0, 10) < today)
+    // Most recent first: the last time someone played is more interesting than
+    // the first.
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, SEARCH_LIMIT);
+
+  return { upcoming, past, truncated: ahead.full || behind.full };
 }

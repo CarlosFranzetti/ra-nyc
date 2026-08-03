@@ -808,6 +808,58 @@ Verified 26/26 e2e (including that the queue holds all 9 fixture sets while the
 list shows 6, and that `next` walks past the collapsed list) plus 7/7 ordering
 assertions against the compiled resolver.
 
+### Event search
+
+`GET /api/search?q=` returns `{ upcoming, past, truncated }` in one response, so
+the sheet renders both sections without a second round trip.
+
+**RA has no text filter this client can rely on**, so search means pulling a
+window of listings and matching them here. That makes the window a direct trade
+against upstream load: **60 days either side of today**, three pages of 100 per
+direction, six upstream requests per uncached search. It covers the question
+people actually ask — "is X playing soon, and when were they last on?" — without
+paging a year of listings for every keystroke. `truncated` is returned so the UI
+can admit the window rather than implying the result is exhaustive.
+
+**Matching is loose on purpose, and that is an inversion of the artist rule.**
+`isPlausibleMatch` (artist resolution) is strict because a wrong auto-resolved
+set is presented as fact. A search hit is something the user is actively
+scanning and can dismiss at a glance, so search uses plain substring matching
+over title, venue and lineup — which between them cover DJs, parties, promoters
+(nearly always in the title) and venues. Both run through the same
+`normalizeName`, so "bjork" finds "Björk" and "bossa nova" finds "Bossa Nova
+Civic Club".
+
+`normalizeName` moved to `api/_lib/normalize.ts` so `ra.ts` can use it without
+importing `artistLinks` and dragging the Neon client into the events and search
+functions.
+
+**Picking a result jumps the listings to that night and opens the event**, rather
+than opening a third stacked sheet. You land back in the normal flow with the
+day around it for context, and it avoids inventing a fourth z-layer.
+
+Verified 13/13 in the browser (debounce collapses a burst of keystrokes to one
+request, sections ordered upcoming-then-past, results carry a date the day
+listings don't, empty state reads as empty rather than broken, picking a result
+jumps and opens) plus 10/10 matching and ordering assertions against the
+compiled resolver.
+
+### Lock screen
+
+`navigator.mediaSession` is set from the top-level page, which owns the session
+even though the audio comes from a cross-origin iframe. Before this a locked
+phone showed **"SoundCloud widget"** — the OS was falling back to what the embed
+declares about itself.
+
+The action handlers matter as much as the metadata: without them the OS buttons
+drive the iframe directly and the transport bar never hears about it, so the two
+desynchronise the first time you hit pause on the lock screen. Everything routes
+back through the same code the on-screen controls use.
+
+This is why sets carry `artwork` — added to all four providers from fields
+already in their responses. `album` is the provider name rather than a
+fabricated release.
+
 ## 4 · Map of the code
 
 ```
