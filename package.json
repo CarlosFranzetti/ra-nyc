@@ -12,7 +12,8 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.api.json",
-    "test:e2e": "node tests/player.e2e.mjs"
+    "test:e2e": "node tests/player.e2e.mjs",
+    "test:search": "node tests/search.e2e.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

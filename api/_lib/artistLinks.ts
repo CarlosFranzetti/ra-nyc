@@ -1,4 +1,5 @@
 import { getSql } from "./db.js";
+import { normalizeName } from "./normalize.js";
 
 /**
  * Resolves a DJ to playable sets, a bio, and profile links.
@@ -26,6 +27,8 @@ import { getSql } from "./db.js";
  * Embedding a *known* SoundCloud URL needs no key, so once a track is resolved
  * playback works the same either way.
  */
+
+export { normalizeName };
 
 export type SetProvider = "soundcloud" | "mixcloud" | "archive" | "youtube";
 
@@ -113,41 +116,6 @@ const CATALOGUE_LIMIT = 50;
 const FALLBACK_LIMIT = 4;
 
 // ─── Name matching ──────────────────────────────────────────────────────────
-
-/**
- * Letters NFD cannot decompose.
- *
- * NFD splits `é` into `e` + a combining acute, which strips cleanly. But `ø`,
- * `æ` and friends are distinct letters, not letter-plus-accent, so they survive
- * normalisation untouched — "Bjørn" would never match "bjorn" without this.
- */
-const TRANSLITERATIONS: Record<string, string> = {
-  ø: "o",
-  æ: "ae",
-  œ: "oe",
-  ß: "ss",
-  ł: "l",
-  đ: "d",
-  ð: "d",
-  þ: "th",
-  ħ: "h",
-  ı: "i",
-};
-
-/** Strips accents, punctuation and case so "Bjørn" ≈ "bjorn". */
-export function normalizeName(value: string): string {
-  return value
-    .toLowerCase()
-    // RA suffixes disambiguators like "Cosmo (NY)" and "SRI (1)".
-    .replace(/\([^)]*\)/g, "")
-    .replace(/&/g, "and")
-    .replace(/[øæœßłđðþħı]/g, (c) => TRANSLITERATIONS[c] ?? c)
-    // Decompose, then drop the combining marks NFD produced.
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "")
-    .trim();
-}
 
 /**
  * Whether a candidate account plausibly *is* this artist.

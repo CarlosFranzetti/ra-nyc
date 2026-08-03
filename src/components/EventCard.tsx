@@ -1,12 +1,15 @@
 import { memo } from "react";
 import { Users, MapPin, Clock } from "lucide-react";
 import { EventThumb } from "@/components/EventThumb";
+import { formatEventDay } from "@/lib/formatEventDay";
 import { formatTime } from "@/lib/formatTime";
 import type { Event } from "@/types/event";
 
 interface EventCardProps {
   event: Event;
   onSelect: (event: Event) => void;
+  /** Search results span months, so they need the date the listings never do. */
+  showDate?: boolean;
 }
 
 /**
@@ -21,7 +24,7 @@ interface EventCardProps {
  * likely to be mid-scroll. Only worth it because `onSelect` is stable; an
  * inline handler would defeat it silently.
  */
-function EventCardRow({ event, onSelect }: EventCardProps) {
+function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
   return (
     <button onClick={() => onSelect(event)} className="block w-full text-left group">
       <article className="press flex gap-3 bg-card rounded-lg overflow-hidden hover:bg-accent active:bg-accent border border-border/50 p-2 glow-primary-hover">
@@ -55,6 +58,7 @@ function EventCardRow({ event, onSelect }: EventCardProps) {
             {event.startTime && (
               <span className="flex items-center gap-0.5">
                 <Clock className="w-3 h-3" />
+                {showDate && `${formatEventDay(event.date)}, `}
                 {formatTime(event.startTime)}
               </span>
             )}

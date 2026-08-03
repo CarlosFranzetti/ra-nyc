@@ -9,6 +9,7 @@ import { EventDetailsSheet } from "@/components/EventDetailsSheet";
 import { EventSkeleton } from "@/components/EventSkeleton";
 import { Header } from "@/components/Header";
 import { PlayerBar } from "@/components/PlayerBar";
+import { SearchSheet } from "@/components/SearchSheet";
 import { SplashScreen } from "@/components/SplashScreen";
 import { useTheme } from "@/context/ThemeContext";
 import { useEvents } from "@/hooks/useEvents";
@@ -23,6 +24,7 @@ export default function HomePage() {
   const [selectedArtist, setSelectedArtist] = useState<Artist | null>(null);
   const [artistOpen, setArtistOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const { layoutDensity } = useTheme();
   const dateString = format(selectedDate, "yyyy-MM-dd");
@@ -85,7 +87,11 @@ export default function HomePage() {
         className="min-h-screen bg-background pb-[var(--player-h)]"
         {...swipe}
       >
-        <Header selectedDate={selectedDate} onDateChange={setSelectedDate} />
+        <Header
+          selectedDate={selectedDate}
+          onDateChange={setSelectedDate}
+          onSearchClick={() => setSearchOpen(true)}
+        />
 
         <div className="py-2 border-b border-border/50">
           <DatePicker selectedDate={selectedDate} onDateChange={setSelectedDate} />
@@ -146,6 +152,21 @@ export default function HomePage() {
           artist={selectedArtist}
           open={artistOpen}
           onOpenChange={setArtistOpen}
+        />
+
+        {/* Picking a result jumps the listings to that night and opens it,
+            rather than opening a third stacked sheet — so you land back in the
+            normal flow with the day around it for context. */}
+        <SearchSheet
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          onSelect={(event) => {
+            setSearchOpen(false);
+            const day = event.date.slice(0, 10);
+            if (day) setSelectedDate(new Date(`${day}T12:00:00`));
+            setSelectedEvent(event);
+            setSheetOpen(true);
+          }}
         />
 
         {/* Docked to the bottom, over everything. Renders nothing until
