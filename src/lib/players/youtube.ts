@@ -126,6 +126,7 @@ export const createYoutubePlayer: CreatePlayer = async (mount, set, events) => {
 
   return {
     seekable: true,
+    provider: "youtube",
     play: () => player.playVideo(),
     pause: () => player.pauseVideo(),
     seek: (seconds) => player.seekTo(seconds, true),

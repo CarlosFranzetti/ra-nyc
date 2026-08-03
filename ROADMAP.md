@@ -1,3 +1,8 @@
+> **Status note (Aug 2026).** Event search, DJ set playback and the persistent
+> transport bar are all shipped — see ARCHITECTURE.md and memorystate.md for how
+> they actually landed, which differs from the sketches below. The sections here
+> are kept as a record of the original plan.
+
 # Roadmap
 
 Planned features, in build order.

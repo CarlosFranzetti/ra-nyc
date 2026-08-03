@@ -98,50 +98,65 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     return () => host.remove();
   }, []);
 
-  // Builds the player for whatever is current. Keyed on the set id rather than
-  // the index, so re-opening an artist whose queue starts with the set already
-  // playing leaves it playing rather than restarting it.
+  // Builds — or reuses — the player for whatever is current.
+  //
+  // Keyed on the set id rather than the index, so re-opening an artist whose
+  // queue starts with the set already playing leaves it playing.
+  //
+  // The cleanup deliberately does NOT destroy the handle. React runs the
+  // previous cleanup before the next effect, so tearing down here would kill
+  // the very iframe the next track wants to reuse — and a rebuilt cross-origin
+  // iframe has no user activation, which is exactly why every set after the
+  // first needed a second tap on play. Teardown now happens where it belongs:
+  // when the provider actually changes, on stop, and on unmount.
   useEffect(() => {
     const host = hostRef.current;
     if (!current || !host) return undefined;
 
-    let cancelled = false;
     currentIdRef.current = current.id;
     setLoading(true);
     setError(null);
     setPosition(0);
     setDuration(current.duration);
+
+    const existing = handleRef.current;
+    if (existing && existing.provider === current.provider && existing.load) {
+      existing.load(current);
+      setSeekable(existing.seekable);
+      return undefined;
+    }
+
+    // Different provider, or nothing playing yet: this one has to be rebuilt.
+    existing?.destroy();
+    handleRef.current = null;
     setSeekable(true);
 
+    let cancelled = false;
     void (async () => {
       try {
         const create = await playerFor(current.provider);
         if (cancelled) return;
 
+        // No `cancelled` guards inside these: a handle that is no longer ours
+        // has been destroyed and its iframe removed, so it cannot still be
+        // emitting — whereas a *reused* handle is current and its events must
+        // keep landing. Guarding on a per-run flag silently deafened it.
         const handle = await create(host, current, {
           onReady: (reported) => {
-            if (cancelled) return;
             setLoading(false);
             if (reported) setDuration(reported);
           },
           onProgress: (at, length) => {
-            if (cancelled) return;
             setPosition(at);
             if (length) setDuration(length);
           },
           onPlay: () => {
-            if (cancelled) return;
             setLoading(false);
             setPlaying(true);
           },
-          onPause: () => {
-            if (!cancelled) setPlaying(false);
-          },
-          onEnded: () => {
-            if (!cancelled) advanceRef.current();
-          },
+          onPause: () => setPlaying(false),
+          onEnded: () => advanceRef.current(),
           onError: (message) => {
-            if (cancelled) return;
             setError(message);
             setLoading(false);
             setPlaying(false);
@@ -168,11 +183,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true;
-      handleRef.current?.destroy();
-      handleRef.current = null;
-      setPlaying(false);
     };
   }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The only unconditional teardown: leaving the app entirely.
+  useEffect(
+    () => () => {
+      handleRef.current?.destroy();
+      handleRef.current = null;
+    },
+    [],
+  );
 
   // Lock screen / notification shade. Metadata follows the track; the handlers
   // route the OS buttons back through our own transport so the two can't drift

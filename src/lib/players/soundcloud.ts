@@ -14,6 +14,7 @@ interface ScWidget {
   pause(): void;
   seekTo(milliseconds: number): void;
   getDuration(callback: (milliseconds: number) => void): void;
+  load(url: string, options: { auto_play?: boolean; callback?: () => void }): void;
 }
 
 interface ScNamespace {
@@ -91,10 +92,36 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
     }
   });
 
+  /** Kick playback and re-arm the retry. Shared by first load and every swap. */
+  const start = () => {
+    started = false;
+    if (retry !== undefined) window.clearTimeout(retry);
+    widget.getDuration((ms) => {
+      if (ms > 0) duration = ms / 1000;
+      events.onReady(duration);
+    });
+    widget.play();
+    retry = window.setTimeout(() => {
+      if (!started) widget.play();
+    }, 700);
+  };
+
   return {
     seekable: true,
+    provider: "soundcloud",
+    load: (next) => {
+      duration = next.duration;
+      // The permalink, not the embed URL — load() takes the track's own page.
+      widget.load(next.url, { auto_play: true, callback: start });
+    },
     play: () => widget.play(),
-    pause: () => widget.pause(),
+    pause: () => {
+      // Cancel the pending start-retry. Without this a pause within 700ms of
+      // loading a track gets undone by the retry firing underneath it, and the
+      // set resumes on its own.
+      if (retry !== undefined) window.clearTimeout(retry);
+      widget.pause();
+    },
     seek: (seconds) => widget.seekTo(seconds * 1000),
     destroy: () => {
       if (retry !== undefined) window.clearTimeout(retry);

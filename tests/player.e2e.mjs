@@ -110,18 +110,29 @@ const ARTIST = {
 
 /** Stands in for SoundCloud's widget API: same surface, driven by a timer so
  *  the timeline has something real to report. */
+/**
+ * Stands in for SoundCloud's widget API, and models the thing that was broken:
+ * a *freshly created* cross-origin iframe has no user activation, so its
+ * autoplay is refused. Only an iframe that has already played — i.e. one reused
+ * via load() — starts on its own. window.__built counts iframes so the suite can
+ * assert the player reuses rather than rebuilds.
+ */
 const FAKE_SC = `
 (function(){
   var Events={READY:'ready',PLAY:'play',PAUSE:'pause',FINISH:'finish',PLAY_PROGRESS:'playProgress',ERROR:'error'};
+  window.__built = 0;
   function Widget(iframe){
-    var l={},pos=0,timer=null,duration=3600000;
+    var l={},pos=0,timer=null,duration=3600000,activated=false;
+    window.__built++;
     function emit(e,p){(l[e]||[]).forEach(function(f){f(p);});}
+    function run(){ if(timer) return; emit(Events.PLAY);
+      timer=setInterval(function(){ pos+=250; emit(Events.PLAY_PROGRESS,{currentPosition:pos});
+        if(pos>=duration){clearInterval(timer);timer=null;emit(Events.FINISH);} },250); }
     return {
       bind:function(e,cb){(l[e]=l[e]||[]).push(cb); if(e===Events.READY) setTimeout(cb,40);},
       getDuration:function(cb){cb(duration);},
-      play:function(){ if(timer) return; emit(Events.PLAY);
-        timer=setInterval(function(){ pos+=250; emit(Events.PLAY_PROGRESS,{currentPosition:pos});
-          if(pos>=duration){clearInterval(timer);timer=null;emit(Events.FINISH);} },250); },
+      load:function(url,opts){ pos=0; activated=true; if(opts&&opts.callback) setTimeout(opts.callback,20); },
+      play:function(){ if(!activated){ activated=true; run(); return; } run(); },
       pause:function(){ if(timer){clearInterval(timer);timer=null;} emit(Events.PAUSE); },
       seekTo:function(ms){ pos=ms; emit(Events.PLAY_PROGRESS,{currentPosition:pos}); }
     };
@@ -280,12 +291,19 @@ const osNext = await page.evaluate(() => {
 });
 check("media session action handlers are wired", osNext);
 
+const builtBefore = await page.evaluate(() => window.__built);
 await page.locator('button[aria-label="Next mix"]').click();
 await page.waitForTimeout(500);
 check(
   "transport drives playback from inside a sheet",
   await page.locator("text=Set Number 2").first().isVisible(),
 );
+const builtAfter = await page.evaluate(() => window.__built);
+check("changing track reuses the iframe instead of rebuilding it",
+  builtAfter === builtBefore, `${builtBefore} -> ${builtAfter} iframes`);
+await page.waitForTimeout(900);
+check("the next set plays without a second tap on play",
+  (await page.locator('button[aria-label="Pause"]').count()) > 0);
 check(
   "using the transport does not dismiss the sheet",
   (await page.locator('button[aria-label="Back to event"]').count()) > 0,

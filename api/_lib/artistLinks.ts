@@ -115,6 +115,19 @@ const CATALOGUE_LIMIT = 50;
  */
 const FALLBACK_LIMIT = 4;
 
+/**
+ * Shortest thing SoundCloud can offer that is plausibly a DJ set.
+ *
+ * SoundCloud is a track host as much as a mix host, so an artist's uploads are
+ * usually a mix of both — and a four-minute single is not what "play a set"
+ * means. Forty-five minutes is the floor: long enough to exclude singles, edits
+ * and IDs, short enough to keep a one-hour radio slot.
+ *
+ * Applied to SoundCloud only. Mixcloud is mixes by construction, and the
+ * Archive and YouTube fallbacks are already filtered hard on title.
+ */
+const MIN_SOUNDCLOUD_SECONDS = 45 * 60;
+
 // ─── Name matching ──────────────────────────────────────────────────────────
 
 /**
@@ -346,6 +359,10 @@ async function resolveSoundcloud(
 
   const sets: ArtistSet[] = tracks
     .filter((t): t is ScTrack & { permalink_url: string } => Boolean(t.permalink_url))
+    // Length first: it is the cheapest filter and removes most of the list.
+    // A missing duration is treated as too short rather than kept — an unknown
+    // length is far more often a single than an unlabelled two-hour set.
+    .filter((t) => (t.duration ?? 0) >= MIN_SOUNDCLOUD_SECONDS * 1000)
     .filter(
       (t) =>
         // Trust the user's own uploads; be strict about search hits.

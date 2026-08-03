@@ -7,7 +7,7 @@ get productive without re-deriving anything.
 **Keep this file updated.** When you make a decision that a future reader would
 otherwise have to reverse-engineer from a diff, append it to the log.
 
-**Last updated:** 2026-07-30
+**Last updated:** 2026-08-03
 **Branch:** `claude/lovable-vercel-migration-hyp0a1`
 
 ---
@@ -34,7 +34,7 @@ seconds on a phone on the subway?"
 | **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
 | **Database** | Optional Neon, caches artist links only. See [DATABASE.md](./DATABASE.md) |
 | **Env vars** | None required; `DATABASE_URL` and `DISCOGS_TOKEN` optional |
-| **Tests** | ❌ None committed (UI verified ad hoc in headless Chromium) |
+| **Tests** | ✅ 64 Vitest units + 45 Playwright assertions (`npm run test:all`) |
 | **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
 
@@ -42,7 +42,8 @@ seconds on a phone on the subway?"
 
 React 19 · TypeScript 5.9 · Vite 7 · Tailwind 3.4 · TanStack Query 5 ·
 React Router 7 · date-fns 4 · lucide-react · vaul · react-day-picker ·
-Vercel Analytics · two Vercel Node 22 functions.
+Vercel Analytics · four Vercel Node 22 functions. Dev-only: Vitest,
+playwright-core.
 
 ### Routes
 
@@ -52,10 +53,20 @@ Vercel Analytics · two Vercel Node 22 functions.
 | `/api/events?date=YYYY-MM-DD[&area=8]` | Function | Cached proxy to RA GraphQL |
 | `/api/image?u=<https url>` | Function | Flyer proxy fallback, host-allowlisted |
 | `/api/artist?id=<ra id>&name=<name>` | Function | Resolves a DJ to sets + profile links |
+| `/api/search?q=<term>` | Function | Windowed listing search — upcoming, then past |
 
-The app is a single route. The event and artist views are stacked sheets, not
-pages — tapping a DJ opens the artist *over* the event, and dismissing returns
-to it.
+The app is a single route. The event, artist and search views are all sheets, not
+pages — tapping a DJ opens the artist *over* the event, and dismissing returns to
+it. Sets play in a transport bar docked to the bottom, which outlives every sheet.
+
+### Test commands
+
+| Command | What it runs |
+| --- | --- |
+| `npm test` | 64 Vitest units over the pure functions in `api/_lib` and `src/lib` |
+| `npm run test:e2e` | 32 Playwright assertions for the transport bar |
+| `npm run test:search` | 13 Playwright assertions for search |
+| `npm run test:all` | all three |
 
 ---
 
@@ -859,6 +870,64 @@ back through the same code the on-screen controls use.
 This is why sets carry `artwork` — added to all four providers from fields
 already in their responses. `album` is the provider name rather than a
 fabricated release.
+
+### 2026-08-03 — Search fuzziness, the 45-minute floor, and one-tap play
+
+**The blank block in search.** A screenshot showed a single result followed by a
+large black area, with dimmed listings visible below it. The dimmed content was
+the *listings page seen through the drawer overlay* — the sheet was simply only
+as tall as its one result, because `DrawerContent` had a `max-height` and hugged
+its content. Reproduced by replaying the exact production response for the query
+in the screenshot; card heights came back a normal 118–138px, which ruled out the
+obvious "one card is enormous" theory and pointed at the sheet.
+
+The search sheet now has a **fixed** height (`88dvh`), not a max. Two reasons:
+the bug, and that a content-hugging search sheet would resize on every keystroke
+as results came and went. `dvh` rather than `vh` so it sits above the keyboard
+instead of extending behind it.
+
+**Every set after the first needed a second tap on play.** Structural, not a
+timing fluke: each track change destroyed the iframe and built a new one, and a
+*freshly created* cross-origin iframe carries no user activation, so its autoplay
+is refused. An iframe that has already played keeps its activation.
+
+`PlayerHandle` now carries its `provider` and an optional `load(set)`. Same
+provider ⇒ load in place; different provider ⇒ rebuild. The subtle part is that
+the effect's cleanup can no longer destroy the handle — React runs the previous
+cleanup before the next effect, so it would kill the very iframe the next track
+wants. Teardown moved to provider change, stop, and unmount. The event callbacks
+also lost their per-run `cancelled` guards, which would have deafened a *reused*
+handle; staleness is handled by destroyed handles having no iframe left to emit
+from.
+
+Caught while doing it: the 700ms "did it start?" retry could resurrect playback
+after a deliberate pause. Pause now cancels it.
+
+**SoundCloud sets must be ≥ 45 minutes.** SoundCloud is a track host as much as a
+mix host; a four-minute single is not what "play a set" means. Unknown duration
+counts as too short — far more often a single than an unlabelled two-hour set.
+SoundCloud only: Mixcloud is mixes by construction.
+
+**Fuzzy search.** Three passes: substring, leet-folded substring, then edit
+distance ≤ 1 per word for terms of five characters or more. `searchKey` (leet
+folding) is deliberately separate from `normalizeName` — that one also backs
+artist resolution, where folding digits would corrupt `320`, `8ULENTINA` and
+`Tommy Four Seven`. The requested case, `holo` → **h0l0**, is a real Ridgewood
+venue nobody types with zeroes.
+
+**Unit tests are in** (`npm test`, 64 assertions) over `normalize`, `ra`,
+`artistLinks`, the formatters and the rate limiter. Vitest, dev-only. Writing
+them surfaced one finding worth knowing rather than fixing silently:
+`isPlausibleMatch`'s prefix rule is **unbounded on the right**, so any name
+starting with the artist's matches — `Cosmo` accepts `Cosmonaut`, and `Lakuti`
+accepts a fan account. Asserted as current behaviour with a comment, so a
+deliberate tightening shows up as a change rather than a surprise.
+
+> Worth repeating from the search work: unit tests would not have caught the
+> search bugs. Those were wrong *assumptions about RA* — that `pageSize: 200`
+> works, that NYC runs ~25 listings a day. The simulation encoded the wrong
+> assumption and passed. Only probing production found them. Tests lock in a
+> fix; they don't discover that your model of the world is wrong.
 
 ## 4 · Map of the code
 

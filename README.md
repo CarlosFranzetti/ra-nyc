@@ -24,9 +24,15 @@ next/previous, scrubbable timeline — and **keep playing while you browse**, so
 finding out what someone sounds like doesn't cost you your place in the listings.
 
 **Looks.** Four themes (Neon, Vapor, Matrix, Sunset), three typefaces, three
-densities, three navigation modes. The theme is picked at random each time you
-open it. Preferences persist locally; there is no account and nothing is sent
-anywhere.
+densities and three text sizes. Venue names carry their own hue per theme, so
+where a night is reads apart from when it is. The theme is picked at random each
+time you open it. Preferences persist locally; there is no account and nothing is
+sent anywhere.
+
+**Search.** The magnifier next to the calendar searches NYC listings by DJ,
+party, promoter or venue — upcoming first, then past. Matching is accent- and
+leet-insensitive and tolerates a typo, so `bjork` finds Björk and `holo` finds
+h0l0. Picking a result jumps the listings to that night and opens it.
 
 **Speed.** The query cache is persisted to disk, so returning to the app paints
 your last day before the network answers. Adjacent days are prefetched, and every
@@ -45,6 +51,7 @@ API response is shared across visitors by Vercel's edge cache.
 | Hosting   | Vercel |
 | Analytics | Vercel Analytics (no cookies, no consent banner) |
 | Database  | Optional Neon — artist links only, degrades to live lookups without it |
+| Tests     | Vitest for pure functions; Playwright (`playwright-core`) for behaviour |
 
 Sets come from SoundCloud, Mixcloud, the Internet Archive and YouTube, each
 behind a common player interface. Only SoundCloud needs credentials; the rest are

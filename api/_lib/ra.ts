@@ -10,7 +10,7 @@
  * getting `flyerFront` and `attending` back is what fixed missing flyers.
  */
 
-import { normalizeName } from "./normalize.js";
+import { normalizeName, searchKey, withinEditDistance } from "./normalize.js";
 
 export const RA_GRAPHQL_URL = "https://ra.co/graphql";
 
@@ -351,28 +351,53 @@ function shiftDate(days: number): string {
   return at.toISOString().slice(0, 10);
 }
 
+/** Below this, an edit-distance match matches half the city. */
+const FUZZY_MIN_LENGTH = 5;
+
 /**
  * Does this event match a search term?
  *
  * Matches title, venue and lineup, which between them cover what people search
  * for: a DJ, a party, a promoter (whose name is nearly always in the title) or
- * a venue. Runs on the same normaliser the artist matcher uses, so accents and
- * punctuation don't decide whether you find something — searching "bjork"
- * finds "Björk", and "bossa nova" finds "Bossa Nova Civic Club".
+ * a venue.
  *
- * Substring, not the strict `isPlausibleMatch` used for artist resolution. The
- * asymmetry is deliberate: a wrong *auto-resolved* set is presented as fact and
- * is worse than nothing, whereas a loose search hit is something the user is
- * actively scanning and can dismiss at a glance.
+ * Three passes, cheapest first:
+ *
+ * 1. **Substring** on the normalised text, so accents and punctuation never
+ *    decide whether you find something — "bjork" finds "Björk".
+ * 2. **Leet-folded substring**, which is what makes "holo" find **h0l0**. Real
+ *    venue, and nobody types the zeroes.
+ * 3. **Edit distance ≤ 1 per word**, for ordinary typos and the one-letter
+ *    spelling differences this scene is full of. Only for terms of five
+ *    characters or more — below that a single edit matches far too much.
+ *
+ * Substring rather than the strict `isPlausibleMatch` used for artist
+ * resolution, and now fuzzier still. The asymmetry is deliberate: a wrong
+ * *auto-resolved* set is presented as fact and is worse than nothing, whereas a
+ * loose search hit is something the user is actively scanning past.
  */
-function matchesTerm(event: RAEvent, normalizedTerm: string): boolean {
-  if (!normalizedTerm) return false;
-  const haystacks = [
-    event.title,
-    event.venue.name,
-    ...event.artists.map((a) => a.name),
-  ];
-  return haystacks.some((value) => normalizeName(value).includes(normalizedTerm));
+function matchesTerm(event: RAEvent, term: string): boolean {
+  const exact = normalizeName(term);
+  if (!exact) return false;
+
+  const fields = [event.title, event.venue.name, ...event.artists.map((a) => a.name)];
+
+  if (fields.some((value) => normalizeName(value).includes(exact))) return true;
+
+  const folded = searchKey(term);
+  if (folded && fields.some((value) => searchKey(value).includes(folded))) return true;
+
+  if (folded.length < FUZZY_MIN_LENGTH) return false;
+  // Word by word: comparing against a whole title would let its length alone
+  // blow past the distance budget.
+  return fields.some((value) =>
+    value
+      .split(/[\s,&·]+/)
+      .some((word) => {
+        const key = searchKey(word);
+        return key.length >= FUZZY_MIN_LENGTH && withinEditDistance(key, folded, 1);
+      }),
+  );
 }
 
 /** Runs a set of range/page requests in parallel and flattens the results. */
@@ -423,7 +448,6 @@ export async function searchRAEvents(options: {
 }): Promise<SearchResults> {
   const areaId = options.areaId ?? NYC_AREA_ID;
   const today = shiftDate(0);
-  const normalized = normalizeName(options.term);
 
   // Forward and backward are paged differently, and the reason is not symmetry.
   //
@@ -463,7 +487,7 @@ export async function searchRAEvents(options: {
   ]);
 
   const matching = (bucket: RAEvent[]) =>
-    bucket.filter((event) => matchesTerm(event, normalized));
+    bucket.filter((event) => matchesTerm(event, options.term));
 
   // An event on today's date can arrive from both windows; treat it as upcoming
   // and keep it out of the past list rather than showing it twice.

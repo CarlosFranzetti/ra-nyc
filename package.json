@@ -13,7 +13,10 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.api.json",
     "test:e2e": "node tests/player.e2e.mjs",
-    "test:search": "node tests/search.e2e.mjs"
+    "test:search": "node tests/search.e2e.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:all": "npm run test && npm run test:e2e && npm run test:search"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -42,6 +45,7 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^3.2.7"
   }
 }
