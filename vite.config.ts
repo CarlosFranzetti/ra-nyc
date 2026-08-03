@@ -56,7 +56,8 @@ function vercelApiDevServer(): Plugin {
 }
 
 export default defineConfig({
-  // `host: true` binds all interfaces; Lovable's `"::"` fails on IPv6-less hosts.
+  // `host: true` binds all interfaces. The `"::"` literal this replaced fails
+  // with EAFNOSUPPORT on hosts without IPv6.
   server: { host: true, port: 8080 },
   plugins: [react(), vercelApiDevServer()],
   resolve: {

@@ -10,10 +10,21 @@
     />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#080808" />
+    <!-- Installed, the app runs without an address bar, tab strip or toolbar on
+         every platform that supports it: `standalone` covers iOS (via the Apple
+         meta below, which predates the manifest and is still what Safari reads)
+         and Android; `window-controls-overlay` gives desktop Chrome and Edge a
+         plain window with only the system buttons. Nothing here affects a
+         normal browser tab — it is opt-in at install time. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- black-translucent lets the page paint behind the status bar; the
+         safe-area insets in the CSS keep content out from under the clock. -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RA NYC" />
     <link rel="icon" type="image/svg+xml" href="/ra-favicon.svg" />
+    <link rel="apple-touch-icon" href="/ra-maskable.svg" />
 
     <!-- Paint the background before CSS loads, so opening the app never flashes
          white. Themes override this the moment the stylesheet lands. -->
@@ -42,7 +53,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       media="print"
       onload="this.media='all'"
     />

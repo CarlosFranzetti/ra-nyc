@@ -26,8 +26,19 @@ describe("isPlausibleMatch", () => {
     expect(isPlausibleMatch("Bjørn", "bjorn")).toBe(true);
   });
 
-  it("accepts a clean prefix on a long enough name", () => {
+  it("ignores spacing and punctuation", () => {
     expect(isPlausibleMatch("Marcel Dettmann", "marceldettmann")).toBe(true);
+    expect(isPlausibleMatch("Marcel Dettmann", "marcel_dettmann")).toBe(true);
+  });
+
+  it("accepts the decoration real accounts add to a name", () => {
+    expect(isPlausibleMatch("Objekt", "objektsound")).toBe(true);
+    expect(isPlausibleMatch("Avalon Emerson", "avalonemersonmusic")).toBe(true);
+    expect(isPlausibleMatch("Anthony Naples", "anthonynaplesofficial")).toBe(true);
+    // Symmetric, so a leading "dj" works the same as a trailing "music".
+    expect(isPlausibleMatch("Stingray", "djstingray")).toBe(true);
+    // Two stacked decorations, which is common and still says nothing new.
+    expect(isPlausibleMatch("Objekt", "objektmusicofficial")).toBe(true);
   });
 
   it("rejects an unrelated name", () => {
@@ -41,19 +52,20 @@ describe("isPlausibleMatch", () => {
   });
 
   /**
-   * Documents current behaviour rather than desired behaviour.
-   *
-   * The prefix rule is unbounded on the right, so *anything* beginning with the
-   * artist's name matches once the name is five characters or more. That is what
-   * lets "Marcel Dettmann" find `marceldettmann`, but it also accepts a fan
-   * account and, more worryingly, a different artist whose name merely starts
-   * the same way. Asserted so the looseness is visible and a deliberate
-   * tightening shows up here as a change, not a surprise.
+   * The reason the rule tests *what* the remainder is rather than how long it
+   * is. `cosmonaut` exceeds `cosmo` by four characters — fewer than the
+   * legitimate `music` in `avalonemersonmusic` — so no length cap separates
+   * them. These three all used to match.
    */
-  it("currently accepts any longer name sharing the prefix (see comment)", () => {
-    expect(isPlausibleMatch("Marcel Dettmann", "marceldettmann")).toBe(true);
-    expect(isPlausibleMatch("Lakuti", "Lakuti Fan Page Uploads")).toBe(true);
-    expect(isPlausibleMatch("Cosmo", "Cosmonaut")).toBe(true);
+  it("rejects a longer name whose remainder carries meaning", () => {
+    expect(isPlausibleMatch("Cosmo", "Cosmonaut")).toBe(false);
+    expect(isPlausibleMatch("Lakuti", "Lakuti Fan Page")).toBe(false);
+    expect(isPlausibleMatch("Objekt", "objekt edits archive")).toBe(false);
+  });
+
+  it("rejects an account that drops part of the artist's name", () => {
+    // "marcel" alone is a different person, and short names collide constantly.
+    expect(isPlausibleMatch("Marcel Dettmann", "marcel")).toBe(false);
   });
 
   it("rejects empty input on either side", () => {

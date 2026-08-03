@@ -43,12 +43,13 @@ device.
 
 ### Step 2 in detail — why a function at all?
 
-The Lovable version called `https://ra.co/graphql` straight from `useRAEvents`.
+The first version of this app called `https://ra.co/graphql` straight from
+`useRAEvents`.
 Three problems, all of which disappear server-side:
 
 1. **CORS.** `ra.co` serves no `Access-Control-Allow-Origin` header. A browser
    `fetch()` to it from another origin is blocked by the browser before the app
-   ever sees a response. (It worked inside the Lovable preview only by accident
+   ever sees a response. (It worked inside a preview sandbox only by accident
    of that environment; it is not a property you can rely on in production.)
 2. **Forbidden request headers.** The original code set `User-Agent` and
    `Referer`. Both are on the [forbidden header
@@ -189,7 +190,7 @@ with Node's `(req, res)`. The web standard `Request`/`Response` signature is for
 App Router / Edge convention. Mixing them — `export default` taking a
 `Request` — type-checks fine and crashes at runtime, because `req.url` is then
 a relative path and `new URL()` rejects it. That cost us a deploy; see
-[MIGRATION.md §7](./MIGRATION.md#7--troubleshooting-the-import).
+[INSTALL.md](./INSTALL.md#troubleshooting).
 
 Two rules follow:
 

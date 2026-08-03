@@ -59,10 +59,14 @@ export default function HomePage() {
     setSheetOpen(true);
   }, []);
 
-  const spacingClass = cn(
-    layoutDensity === "tight" && "space-y-1",
-    layoutDensity === "default" && "space-y-2",
-    layoutDensity === "airy" && "space-y-3",
+  // A grid rather than `space-y`, because on a wide screen the same list has to
+  // become two and then three columns — and `space-y` only knows about the
+  // vertical gaps between siblings in one flow.
+  const listClass = cn(
+    "grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3",
+    layoutDensity === "tight" && "gap-1",
+    layoutDensity === "default" && "gap-2",
+    layoutDensity === "airy" && "gap-3",
   );
 
   const padX = cn(
@@ -97,10 +101,12 @@ export default function HomePage() {
         />
 
         <div className="py-2 border-b border-border/50">
-          <DatePicker selectedDate={selectedDate} onDateChange={setSelectedDate} />
+          <div className="shell">
+            <DatePicker selectedDate={selectedDate} onDateChange={setSelectedDate} />
+          </div>
         </div>
 
-        <div className={cn("py-2 flex items-center justify-between gap-2", padX)}>
+        <div className={cn("shell py-2 flex items-center justify-between gap-2", padX)}>
           <p className="text-xs text-muted-foreground">
             {hasEvents
               ? `${data!.count} event${data!.count !== 1 ? "s" : ""} · ${format(selectedDate, "EEE, MMM d")}`
@@ -108,7 +114,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <main className={mainPadding}>
+        <main className={cn("shell", mainPadding)}>
           <div
             className={cn(
               "transition-opacity duration-150",
@@ -124,13 +130,13 @@ export default function HomePage() {
             ) : isEmpty ? (
               <EmptyState />
             ) : hasEvents ? (
-              <div key={listKey} className={cn(spacingClass, "stagger-animation")}>
+              <div key={listKey} className={cn(listClass, "stagger-animation")}>
                 {data!.events.map((event) => (
                   <EventCard key={event.id} event={event} onSelect={handleEventSelect} />
                 ))}
               </div>
             ) : (
-              <div className={cn(spacingClass, "stagger-animation")}>
+              <div className={cn(listClass, "stagger-animation")}>
                 {Array.from({ length: 6 }, (_, i) => (
                   <EventSkeleton key={i} />
                 ))}

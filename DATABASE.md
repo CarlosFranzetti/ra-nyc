@@ -22,22 +22,22 @@ Postgres would do. Here's the full reasoning, plus what changes when the
 ## Why there's no database today
 
 Your instinct was right — and the code agrees with you. The Supabase project
-Lovable wired up (`sjskkjsluxivtovzkajb`) had:
+this app was scaffolded with (`sjskkjsluxivtovzkajb`) had:
 
 - **zero tables** — the generated `types.ts` literally declared
   `Tables: { [_ in never]: never }`;
 - **zero call sites** — `src/integrations/supabase/client.ts` was never imported
   by a single component.
 
-It was scaffolding. Lovable adds Supabase to new projects by default because
-most apps eventually want auth and storage; this one never did. It has been
-removed.
+It was scaffolding — app generators wire Supabase into new projects by default
+because most apps eventually want auth and storage. This one never did. It has
+been removed.
 
 **Was Supabase used for anything other than a database?** Yes — and this
 corrects an earlier answer here that was based only on this repo's git history.
 
 An earlier version of the app, since lost (see
-[memorystate.md](./memorystate.md#2026-07-29--recovering-the-original-lovable-app)),
+[memorystate.md](./memorystate.md#2026-07-29--recovering-the-original-app)),
 used a **Supabase Edge Function as a GraphQL proxy in front of ra.co, with rate
 limiting**. That is a compute feature, not a database one — it used Deno on
 Supabase's edge, and still no tables.
@@ -294,9 +294,9 @@ export const sql = neon(url);
 ```
 
 Keep it in `api/_lib/`. **The browser must never hold a database URL** — that's
-the one hard rule. The Lovable/Supabase model of querying from the client is
-what makes `VITE_`-prefixed credentials feel normal; they aren't, and anything
-prefixed `VITE_` is compiled into a public JavaScript bundle.
+the one hard rule. It is the browser-queries-the-database model that makes
+`VITE_`-prefixed credentials feel normal; they aren't, and anything prefixed
+`VITE_` is compiled into a public JavaScript bundle.
 
 Refresh via a Vercel Cron job (`api/cron/sync.ts`, `"schedule": "0 5 * * *"`),
 protected with a `CRON_SECRET` check.

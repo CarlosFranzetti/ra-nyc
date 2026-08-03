@@ -1,3 +1,9 @@
+import {
+  buildArtistContext,
+  pickByContext,
+  EMPTY_CONTEXT,
+  type ArtistContext,
+} from "./artistContext.js";
 import { getSql } from "./db.js";
 import { normalizeName } from "./normalize.js";
 
@@ -131,18 +137,77 @@ const MIN_SOUNDCLOUD_SECONDS = 45 * 60;
 // ─── Name matching ──────────────────────────────────────────────────────────
 
 /**
+ * Decorations real accounts hang off a name.
+ *
+ * The point of the list is that it is *boring*. An artist who is not called
+ * "Objekt" does not end up at `objektsound`; someone who is may well. Anything
+ * carrying meaning of its own — `naut`, `fanpage`, `archive`, `edits`,
+ * `bootlegs` — is deliberately absent, because those are the remainders that
+ * signal a different account rather than the same one dressed up.
+ *
+ * Normalisation has already removed spaces, punctuation and case by the time
+ * these are compared, so `dj_objekt`, `DJ Objekt` and `djobjekt` are one case.
+ */
+const ACCOUNT_AFFIXES: readonly string[] = [
+  "official", "music", "musik", "sound", "sounds", "audio",
+  "dj", "the", "real", "itsme", "iam",
+  "live", "hq", "world", "online",
+  "uk", "usa", "us", "nyc", "ny", "la", "berlin", "bln", "de", "fr", "it", "jp",
+];
+
+/**
+ * Shortest name allowed to match on anything but equality.
+ *
+ * Short names collide constantly — three letters plus a suffix is not evidence
+ * of anything — so below this the only acceptable answer is an exact match.
+ */
+const MIN_CORE_LENGTH = 5;
+
+/** Whether `rest` is nothing but stacked decoration, e.g. "" / "music" / "djuk". */
+function isAffixRun(rest: string): boolean {
+  if (!rest) return true;
+  for (const affix of ACCOUNT_AFFIXES) {
+    if (rest === affix) return true;
+    // Two is as far as this goes: `objektmusicofficial` is real, a third
+    // stacked token is more likely a different word that happens to start alike.
+    if (rest.startsWith(affix) && ACCOUNT_AFFIXES.includes(rest.slice(affix.length))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Whether a candidate account plausibly *is* this artist.
  *
  * Deliberately strict. A confidently wrong result — someone else's sets under a
- * DJ's name — is worse than an empty list, so anything short of a normalised
- * exact match or a clean prefix on a long-enough name is rejected.
+ * DJ's name — is worse than an empty list.
+ *
+ * The rule is that one name may contain the other, but everything left over has
+ * to be decoration. A bare "starts with" test is not enough on its own and used
+ * to be exactly what this did: it accepted `cosmonaut` for Cosmo and
+ * `lakutifanpage` for Lakuti, which is not a near miss but a different account
+ * entirely. The damage is larger than one bad set, because matching a profile
+ * flips `ownUploads` and switches off the per-track filter downstream — one
+ * wrong profile adopts a whole catalogue.
+ *
+ * A length cap would not have fixed it: `cosmonaut` is four characters longer
+ * than `cosmo`, shorter than the legitimate suffix in `avalonemersonmusic`. So
+ * the test is on *what* the extra characters are, not how many.
+ *
+ * Symmetric, so it covers both `objektsound` and `djobjekt`.
  */
 export function isPlausibleMatch(artistName: string, candidate: string): boolean {
   const a = normalizeName(artistName);
   const b = normalizeName(candidate);
   if (!a || !b) return false;
   if (a === b) return true;
-  if (a.length >= 5 && (b.startsWith(a) || a.startsWith(b))) return true;
+
+  const [core, whole] = a.length <= b.length ? [a, b] : [b, a];
+  if (core.length < MIN_CORE_LENGTH) return false;
+
+  if (whole.startsWith(core)) return isAffixRun(whole.slice(core.length));
+  if (whole.endsWith(core)) return isAffixRun(whole.slice(0, whole.length - core.length));
   return false;
 }
 
@@ -281,6 +346,7 @@ async function soundcloudAccessToken(signal?: AbortSignal): Promise<string | nul
 
 async function resolveSoundcloud(
   name: string,
+  context: ArtistContext,
   signal?: AbortSignal,
 ): Promise<{
   user: string | null;
@@ -298,6 +364,7 @@ async function resolveSoundcloud(
   // shapes that everything below this block is shared.
   let auth: Record<string, string> | undefined;
   let userSearch: string;
+  let resolveHandle: (handle: string) => string;
   let trackSearch: (userId: number | undefined) => string;
 
   if (mode === "official") {
@@ -308,6 +375,8 @@ async function resolveSoundcloud(
     const base = "https://api.soundcloud.com";
     auth = { Authorization: `OAuth ${token}` };
     userSearch = `${base}/users?q=${q}&limit=5`;
+    resolveHandle = (handle) =>
+      `${base}/resolve?url=${encodeURIComponent(`https://soundcloud.com/${handle}`)}`;
     trackSearch = (userId) =>
       userId
         ? `${base}/users/${userId}/tracks?limit=${CATALOGUE_LIMIT}`
@@ -316,22 +385,48 @@ async function resolveSoundcloud(
     const base = "https://api-v2.soundcloud.com";
     const credential = `&client_id=${encodeURIComponent(clientId)}`;
     userSearch = `${base}/search/users?q=${q}&limit=5${credential}`;
+    resolveHandle = (handle) =>
+      `${base}/resolve?url=${encodeURIComponent(
+        `https://soundcloud.com/${handle}`,
+      )}&client_id=${encodeURIComponent(clientId)}`;
     trackSearch = (userId) =>
       userId
         ? `${base}/users/${userId}/tracks?limit=${CATALOGUE_LIMIT}${credential}`
         : `${base}/search/tracks?q=${q}&limit=${CATALOGUE_LIMIT}${credential}`;
   }
 
-  // The official API returns bare arrays; api-v2 wraps them in `collection`.
-  const rawUsers = await fetchJson<ScUser[] | { collection?: ScUser[] }>(
-    userSearch,
-    signal,
-    auth,
-  );
-  const candidates = Array.isArray(rawUsers) ? rawUsers : (rawUsers?.collection ?? []);
-  const user = candidates.find(
-    (u) => u.username && isPlausibleMatch(name, u.username),
-  );
+  // A handle written in the artist's own RA bio beats anything a name search
+  // can offer, so it skips the search entirely. Guarded on `kind`, because
+  // /resolve happily returns a track or a playlist for the wrong kind of URL.
+  let user: ScUser | undefined;
+  if (context.handles.soundcloud) {
+    const resolved = await fetchJson<ScUser & { kind?: string }>(
+      resolveHandle(context.handles.soundcloud),
+      signal,
+      auth,
+    );
+    if (resolved?.username && (resolved.kind ?? "user") === "user") user = resolved;
+  }
+
+  if (!user) {
+    // The official API returns bare arrays; api-v2 wraps them in `collection`.
+    const rawUsers = await fetchJson<ScUser[] | { collection?: ScUser[] }>(
+      userSearch,
+      signal,
+      auth,
+    );
+    const candidates = Array.isArray(rawUsers) ? rawUsers : (rawUsers?.collection ?? []);
+
+    // Two artists can share a name exactly, and then no amount of string
+    // matching separates them — the first search hit used to win by default.
+    // Ranking the name-passing candidates by how much of the RA bio's context
+    // they echo is the only thing that can tell them apart.
+    user = pickByContext(
+      candidates.filter((u) => u.username && isPlausibleMatch(name, u.username)),
+      context,
+      (u) => [u.username, u.description],
+    );
+  }
 
   const readTracks = async (userId: number | undefined): Promise<ScTrack[]> => {
     const raw = await fetchJson<ScTrack[] | { collection?: ScTrack[] }>(
@@ -395,7 +490,7 @@ async function resolveSoundcloud(
 // ─── Mixcloud ───────────────────────────────────────────────────────────────
 
 interface McUserSearch {
-  data?: { username?: string; name?: string; url?: string }[];
+  data?: { username?: string; name?: string; url?: string; biog?: string | null }[];
 }
 interface McUser {
   biog?: string | null;
@@ -414,6 +509,7 @@ interface McCloudcasts {
 
 async function resolveMixcloud(
   name: string,
+  context: ArtistContext,
   signal?: AbortSignal,
 ): Promise<{
   user: string;
@@ -421,19 +517,30 @@ async function resolveMixcloud(
   biog: string | null;
   sets: ArtistSet[];
 } | null> {
-  const search = await fetchJson<McUserSearch>(
-    `https://api.mixcloud.com/search/?q=${encodeURIComponent(name)}&type=user&limit=5`,
-    signal,
-  );
+  // Same as SoundCloud: a handle in the RA bio settles it outright. Mixcloud
+  // usernames are the URL path, so there is nothing to resolve.
+  let username = context.handles.mixcloud ?? null;
+  let match: NonNullable<McUserSearch["data"]>[number] | undefined;
 
-  const match = search?.data?.find(
-    (u) =>
-      (u.username && isPlausibleMatch(name, u.username)) ||
-      (u.name && isPlausibleMatch(name, u.name)),
-  );
-  if (!match?.username) return null;
+  if (!username) {
+    const search = await fetchJson<McUserSearch>(
+      `https://api.mixcloud.com/search/?q=${encodeURIComponent(name)}&type=user&limit=5`,
+      signal,
+    );
 
-  const username = match.username;
+    match = pickByContext(
+      (search?.data ?? []).filter(
+        (u) =>
+          (u.username && isPlausibleMatch(name, u.username)) ||
+          (u.name && isPlausibleMatch(name, u.name)),
+      ),
+      context,
+      (u) => [u.username, u.name, u.biog],
+    );
+    username = match?.username ?? null;
+  }
+
+  if (!username) return null;
   const [profile, casts] = await Promise.all([
     fetchJson<McUser>(`https://api.mixcloud.com/${encodeURIComponent(username)}/`, signal),
     fetchJson<McCloudcasts>(
@@ -462,9 +569,14 @@ async function resolveMixcloud(
         null,
     }));
 
+  // A handle lifted from a bio can be stale or simply wrong. If Mixcloud knows
+  // nothing about it, say we found nothing rather than publishing a dead
+  // profile link under the artist's name.
+  if (!match && !profile && sets.length === 0) return null;
+
   return {
     user: username,
-    url: match.url ?? `https://www.mixcloud.com/${username}/`,
+    url: match?.url ?? `https://www.mixcloud.com/${username}/`,
     biog: profile?.biog?.trim() || null,
     sets,
   };
@@ -886,14 +998,27 @@ export async function getArtistLinks(
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
   try {
-    // All independent — run together so the slowest doesn't stack on the rest.
-    const [soundcloud, mixcloud, archive, youtube, discogs, ra] = await Promise.all([
-      resolveSoundcloud(name, controller.signal),
-      resolveMixcloud(name, controller.signal),
-      resolveArchive(name, controller.signal),
-      resolveYouTube(name, controller.signal),
-      resolveDiscogs(name, controller.signal),
-      resolveRa(artistId, controller.signal),
+    // RA has to land before SoundCloud and Mixcloud, because its biography is
+    // what tells those two which of several same-named accounts to take. The
+    // three sources that don't need it are started first and awaited after, so
+    // the dependency costs an ordering rather than a round trip.
+    const archivePending = resolveArchive(name, controller.signal);
+    const youtubePending = resolveYouTube(name, controller.signal);
+    const discogsPending = resolveDiscogs(name, controller.signal);
+
+    const ra = await resolveRa(artistId, controller.signal);
+    // A failed or bio-less RA lookup yields an empty context, and matching
+    // falls back to exactly what it did before this existed.
+    const context = ra
+      ? buildArtistContext(name, ra.biography)
+      : EMPTY_CONTEXT;
+
+    const [soundcloud, mixcloud, archive, youtube, discogs] = await Promise.all([
+      resolveSoundcloud(name, context, controller.signal),
+      resolveMixcloud(name, context, controller.signal),
+      archivePending,
+      youtubePending,
+      discogsPending,
     ]);
 
     const fallback = buildFallbackLinks(name);
