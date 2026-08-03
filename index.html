@@ -24,7 +24,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RA NYC" />
     <link rel="icon" type="image/svg+xml" href="/ra-favicon.svg" />
-    <link rel="apple-touch-icon" href="/ra-maskable.svg" />
+    <!-- PNG, not the SVG the manifest uses: iOS Safari does not rasterise SVG
+         for home-screen icons and silently falls back to a screenshot of the
+         page — on the one platform this meta block exists to serve. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/ra-apple-touch.png" />
 
     <!-- Paint the background before CSS loads, so opening the app never flashes
          white. Themes override this the moment the stylesheet lands. -->

@@ -198,7 +198,12 @@ export function buildArtistContext(
   const lower = biography.toLowerCase();
   for (const place of PLACES_BY_LENGTH) {
     if (terms.size >= MAX_TERMS) break;
-    if (lower.includes(place)) addTerm(terms, place, self);
+    // Exempt from the length floor, which exists to throw out *accidental*
+    // short tokens from the proper-noun sweep below. Nothing arrives here by
+    // accident — every entry is on a curated list. Applying the floor here
+    // silently dropped "nyc" and "usa", so a bio reading "based in NYC"
+    // contributed nothing at all on an app named ra-nyc.
+    if (lower.includes(place)) addTerm(terms, place, self, 2);
   }
 
   for (const match of biography.matchAll(PROPER_NOUN)) {

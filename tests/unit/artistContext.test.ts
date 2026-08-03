@@ -54,6 +54,15 @@ describe("buildArtistContext — terms", () => {
     expect(buildArtistContext("SRI (1)", null).terms).toEqual([]);
   });
 
+  it("keeps short place names, which the length floor was eating", () => {
+    // The floor exists to throw out accidental short tokens from the
+    // proper-noun sweep. Places arrive from a curated list, so nothing is
+    // accidental — and dropping "nyc" on an app called ra-nyc was absurd.
+    const ctx = buildArtistContext("Someone", "A DJ based in NYC, touring the USA.");
+    expect(ctx.terms).toContain("nyc");
+    expect(ctx.terms).toContain("usa");
+  });
+
   it("picks up places and named affiliations", () => {
     const ctx = buildArtistContext(
       "Mike Servito",

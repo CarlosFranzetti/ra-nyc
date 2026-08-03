@@ -1,7 +1,6 @@
 import {
   buildArtistContext,
   pickByContext,
-  EMPTY_CONTEXT,
   type ArtistContext,
 } from "./artistContext.js";
 import { getSql } from "./db.js";
@@ -109,6 +108,16 @@ export interface ArtistLinks {
 const UPSTREAM_TIMEOUT_MS = 7_000;
 
 /**
+ * Tighter budget for RA, because it is the one blocking call.
+ *
+ * Everything else races its own deadline concurrently; RA sits in front of
+ * SoundCloud and Mixcloud, so every second it spends is a second they do not
+ * get. Three is enough for two sequential GraphQL round trips on a good day and
+ * short enough that a bad one costs the context, not the catalogue.
+ */
+const RA_TIMEOUT_MS = 3_000;
+
+/**
  * SoundCloud and Mixcloud are where a DJ actually posts, so we pull their
  * catalogue rather than a sample — that is what makes `next` keep working.
  */
@@ -137,7 +146,18 @@ const MIN_SOUNDCLOUD_SECONDS = 45 * 60;
 // ─── Name matching ──────────────────────────────────────────────────────────
 
 /**
- * Decorations real accounts hang off a name.
+ * Decorations that come *before* a name: `djobjekt`, `theblessedmadonna`.
+ *
+ * Kept apart from the trailing set because position carries meaning. A trailing
+ * `dj` is not a thing anyone writes, and — more to the point — the two sets get
+ * different length rules below.
+ */
+const LEADING_AFFIXES: readonly string[] = [
+  "dj", "the", "iam", "itsme", "real", "official",
+];
+
+/**
+ * Decorations that come *after* one: `objektsound`, `avalonemersonmusic`.
  *
  * The point of the list is that it is *boring*. An artist who is not called
  * "Objekt" does not end up at `objektsound`; someone who is may well. Anything
@@ -145,32 +165,53 @@ const MIN_SOUNDCLOUD_SECONDS = 45 * 60;
  * `bootlegs` — is deliberately absent, because those are the remainders that
  * signal a different account rather than the same one dressed up.
  *
+ * **Nothing here is shorter than three characters, and that is the whole
+ * defence.** A two-letter allowance let `ny`, `la`, `us`, `de` and `it` through,
+ * and those are not rare geographic tags — they are how ordinary English words
+ * end. `Harmony` matched an account called `harmo`; `Cosmo` matched `cosmola`.
+ * That is precisely the class of miss this rule exists to stop, arriving via a
+ * two-character coincidence instead of an unrestricted suffix.
+ *
+ * The cost is real and accepted: `objektuk` no longer resolves. An artist who
+ * tags their handle with a two-letter country now gets an empty list rather
+ * than a wrong one, which is the trade this whole file is built on.
+ *
  * Normalisation has already removed spaces, punctuation and case by the time
  * these are compared, so `dj_objekt`, `DJ Objekt` and `djobjekt` are one case.
  */
-const ACCOUNT_AFFIXES: readonly string[] = [
+const TRAILING_AFFIXES: readonly string[] = [
   "official", "music", "musik", "sound", "sounds", "audio",
-  "dj", "the", "real", "itsme", "iam",
-  "live", "hq", "world", "online",
-  "uk", "usa", "us", "nyc", "ny", "la", "berlin", "bln", "de", "fr", "it", "jp",
+  "live", "real", "world", "online",
+  // Scene cities. The earlier list stopped at nyc and berlin, which quietly
+  // said a Chicago or Detroit handle was less legitimate than a Berlin one.
+  "nyc", "usa", "brooklyn", "chicago", "detroit", "berlin", "london", "paris",
+  "amsterdam", "rotterdam", "tokyo", "osaka", "glasgow", "manchester",
+  "bristol", "leeds", "dublin", "lisbon", "madrid", "barcelona", "milan",
+  "vienna", "warsaw", "prague", "budapest", "montreal", "toronto", "melbourne",
+  "sydney", "oslo", "stockholm", "copenhagen", "helsinki", "hamburg",
+  "cologne", "leipzig", "munich", "zurich", "brussels",
 ];
 
 /**
  * Shortest name allowed to match on anything but equality.
  *
- * Short names collide constantly — three letters plus a suffix is not evidence
- * of anything — so below this the only acceptable answer is an exact match.
+ * Short names collide, so below this the only acceptable answer is an exact
+ * match. Four rather than five because the allowlist now does the work the
+ * length floor used to: with an unbounded suffix, five was barely enough; with
+ * a closed set of decorations, four still rules out the collisions while
+ * letting Or:la, DVS1 and every other four-letter name reach `orlamusic`
+ * instead of matching nothing but themselves.
  */
-const MIN_CORE_LENGTH = 5;
+const MIN_CORE_LENGTH = 4;
 
-/** Whether `rest` is nothing but stacked decoration, e.g. "" / "music" / "djuk". */
-function isAffixRun(rest: string): boolean {
+/** Whether `rest` is nothing but stacked decoration, e.g. "" / "music" / "musicofficial". */
+function isDecoration(rest: string, affixes: readonly string[]): boolean {
   if (!rest) return true;
-  for (const affix of ACCOUNT_AFFIXES) {
+  for (const affix of affixes) {
     if (rest === affix) return true;
     // Two is as far as this goes: `objektmusicofficial` is real, a third
     // stacked token is more likely a different word that happens to start alike.
-    if (rest.startsWith(affix) && ACCOUNT_AFFIXES.includes(rest.slice(affix.length))) {
+    if (rest.startsWith(affix) && affixes.includes(rest.slice(affix.length))) {
       return true;
     }
   }
@@ -206,8 +247,10 @@ export function isPlausibleMatch(artistName: string, candidate: string): boolean
   const [core, whole] = a.length <= b.length ? [a, b] : [b, a];
   if (core.length < MIN_CORE_LENGTH) return false;
 
-  if (whole.startsWith(core)) return isAffixRun(whole.slice(core.length));
-  if (whole.endsWith(core)) return isAffixRun(whole.slice(0, whole.length - core.length));
+  if (whole.startsWith(core)) return isDecoration(whole.slice(core.length), TRAILING_AFFIXES);
+  if (whole.endsWith(core)) {
+    return isDecoration(whole.slice(0, whole.length - core.length), LEADING_AFFIXES);
+  }
   return false;
 }
 
@@ -1009,14 +1052,32 @@ export async function getArtistLinks(
     if (cachedRow) return cachedRow;
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  /**
+   * Each stage gets its own deadline rather than sharing one.
+   *
+   * A single controller started at entry was fine while every source ran in
+   * parallel — all six raced the same seven seconds. It stopped being fine the
+   * moment RA became a *prerequisite*: `resolveRa` can make two sequential
+   * round trips to `ra.co` (it retries without the guessed `biography` field on
+   * any GraphQL error), and a slow-but-successful RA lookup would then hand
+   * SoundCloud and Mixcloud an already-aborted signal. Their fetches reject
+   * instantly, `fetchJson` swallows it, and the two sources a DJ actually
+   * posts to return nothing — with a *successful* RA call as the cause.
+   *
+   * RA is held to a shorter budget because it is now blocking, and the
+   * catalogue stage starts a fresh one. Worst case is 3s + 7s, inside the 15s
+   * `maxDuration` in vercel.json.
+   */
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  const deadline = (ms: number): AbortSignal => {
+    const controller = new AbortController();
+    timers.push(setTimeout(() => controller.abort(), ms));
+    return controller.signal;
+  };
 
   try {
-    // RA has to land before SoundCloud and Mixcloud, because its biography is
-    // what tells those two which of several same-named accounts to take. The
-    // three sources that don't need it are started first and awaited after, so
-    // the dependency costs an ordering rather than a round trip.
+    // The three sources that don't need RA start now and are awaited after it,
+    // so the dependency costs an ordering rather than a round trip.
     //
     // `settle` is what makes that safe. These three are in flight across an
     // `await`, so if anything between here and their `await` throws, they
@@ -1029,20 +1090,21 @@ export async function getArtistLinks(
         return fallback;
       });
 
-    const archivePending = settle(resolveArchive(name, controller.signal), "archive", []);
-    const youtubePending = settle(resolveYouTube(name, controller.signal), "youtube", []);
-    const discogsPending = settle(resolveDiscogs(name, controller.signal), "discogs", null);
+    const sideSignal = deadline(UPSTREAM_TIMEOUT_MS);
+    const archivePending = settle(resolveArchive(name, sideSignal), "archive", []);
+    const youtubePending = settle(resolveYouTube(name, sideSignal), "youtube", []);
+    const discogsPending = settle(resolveDiscogs(name, sideSignal), "discogs", null);
 
-    const ra = await resolveRa(artistId, controller.signal);
-    // A failed or bio-less RA lookup yields an empty context, and matching
-    // falls back to exactly what it did before this existed.
-    const context = ra
-      ? buildArtistContext(name, ra.biography)
-      : EMPTY_CONTEXT;
+    const ra = await resolveRa(artistId, deadline(RA_TIMEOUT_MS));
+    // A bio-less or failed RA lookup still yields the parenthetical off the
+    // name, and matching otherwise falls back to what it did before this
+    // existed.
+    const context = buildArtistContext(name, ra.biography);
 
+    const catalogueSignal = deadline(UPSTREAM_TIMEOUT_MS);
     const [soundcloud, mixcloud, archive, youtube, discogs] = await Promise.all([
-      resolveSoundcloud(name, context, controller.signal),
-      resolveMixcloud(name, context, controller.signal),
+      resolveSoundcloud(name, context, catalogueSignal),
+      resolveMixcloud(name, context, catalogueSignal),
       archivePending,
       youtubePending,
       discogsPending,
@@ -1101,6 +1163,6 @@ export async function getArtistLinks(
     await writeCached(links);
     return links;
   } finally {
-    clearTimeout(timeout);
+    timers.forEach(clearTimeout);
   }
 }

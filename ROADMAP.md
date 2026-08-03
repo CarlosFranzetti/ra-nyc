@@ -43,6 +43,13 @@ refuses to clobber it — the column has been waiting for this since the schema
 was written. What's missing is any way to *set* it. The trigger to build it is
 the first wrong artist match worth fixing by hand.
 
+### Make cache invalidation possible at all — P2
+
+`readCached` never reads `resolved_at`, and nothing passes `refresh: true`, so
+the only way to invalidate an artist row is to delete it. Four migrations were
+written believing otherwise. Either honour `resolved_at` as a TTL in
+`readCached`, or drop the column so nobody writes another migration against it.
+
 ### Smaller things — P3
 
 - **Filter chips** — genre, RA Pick only, free, before-midnight.
@@ -62,7 +69,7 @@ the first wrong artist match worth fixing by hand.
 Kept below as a record of the original plan, which differs from how these
 actually landed — see ARCHITECTURE.md and memorystate.md for what was built.
 
-Testing, listed here as a prerequisite and long unbuilt, now stands at 81 Vitest
+Testing, listed here as a prerequisite and long unbuilt, now stands at 86 Vitest
 units and 71 Playwright assertions across four suites.
 
 ---

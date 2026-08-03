@@ -41,6 +41,39 @@ describe("isPlausibleMatch", () => {
     expect(isPlausibleMatch("Objekt", "objektmusicofficial")).toBe(true);
   });
 
+  it("treats every scene the same", () => {
+    // The list used to stop at nyc and berlin, which quietly said a Chicago
+    // handle was less legitimate than a Berlin one.
+    expect(isPlausibleMatch("Objekt", "objektchicago")).toBe(true);
+    expect(isPlausibleMatch("Objekt", "objektdetroit")).toBe(true);
+    expect(isPlausibleMatch("Objekt", "objektberlin")).toBe(true);
+  });
+
+  it("does not accept a two-letter remainder", () => {
+    // Two-letter country tags are indistinguishable from ordinary word
+    // endings, and the word endings are far more common. `harmo` is a
+    // different account from Harmony; `cosmola` is a different account from
+    // Cosmo. The accepted cost is that a real `objektuk` no longer resolves —
+    // an empty list rather than a wrong one.
+    expect(isPlausibleMatch("Harmony", "harmo")).toBe(false);
+    expect(isPlausibleMatch("Cosmo", "cosmola")).toBe(false);
+    expect(isPlausibleMatch("Objekt", "objektuk")).toBe(false);
+  });
+
+  it("lets a four-letter name carry decoration too", () => {
+    // The floor is on the *name*, and with a closed set of decorations it no
+    // longer needs to be five: Or:la and DVS1 would otherwise match nothing
+    // but themselves on every provider.
+    expect(isPlausibleMatch("Or:la", "orlamusic")).toBe(true);
+    expect(isPlausibleMatch("DVS1", "dvs1official")).toBe(true);
+  });
+
+  it("only accepts a leading decoration in the leading position", () => {
+    // "dj" leads. A trailing "dj" is not something anyone writes, and allowing
+    // it either way would put a two-letter remainder back in play.
+    expect(isPlausibleMatch("Stingray", "stingraydj")).toBe(false);
+  });
+
   it("rejects an unrelated name", () => {
     expect(isPlausibleMatch("Lakuti", "Tama Sumo")).toBe(false);
     expect(isPlausibleMatch("Ben Klock", "Marcel Dettmann")).toBe(false);

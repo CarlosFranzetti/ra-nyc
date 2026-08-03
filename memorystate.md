@@ -35,7 +35,7 @@ seconds on a phone on the subway?"
 | **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
 | **Database** | Optional Neon, caches artist links only. See [DATABASE.md](./DATABASE.md) |
 | **Env vars** | None required; `DATABASE_URL` and `DISCOGS_TOKEN` optional |
-| **Tests** | ✅ 81 Vitest units + 71 Playwright assertions (`npm run test:all`) |
+| **Tests** | ✅ 86 Vitest units + 71 Playwright assertions (`npm run test:all`) |
 | **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
 
@@ -65,7 +65,7 @@ it. Sets play in a transport bar docked to the bottom, which outlives every shee
 
 | Command | What it runs |
 | --- | --- |
-| `npm test` | 81 Vitest units over the pure functions in `api/_lib` and `src/lib` |
+| `npm test` | 86 Vitest units over the pure functions in `api/_lib` and `src/lib` |
 | `npm run test:e2e` | 32 Playwright assertions for the transport bar |
 | `npm run test:search` | 21 Playwright assertions for search and venue maps |
 | `npm run test:layout` | 18 Playwright assertions for responsive layout and preferences |
@@ -1044,6 +1044,73 @@ doesn't crop the mark. Nothing changes in a normal tab; it's opt-in at install.
 Docs: `MIGRATION.md` deleted, its still-useful operational content moved to
 `INSTALL.md`. Every "Lovable" reference is gone from the tree — the branch name
 is the one exception and it is not ours to change (§5).
+
+### 2026-08-03 — What the review caught
+
+A Sonnet review of the change above found nine things. Six were real; all six
+are fixed. Two are worth carrying forward.
+
+**Every cache-invalidation migration since 0002 has been a no-op — and worse.**
+Migrations 0002, 0003, 0004 and 0005 all end with some version of
+
+```sql
+update artist_links set sets = '[]', resolved_at = to_timestamp(0)
+ where link_source <> 'manual';
+```
+
+and every one of them believed it was scheduling a re-resolve. None was.
+`readCached` returns whatever row it finds and **never reads `resolved_at`**;
+`getArtistLinks` only bypasses the cache on `refresh: true`, and nothing in the
+codebase passes it. So those statements did not invalidate anything — they
+permanently emptied the set list of every artist already cached, and the
+resolver has been serving those empty rows as *hits* ever since.
+
+That is very likely part of why artists have been showing up with no sets.
+
+Deleting the row is the only invalidation this schema supports: a missing row is
+a cache miss, and a cache miss resolves live and writes back. `0006` is a
+`delete`, which also repairs everything 0002–0005 emptied.
+
+> **The lesson.** The four earlier migrations each carried a confident comment
+> explaining what they invalidated. The comment was wrong in all four, and
+> nothing contradicted it, because a cache that returns stale data looks exactly
+> like a cache that is working. Writing `resolved_at` is only invalidation if
+> something *reads* `resolved_at`.
+
+**Two-letter affixes reopened the hole they were meant to close.** The first
+allowlist included `ny`, `la`, `us`, `de`, `it`. Those are not rare geographic
+tags; they are how ordinary English words end. Verified: `Harmony` matched an
+account called `harmo`, `Cosmo` matched `cosmola` — the same class of wrong
+account as `cosmonaut`, arriving through a two-character coincidence instead of
+an unbounded suffix. Trailing decorations are now three characters minimum, and
+`dj` survives only as a *leading* one, since position is real information. The
+accepted cost is `objektuk`.
+
+Splitting leading from trailing also paid for itself twice: it made room to add
+the scene cities the first list omitted — the original stopped at `nyc` and
+`berlin`, quietly ruling that a Chicago handle was less legitimate than a Berlin
+one — and, with a closed set of decorations doing the work, the name floor could
+drop from five characters to four, so Or:la and DVS1 can now reach `orlamusic`
+instead of matching nothing but themselves.
+
+The rest, briefly:
+
+- **One abort deadline for a now-sequential pipeline.** A single 7s controller
+  was correct while all six sources raced it. Once RA became a prerequisite, a
+  slow-but-*successful* RA lookup could hand SoundCloud and Mixcloud an already
+  aborted signal — the two sources a DJ actually posts to, returning nothing,
+  with a successful call as the cause. Each stage now gets its own deadline; RA
+  is held to 3s because it blocks.
+- **The place sweep dropped `nyc` and `usa`** to a length floor meant for
+  accidental tokens from the proper-noun sweep. On an app called ra-nyc.
+- **`apple-touch-icon` pointed at an SVG**, which iOS does not rasterise — on
+  the one platform that meta block exists for. Now a PNG, generated with
+  zlib and struct because the sandbox has no image library.
+- **`.shell` was unlayered**, and unlayered author CSS beats every `@layer` rule
+  regardless of specificity, so a `max-w-*` utility placed beside it to widen one
+  instance would have silently lost. Moved into `@layer utilities` — safe
+  because, unlike the runtime-built `theme-${x}` names, `.shell` is written
+  literally in the JSX and survives the content scan. Verified in the built CSS.
 
 ## 4 · Map of the code
 

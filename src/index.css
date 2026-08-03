@@ -445,24 +445,31 @@ html {
    card columns at a comfortable measure, and no wider: past that the listings
    stop being a list.
 
-   Outside @layer on purpose, like the themes above — layered custom CSS gets
-   tree-shaken whenever Tailwind cannot find the selector in its content globs.
+   Inside @layer utilities, unlike the themes above. The themes have to stay
+   unlayered because their class names are built at runtime (`theme-${x}`) and
+   Tailwind's scanner never sees them. `.shell` is written literally in the
+   JSX, so it survives the content scan — and being layered is what keeps it
+   *overridable*: unlayered author CSS beats every `@layer` rule of the same
+   origin regardless of specificity, so an unlayered `.shell` would silently
+   win against a `max-w-*` utility put beside it to widen one instance.
    ───────────────────────────────────────────────────────────────────────── */
-.shell {
-  margin-inline: auto;
-  width: 100%;
-  max-width: 44rem;
-}
-
-@media (min-width: 1024px) {
+@layer utilities {
   .shell {
-    max-width: 66rem;
+    margin-inline: auto;
+    width: 100%;
+    max-width: 44rem;
   }
-}
 
-@media (min-width: 1536px) {
-  .shell {
-    max-width: 88rem;
+  @media (min-width: 1024px) {
+    .shell {
+      max-width: 66rem;
+    }
+  }
+
+  @media (min-width: 1536px) {
+    .shell {
+      max-width: 88rem;
+    }
   }
 }
 
