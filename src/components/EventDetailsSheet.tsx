@@ -28,6 +28,7 @@ interface EventDetailsSheetProps {
   onOpenChange: (open: boolean) => void;
   /** Opens the artist sheet over this one, keeping the event underneath. */
   onSelectArtist: (artist: Artist) => void;
+  onSelectVenue: (venue: string) => void;
 }
 
 /** Chips shown before the lineup collapses behind a "+N more". */
@@ -46,6 +47,7 @@ export function EventDetailsSheet({
   open,
   onOpenChange,
   onSelectArtist,
+  onSelectVenue,
 }: EventDetailsSheetProps) {
   const prefetchArtist = usePrefetchArtist();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -200,11 +202,17 @@ export function EventDetailsSheet({
             </div>
 
             {/* Same treatment as the card, so the venue reads the same way
-                whichever screen you're on. */}
-            <div className="flex items-center gap-2 text-sm font-semibold text-venue">
+                whichever screen you're on — and here it is also the way to a
+                map, which is the question a venue name actually raises. */}
+            <button
+              onClick={() => onSelectVenue(event.venue.name)}
+              className="-mx-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-left text-sm font-semibold text-venue transition-smooth active:scale-[0.98] active:bg-accent"
+            >
               <MapPin className="h-4 w-4 flex-shrink-0" />
-              <span>{event.venue.name}</span>
-            </div>
+              <span className="underline decoration-venue/30 underline-offset-4">
+                {event.venue.name}
+              </span>
+            </button>
 
             {event.attending > 0 && (
               <div className="flex items-center gap-2 text-sm text-foreground">

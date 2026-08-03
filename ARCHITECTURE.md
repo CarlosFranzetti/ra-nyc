@@ -2,12 +2,13 @@
 
 ## One-paragraph summary
 
-RA-NYC is a static single-page React app plus four serverless functions. The SPA
+RA-NYC is a static single-page React app plus five serverless functions. The SPA
 is built by Vite into `dist/` and served from Vercel's CDN. `api/events.ts` is a
 thin, cached, validating proxy in front of Resident Advisor's public GraphQL
 endpoint; `api/search.ts` searches a window of listings; `api/image.ts` is a
 fallback proxy for flyer images the RA CDN won't serve to a browser directly; and
-`api/artist.ts` resolves a DJ to playable sets, a bio and profile links.
+`api/artist.ts` resolves a DJ to playable sets, a bio and profile links; and
+`api/venue.ts` geocodes a venue name for the map.
 
 Sets play in a transport bar docked to the bottom of the screen, driven from a
 body-level host so playback survives every sheet opening and closing over it.
@@ -94,6 +95,8 @@ api/
                     Flyer proxy for when the RA CDN refuses a direct browser
                     request. Host-allowlisted, image/* only, 8 MB cap.
                     Fallback path only — see "Images" below.
+  venue.ts          GET /api/venue?name=<venue>
+                    Geocodes a venue via Nominatim. Cached for a month.
   search.ts         GET /api/search?q=<term>
                     Windowed listing search: upcoming ascending, past by day.
   _lib/normalize.ts normalizeName / searchKey / withinEditDistance. Separate
@@ -133,6 +136,7 @@ src/
                         set player, switchable sets, in-app bio, links.
     PlayerBar.tsx       The transport, docked bottom. Pure UI — holds no player.
     SearchSheet.tsx     Event search: field, upcoming/past sections, jump-to-day.
+    VenueSheet.tsx      Venue map over the event, plus an Open in Maps link.
     ui/drawer.tsx       Thin vaul wrapper — the one headless-UI dependency.
   context/
     PlayerContext.tsx   Queue, transport state, and the body-level player host.
@@ -377,6 +381,29 @@ legitimately contain them (`320`, `8ULENTINA`, `Tommy Four Seven`).
 The looseness is the inverse of `isPlausibleMatch`. A wrong *auto-resolved* set
 is presented as fact and is worse than nothing; a loose search hit is something
 the user is actively scanning past.
+
+## Venue maps
+
+Tapping a venue name opens a map over the event. RA's API gives us a venue
+**name and nothing else** — no address, no coordinates — so this needs geocoding,
+which is why there is an `/api/venue` at all.
+
+Nominatim (OpenStreetMap's own geocoder) is keyless and free, provided you
+identify yourself and don't hammer it. Both are reasons it runs server-side: a
+browser cannot set a meaningful `User-Agent`, and a per-visitor call is exactly
+the hammering their policy asks you to avoid. One edge-cached response serves
+everyone, cached for a month — a venue's location is the least volatile thing in
+this app.
+
+The map itself is an **OpenStreetMap embed iframe**, not a mapping library: no
+API key, no SDK, nothing in the bundle, for something most sessions never open.
+OSM serves only light tiles, which would be a white slab in a dark app at 2am, so
+`.map-dark` inverts and hue-rotates it — a CSS filter doing the job a paid dark
+tile server would charge for.
+
+A failed geocode is **not an error the user sees**. The map area explains itself
+(often a one-off or TBA location) and the *Open in Maps* link still works, since
+it can fall back to a name query without coordinates.
 
 ## Caching and perceived speed
 

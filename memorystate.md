@@ -54,6 +54,7 @@ playwright-core.
 | `/api/image?u=<https url>` | Function | Flyer proxy fallback, host-allowlisted |
 | `/api/artist?id=<ra id>&name=<name>` | Function | Resolves a DJ to sets + profile links |
 | `/api/search?q=<term>` | Function | Windowed listing search — upcoming, then past |
+| `/api/venue?name=<venue>` | Function | Geocodes a venue for the map sheet |
 
 The app is a single route. The event, artist and search views are all sheets, not
 pages — tapping a DJ opens the artist *over* the event, and dismissing returns to
@@ -65,7 +66,7 @@ it. Sets play in a transport bar docked to the bottom, which outlives every shee
 | --- | --- |
 | `npm test` | 64 Vitest units over the pure functions in `api/_lib` and `src/lib` |
 | `npm run test:e2e` | 32 Playwright assertions for the transport bar |
-| `npm run test:search` | 13 Playwright assertions for search |
+| `npm run test:search` | 21 Playwright assertions for search and venue maps |
 | `npm run test:all` | all three |
 
 ---
@@ -928,6 +929,27 @@ deliberate tightening shows up as a change rather than a surprise.
 > works, that NYC runs ~25 listings a day. The simulation encoded the wrong
 > assumption and passed. Only probing production found them. Tests lock in a
 > fix; they don't discover that your model of the world is wrong.
+
+### 2026-08-03 — Venue maps
+
+Tapping a venue name opens a map sheet over the event. The reason this needed a
+new endpoint rather than a component: **RA gives us a venue name and nothing
+else** — no address, no coordinates — so a map means geocoding.
+
+Nominatim is keyless and free if you identify yourself and don't hammer it. Both
+push it server-side: a browser cannot set a meaningful `User-Agent`, and a
+per-visitor call is precisely the hammering their policy warns about. Cached a
+month; venues don't move.
+
+The map is an **OSM embed iframe**, not a mapping library — no key, no SDK,
+nothing in the bundle, for something most sessions never open. OSM only serves
+light tiles, so `.map-dark` inverts and hue-rotates them; a CSS filter doing what
+a paid dark tile server would charge for.
+
+A failed geocode is deliberately not an error: the panel explains itself (usually
+a one-off or TBA location) and *Open in Maps* still works from the name alone.
+`maps.apple.com` rather than `geo:` because it degrades to a web map everywhere
+that isn't iOS.
 
 ## 4 · Map of the code
 
