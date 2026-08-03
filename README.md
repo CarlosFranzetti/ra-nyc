@@ -34,6 +34,9 @@ party, promoter or venue — upcoming first, then past. Matching is accent- and
 leet-insensitive and tolerates a typo, so `bjork` finds Björk and `holo` finds
 h0l0. Picking a result jumps the listings to that night and opens it.
 
+**Where it is.** Tapping a venue name opens a map, with a link out to your phone's
+map app. Venue names carry their own colour per theme so they're easy to scan for.
+
 **Speed.** The query cache is persisted to disk, so returning to the app paints
 your last day before the network answers. Adjacent days are prefetched, and every
 API response is shared across visitors by Vercel's edge cache.

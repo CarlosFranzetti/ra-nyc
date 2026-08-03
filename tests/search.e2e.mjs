@@ -165,6 +165,34 @@ const sectionOrder = await page.evaluate(() => {
   return up !== -1 && past !== -1 && up < past;
 });
 check("upcoming is listed before past", sectionOrder);
+
+// The reported bug: the sheet ended after one clipped card, with the dimmed
+// listings page showing through the overlay below it. Two things have to hold —
+// the sheet fills the viewport, and the first result is fully inside the
+// scroller rather than cut off by it.
+const geometry = await page.evaluate(() => {
+  const sheet = document.querySelector('[role="dialog"]');
+  const scroller = sheet?.querySelector("div.overflow-y-auto");
+  const card = sheet?.querySelector("article");
+  if (!sheet || !scroller || !card) return null;
+  const s = sheet.getBoundingClientRect();
+  const sc = scroller.getBoundingClientRect();
+  const c = card.getBoundingClientRect();
+  return {
+    sheetFraction: s.height / window.innerHeight,
+    scrollerHeight: Math.round(sc.height),
+    cardHeight: Math.round(c.height),
+    cardFullyInside: c.bottom <= sc.bottom + 1,
+  };
+});
+check("search sheet fills most of the viewport",
+  geometry !== null && geometry.sheetFraction > 0.75,
+  geometry ? `${Math.round(geometry.sheetFraction * 100)}% of viewport` : "no sheet");
+check("the scroller is taller than a single result",
+  geometry !== null && geometry.scrollerHeight > geometry.cardHeight,
+  geometry ? `scroller ${geometry.scrollerHeight}px vs card ${geometry.cardHeight}px` : "");
+check("the first result is not clipped",
+  geometry !== null && geometry.cardFullyInside);
 const dayLabel = new Date(`${FUTURE}T12:00:00Z`).toLocaleDateString("en-US", {
   weekday: "short", month: "short", day: "numeric", timeZone: "UTC",
 });
@@ -190,6 +218,35 @@ const detailsOpen = await page.locator('[role="dialog"]').count();
 check("the event opens", detailsOpen > 0);
 const jumped = await page.locator(`text=${new Date(`${FUTURE}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })}`).first().count();
 check("listings jumped to the event's night", jumped > 0);
+
+// ── venue map
+await page.route("**/api/venue*", (route) =>
+  route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      name: "Nowadays",
+      lat: 40.7108,
+      lon: -73.9229,
+      label: "Nowadays, Troutman Street, Queens, New York",
+      mapsUrl: "https://maps.apple.com/?q=Nowadays&ll=40.7108,-73.9229",
+    }),
+  }),
+);
+await page.route("**/openstreetmap.org/**", (route) =>
+  route.fulfill({ contentType: "text/html", body: "<!doctype html><title>map</title>" }),
+);
+
+const venueButton = page.locator('[role="dialog"] button:has-text("Nowadays")').first();
+check("the venue name is tappable in the event sheet", (await venueButton.count()) > 0);
+await venueButton.click();
+await page.waitForSelector('iframe[title*="Map of"]', { timeout: 8000 });
+check("tapping a venue opens a map", true);
+check("the map is darkened rather than a white slab",
+  (await page.locator('iframe[title*="Map of"]').getAttribute("class"))?.includes("map-dark") === true);
+check("there is a way out to the platform's map app",
+  (await page.locator('a:has-text("Open in Maps")').count()) > 0);
+check("OpenStreetMap is credited",
+  (await page.locator("text=OpenStreetMap contributors").count()) > 0);
 
 await browser.close();
 shutdown();

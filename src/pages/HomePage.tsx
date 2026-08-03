@@ -10,6 +10,7 @@ import { EventSkeleton } from "@/components/EventSkeleton";
 import { Header } from "@/components/Header";
 import { PlayerBar } from "@/components/PlayerBar";
 import { SearchSheet } from "@/components/SearchSheet";
+import { VenueSheet } from "@/components/VenueSheet";
 import { SplashScreen } from "@/components/SplashScreen";
 import { useTheme } from "@/context/ThemeContext";
 import { useEvents } from "@/hooks/useEvents";
@@ -25,6 +26,8 @@ export default function HomePage() {
   const [artistOpen, setArtistOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [selectedVenue, setSelectedVenue] = useState<string | null>(null);
+  const [venueOpen, setVenueOpen] = useState(false);
 
   const { layoutDensity } = useTheme();
   const dateString = format(selectedDate, "yyyy-MM-dd");
@@ -144,6 +147,18 @@ export default function HomePage() {
             setSelectedArtist(artist);
             setArtistOpen(true);
           }}
+          onSelectVenue={(venue) => {
+            setSelectedVenue(venue);
+            setVenueOpen(true);
+          }}
+        />
+
+        {/* Stacked over the event, like the artist sheet — dismissing returns
+            to the event rather than to the listings. */}
+        <VenueSheet
+          venue={selectedVenue}
+          open={venueOpen}
+          onOpenChange={setVenueOpen}
         />
 
         {/* Stacked above the event sheet, which stays open underneath so
