@@ -312,7 +312,7 @@ export const SEARCH_WINDOW_DAYS = 60;
 
 /** Requests per direction. Each is one call to RA; the edge cache absorbs repeats. */
 const SEARCH_PAGES = 3;
-const SEARCH_PAGE_SIZE = 100;
+const SEARCH_PAGE_SIZE = 200;
 
 /**
  * Backward sub-windows, in days before today, each fetched with one request.
@@ -433,10 +433,10 @@ export async function searchRAEvents(options: {
     collect(
       PAST_BOUNDARIES.slice(1).flatMap((edge, i) => {
         const range = { from: shiftDate(-edge), to: shiftDate(-PAST_BOUNDARIES[i]!) };
-        // Two pages for the nearest window, one for the rest. Four days of NYC
-        // is ~125 listings against a 100-row page, so a single page stopped a
-        // day or two short — which is exactly the day or two anyone searching
-        // for a past gig cares about most.
+        // Two pages for the nearest window, one for the rest. NYC produces far
+        // more listing rows per day than events — every day of a multi-day run
+        // is its own row — so the nearest window needs the depth. This is the
+        // day or two anyone searching for a past gig cares about most.
         return i === 0
           ? [{ ...range, page: 1 }, { ...range, page: 2 }]
           : [{ ...range, page: 1 }];
