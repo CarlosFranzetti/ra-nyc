@@ -25,5 +25,11 @@
         }
       ]
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/backfill",
+      "schedule": "0 9 * * *"
+    }
   ]
 }

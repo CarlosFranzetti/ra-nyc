@@ -255,6 +255,103 @@ export async function recentCachedEvents(options: {
   }
 }
 
+export interface IndexStatus {
+  /** False means no `DATABASE_URL`, or Neon refused the connection. */
+  reachable: boolean;
+  /** Which migrations have actually run, judged by what they create. */
+  tables: { artist_links: boolean; event_cache: boolean };
+  daysCovered: number;
+  oldest: string | null;
+  newest: string | null;
+}
+
+/**
+ * What the index actually is right now.
+ *
+ * Everything optional in this app degrades silently, which is what makes it
+ * safe to add and also what makes its state invisible: no `DATABASE_URL` looks
+ * exactly like an empty table, which looks exactly like a city with no events.
+ * `to_regclass` answers the question that matters — did the migration run? —
+ * without needing to know anything about the connection but whether it works.
+ */
+export async function indexStatus(options: {
+  areaId: number;
+  behindDays: number;
+  aheadDays: number;
+}): Promise<IndexStatus> {
+  const sql = getSql();
+  const unreachable: IndexStatus = {
+    reachable: false,
+    tables: { artist_links: false, event_cache: false },
+    daysCovered: 0,
+    oldest: null,
+    newest: null,
+  };
+  if (!sql) return unreachable;
+
+  try {
+    const tables = (await sql.query(
+      `select to_regclass('public.artist_links') is not null as artist_links,
+              to_regclass('public.event_cache')  is not null as event_cache`,
+    )) as unknown as { artist_links: boolean; event_cache: boolean }[];
+
+    const present = tables[0] ?? { artist_links: false, event_cache: false };
+    if (!present.event_cache) {
+      return { ...unreachable, reachable: true, tables: present };
+    }
+
+    const shift = (days: number) =>
+      new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+
+    const stats = (await sql.query(
+      `select count(distinct event_date)::int as days,
+              min(event_date)::text as oldest,
+              max(event_date)::text as newest
+         from event_cache
+        where area_id = $1 and event_date between $2::date and $3::date`,
+      [options.areaId, shift(-options.behindDays), shift(options.aheadDays)],
+    )) as unknown as { days: number; oldest: string | null; newest: string | null }[];
+
+    return {
+      reachable: true,
+      tables: present,
+      daysCovered: stats[0]?.days ?? 0,
+      oldest: stats[0]?.oldest ?? null,
+      newest: stats[0]?.newest ?? null,
+    };
+  } catch (error) {
+    console.warn("[eventCache] status check failed", error);
+    return { ...unreachable, tables: { artist_links: false, event_cache: false } };
+  }
+}
+
+/** Days inside a window that the index has nothing at all for. */
+export async function missingDays(options: {
+  areaId: number;
+  from: string;
+  to: string;
+}): Promise<string[]> {
+  const sql = getSql();
+  if (!sql) return [];
+
+  try {
+    const rows = (await sql.query(
+      `select to_char(d, 'YYYY-MM-DD') as day
+         from generate_series($2::date, $3::date, interval '1 day') as d
+        where not exists (
+          select 1 from event_cache
+           where area_id = $1 and event_date = d::date
+        )
+        order by d desc`,
+      [options.areaId, options.from, options.to],
+    )) as unknown as { day: string }[];
+    return rows.map((row) => row.day);
+  } catch (error) {
+    console.warn("[eventCache] gap scan failed", error);
+    return [];
+  }
+}
+
 /**
  * How many distinct days the index holds in a window.
  *

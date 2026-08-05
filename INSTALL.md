@@ -55,7 +55,8 @@ documents each variable in more detail than the table below.
 
 | Variable | Without it |
 | --- | --- |
-| `DATABASE_URL` | Resolved artist links aren't cached durably; every lookup is live. |
+| `DATABASE_URL` | No search index, so search reaches only ~3 days ahead; artist links aren't cached durably either. |
+| `CRON_SECRET` | `/api/backfill` refuses to run, so the search index only fills from ordinary traffic. |
 | `SOUNDCLOUD_CLIENT_ID` | SoundCloud degrades to a search link. Mixcloud and the Internet Archive still fill the set list. |
 | `SOUNDCLOUD_CLIENT_SECRET` | Sets which SoundCloud API is used — see below. |
 | `YOUTUBE_API_KEY` | No YouTube fallback sets. |
@@ -77,6 +78,56 @@ mistake: every request 401s and SoundCloud looks like it simply has no sets.
 
 Note that changing an environment variable in Vercel **does not trigger a
 redeploy** — the running deployment keeps the old value until you redeploy.
+
+### Is any of this actually on?
+
+Every optional dependency here degrades **silently**, which is what makes them
+safe to add and also what makes their state invisible from the outside: a
+missing `DATABASE_URL` looks exactly like an empty index, which looks exactly
+like a city with no events.
+
+`GET /api/health` answers it, and never reports what anything is set *to* — only
+whether it is configured, reachable, and which migrations have run:
+
+```bash
+curl https://<deployment>/api/health
+```
+
+```json
+{
+  "ok": true,
+  "database": { "configured": true, "reachable": true,
+                "tables": { "artist_links": true, "event_cache": true } },
+  "search": { "indexed": 74, "window": 91, "oldest": "…", "newest": "…" },
+  "soundcloud": "official", "youtube": false, "discogs": false
+}
+```
+
+`configured: false` means no `DATABASE_URL`. `configured: true` with
+`reachable: false` means the URL is set but Neon refused — often just a
+free-tier database suspended for inactivity, which wakes on the next query.
+A table showing `false` means that migration has not been applied.
+
+### Filling the search index
+
+Search reads a durable index that fills from ordinary traffic — every day view
+and every search writes what it fetched. Days nobody visits stay empty, so
+`/api/backfill` walks the window and fetches the gaps, nearest days first.
+
+It is **not public**: it needs `CRON_SECRET` set, and refuses to run at all when
+that variable is missing rather than falling open.
+
+```bash
+# Set CRON_SECRET in the project's environment variables first, then redeploy —
+# changing an environment variable does not redeploy on its own.
+curl -H "Authorization: Bearer $CRON_SECRET" \
+     "https://<deployment>/api/backfill?days=20"
+```
+
+Each run is bounded by the function's own time limit, so it takes a few passes
+to cover two months. `remaining` in the response says how many days are left;
+run it again until it reaches zero. `vercel.json` also schedules it daily, which
+keeps the window covered without anyone thinking about it.
 
 ### Database (optional)
 
