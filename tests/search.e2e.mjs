@@ -232,21 +232,99 @@ await page.route("**/api/venue*", (route) =>
     }),
   }),
 );
-await page.route("**/openstreetmap.org/**", (route) =>
-  route.fulfill({ contentType: "text/html", body: "<!doctype html><title>map</title>" }),
+// A 1x1 transparent PNG stands in for every tile, so the mosaic's geometry is
+// exercised without reaching CARTO.
+const PIXEL = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
 );
+let tileRequests = 0;
+await page.route("**/basemaps.cartocdn.com/**", (route) => {
+  tileRequests += 1;
+  route.fulfill({ contentType: "image/png", body: PIXEL });
+});
 
 const venueButton = page.locator('[role="dialog"] button:has-text("Nowadays")').first();
 check("the venue name is tappable in the event sheet", (await venueButton.count()) > 0);
 await venueButton.click();
-await page.waitForSelector('iframe[title*="Map of"]', { timeout: 8000 });
+await page.waitForSelector('[role="img"][aria-label*="Map of"]', { timeout: 8000 });
 check("tapping a venue opens a map", true);
-check("the map is darkened rather than a white slab",
-  (await page.locator('iframe[title*="Map of"]').getAttribute("class"))?.includes("map-dark") === true);
+
+// The mosaic can't be laid out until ResizeObserver has reported the
+// container's width, which is a frame or two after it mounts.
+await page.waitForFunction(
+  () => (document.querySelector('[role="img"][aria-label*="Map of"]')?.querySelectorAll("img").length ?? 0) > 0,
+  { timeout: 8000 },
+);
+
+// The map used to be an OSM iframe, inverted by CSS into a photographic
+// negative. It is now a mosaic of coloured tiles composed here — which means
+// the geometry is ours, and worth asserting.
+const map = await page.evaluate(() => {
+  const box = document.querySelector('[role="img"][aria-label*="Map of"]');
+  if (!box) return null;
+  const rect = box.getBoundingClientRect();
+  const imgs = [...box.querySelectorAll("img")];
+  const spans = imgs.map((i) => {
+    const r = i.getBoundingClientRect();
+    return { left: r.left - rect.left, top: r.top - rect.top, right: r.right - rect.left, bottom: r.bottom - rect.top };
+  });
+  return {
+    tiles: imgs.length,
+    filter: getComputedStyle(box).filter,
+    // Tiles have to cover the container in both axes, or the map has gaps.
+    coversLeft: spans.some((s) => s.left <= 0),
+    coversRight: spans.some((s) => s.right >= rect.width),
+    coversTop: spans.some((s) => s.top <= 0),
+    coversBottom: spans.some((s) => s.bottom >= rect.height),
+    hasPin: Boolean(box.querySelector("svg.fill-venue, .fill-venue")),
+    // Tiles must be drawn at exactly the size they are positioned on. The
+    // spacing scale here is multiplied by the density preference, so a
+    // Tailwind size class silently draws a 266px tile on a 256px grid.
+    sizes: [...new Set(imgs.map((i) => `${Math.round(i.getBoundingClientRect().width)}x${Math.round(i.getBoundingClientRect().height)}`))],
+    // Adjacent tiles must abut, not overlap.
+    overlap: spans.some((a) =>
+      spans.some((b) => a !== b && a.top === b.top && b.left > a.left && b.left < a.right - 0.5),
+    ),
+  };
+});
+
+check("the map is built from tiles, not an iframe", map !== null && map.tiles > 0,
+  map ? `${map.tiles} tiles, ${tileRequests} requests` : "no map");
+check("the tiles cover the whole frame",
+  map !== null && map.coversLeft && map.coversRight && map.coversTop && map.coversBottom);
+check("the tiles are shown in colour, not inverted",
+  map !== null && (map.filter === "none" || map.filter === ""), map?.filter);
+check("the venue is pinned", map !== null && map.hasPin);
+check("tiles are drawn at exactly the size they are placed on",
+  map !== null && map.sizes.length === 1 && map.sizes[0] === "256x256", map?.sizes.join(" "));
+check("adjacent tiles abut rather than overlap", map !== null && map.overlap === false);
+
 check("there is a way out to the platform's map app",
-  (await page.locator('a:has-text("Open in Maps")').count()) > 0);
-check("OpenStreetMap is credited",
-  (await page.locator("text=OpenStreetMap contributors").count()) > 0);
+  (await page.locator('a[aria-label="Open in Maps"]').count()) > 0);
+
+// Getting there is the next thing you do after finding out where it is.
+const uber = page.locator('a[aria-label^="Get an Uber"]');
+check("an Uber can be hailed to the venue", (await uber.count()) > 0);
+const uberHref = (await uber.first().getAttribute("href")) ?? "";
+check("the Uber link carries the venue as the destination",
+  uberHref.includes("m.uber.com/ul/") &&
+    uberHref.includes("dropoff%5Blatitude%5D=40.7108") &&
+    uberHref.includes("Nowadays"),
+  uberHref.slice(0, 90));
+check("Empower is offered alongside it",
+  (await page.locator('a[aria-label="Open Empower"]').count()) > 0);
+
+check("the address is set in bold",
+  await page
+    .locator('[role="dialog"] p:has-text("Troutman Street")')
+    .first()
+    .evaluate((el) => Number(getComputedStyle(el).fontWeight) >= 600),
+);
+
+check("both tile sources are credited",
+  (await page.locator("text=OpenStreetMap contributors").count()) > 0 &&
+    (await page.locator("text=CARTO").count()) > 0);
 
 await browser.close();
 shutdown();

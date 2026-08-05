@@ -7,7 +7,7 @@ get productive without re-deriving anything.
 **Keep this file updated.** When you make a decision that a future reader would
 otherwise have to reverse-engineer from a diff, append it to the log.
 
-**Last updated:** 2026-08-03
+**Last updated:** 2026-08-05
 **Branch:** `claude/lovable-vercel-migration-hyp0a1` (name set by the session
 harness; see §5)
 
@@ -35,7 +35,7 @@ seconds on a phone on the subway?"
 | **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
 | **Database** | Optional Neon, caches artist links only. See [DATABASE.md](./DATABASE.md) |
 | **Env vars** | None required; `DATABASE_URL` and `DISCOGS_TOKEN` optional |
-| **Tests** | ✅ 86 Vitest units + 71 Playwright assertions (`npm run test:all`) |
+| **Tests** | ✅ 101 Vitest units + 80 Playwright assertions (`npm run test:all`) |
 | **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
 
@@ -65,9 +65,9 @@ it. Sets play in a transport bar docked to the bottom, which outlives every shee
 
 | Command | What it runs |
 | --- | --- |
-| `npm test` | 86 Vitest units over the pure functions in `api/_lib` and `src/lib` |
+| `npm test` | 101 Vitest units over the pure functions in `api/_lib` and `src/lib` |
 | `npm run test:e2e` | 32 Playwright assertions for the transport bar |
-| `npm run test:search` | 21 Playwright assertions for search and venue maps |
+| `npm run test:search` | 30 Playwright assertions for search and venue maps |
 | `npm run test:layout` | 18 Playwright assertions for responsive layout and preferences |
 | `npm run test:all` | all four |
 
@@ -1111,6 +1111,56 @@ The rest, briefly:
   instance would have silently lost. Moved into `@layer utilities` — safe
   because, unlike the runtime-built `theme-${x}` names, `.shell` is written
   literally in the JSX and survives the content scan. Verified in the built CSS.
+
+### 2026-08-05 — The map stops being an OSM iframe
+
+Reported as hating the look of it, and the look was a consequence of the
+mechanism. The map was an OpenStreetMap embed iframe — one tag, no key, no SDK,
+the right weight for something most sessions never open — but it came with OSM's
+standard raster style, a pale grey-and-beige road atlas. In a dark app that had
+to be inverted to be bearable, and inverted it read as a photographic negative
+of a map rather than a map.
+
+Composing tiles by hand keeps every property that made the iframe the right call
+and drops the one that didn't. `src/lib/tiles.ts` is the Web Mercator arithmetic
+every tile server shares; the sheet lays out `<img>` tags from it. Still no
+mapping library, still nothing in the bundle — but now any tile server will do,
+and the one chosen is **CARTO Voyager**: coloured, flat-shaded, parks green and
+water blue, the closest keyless tile set to what a phone's own map app looks
+like. Free non-commercially to 75k views a month with attribution, which a map
+that only opens on a venue tap is a long way from.
+
+What is lost is pan and zoom. The embed barely had them, and *Open in Maps* is
+one tap away for anyone who wants to actually navigate.
+
+Alongside it: **Get an Uber** and **Empower** next to *Open in Maps*, because
+getting there is what you do next after finding out where it is. Uber's
+universal link carries the venue as the destination and `pickup=my_location`, so
+Uber resolves the rider's position rather than this app asking for a geolocation
+permission to fill in a half it would only hand straight back. Empower publishes
+no deep-link scheme at all, so its link deliberately carries nothing — inventing
+query parameters their app does not read would produce a link that looks precise
+and silently arrives nowhere.
+
+> **Worth knowing about Empower.** NYC's TLC has publicly warned that Empower
+> operates in the city unlicensed, that trips booked through it are unlawful, and
+> that they may not be insured. It is in the app on the user's explicit
+> instruction, and the button is one function in `rideLinks.ts` if that changes.
+
+Two bugs caught building it, both invisible in a diff and both found by the eye
+and the browser rather than by reasoning:
+
+- **The map rendered no tiles at all** — right size, right pin, no map. The
+  measuring hook read `ref.current` inside a `useEffect(..., [])`, and the drawer
+  does not mount its children until it opens: on first render the node was null,
+  the effect bailed, and an empty dependency array meant it never ran again once
+  the node appeared. Callback ref into state fixes it.
+- **`h-64 w-64` is not 256px in this app.** The spacing scale is multiplied by
+  the density preference, so tiles were drawn at ~266px and positioned on a 256px
+  grid — every tile overlapping its neighbour, the whole map stretched four
+  percent. Only visible in a screenshot with grid lines in it. Tiles are now
+  sized inline, and two assertions check the drawn size matches the placed size
+  and that no two tiles overlap.
 
 ## 4 · Map of the code
 
