@@ -38,6 +38,25 @@ const persister = createSyncStoragePersister({
   throttleTime: 2_000,
 });
 
+/**
+ * Register the service worker — production only.
+ *
+ * In dev it would sit in front of Vite's module graph and serve stale chunks
+ * against HMR, which is a genuinely confusing failure. `import.meta.env.PROD`
+ * is compile-time, so the whole block is dropped from the dev bundle.
+ *
+ * Registered after `load` so it never competes with the first paint for
+ * bandwidth: offline support helps the *next* visit, not this one.
+ */
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js").catch((error) => {
+      // A failed registration is not a broken app, just one without offline.
+      console.warn("[sw] registration failed", error);
+    });
+  });
+}
+
 createRoot(document.getElementById("root")!).render(
   <PersistQueryClientProvider
     client={queryClient}

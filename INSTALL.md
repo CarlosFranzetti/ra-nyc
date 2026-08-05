@@ -39,7 +39,9 @@ production, and `vercel dev` is not required.
 | `npm test` | Vitest over the pure functions. Fast, no network. |
 | `npm run test:e2e` | Playwright transport-bar behaviour. |
 | `npm run test:search` | Playwright search behaviour. |
-| `npm run test:all` | All three. |
+| `npm run test:layout` | Playwright responsive layout and preferences. |
+| `npm run test:offline` | Playwright service worker, against a production build. |
+| `npm run test:all` | All five. |
 
 The Playwright suites use `playwright-core` and look for an existing Chromium
 rather than downloading one — set `PLAYWRIGHT_CHROMIUM_PATH` if it can't find
