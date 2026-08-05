@@ -84,7 +84,7 @@ API response is shared across visitors by Vercel's edge cache.
 | API       | Vercel serverless functions (`api/`) |
 | Hosting   | Vercel |
 | Analytics | Vercel Analytics (no cookies, no consent banner) |
-| Database  | Optional Neon — artist links only, degrades to live lookups without it |
+| Database  | Optional Neon — artist links and the search index; degrades to live lookups without it |
 | Tests     | Vitest for pure functions; Playwright (`playwright-core`) for behaviour |
 
 Sets come from SoundCloud, Mixcloud, the Internet Archive and YouTube, each
