@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Car, MapPin, Navigation } from "lucide-react";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
-import { empowerLink, uberLink } from "@/lib/rideLinks";
+import { lyftLink, uberLink } from "@/lib/rideLinks";
 import { TILE_SIZE, tileMosaic } from "@/lib/tiles";
 
 interface VenueResponse {
@@ -220,16 +220,14 @@ export function VenueSheet({ venue, open, onOpenChange }: VenueSheetProps) {
             </a>
 
             <a
-              href={
-                destination ? empowerLink(destination) : "https://www.driveempower.com/"
-              }
+              href={destination ? lyftLink(destination) : "https://lyft.com/ride?id=lyft"}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Open Empower"
+              aria-label={`Get a Lyft to ${venue ?? "this venue"}`}
               className={rideClass}
             >
               <Car className="h-4 w-4 text-primary" />
-              Empower
+              Get a Lyft
             </a>
           </div>
 

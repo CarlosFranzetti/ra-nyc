@@ -312,8 +312,14 @@ check("the Uber link carries the venue as the destination",
     uberHref.includes("dropoff%5Blatitude%5D=40.7108") &&
     uberHref.includes("Nowadays"),
   uberHref.slice(0, 90));
-check("Empower is offered alongside it",
-  (await page.locator('a[aria-label="Open Empower"]').count()) > 0);
+const lyft = page.locator('a[aria-label^="Get a Lyft"]');
+check("a Lyft can be hailed to the venue", (await lyft.count()) > 0);
+const lyftHref = (await lyft.first().getAttribute("href")) ?? "";
+check("the Lyft link carries the venue as the destination",
+  lyftHref.startsWith("https://lyft.com/ride?") &&
+    lyftHref.includes("destination%5Blatitude%5D=40.7108") &&
+    lyftHref.includes("destination%5Blongitude%5D=-73.9229"),
+  lyftHref.slice(0, 90));
 
 check("the address is set in bold",
   await page

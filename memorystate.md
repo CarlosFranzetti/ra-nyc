@@ -1133,19 +1133,21 @@ that only opens on a venue tap is a long way from.
 What is lost is pan and zoom. The embed barely had them, and *Open in Maps* is
 one tap away for anyone who wants to actually navigate.
 
-Alongside it: **Get an Uber** and **Empower** next to *Open in Maps*, because
+Alongside it: **Get an Uber** and **Get a Lyft** next to *Open in Maps*, because
 getting there is what you do next after finding out where it is. Uber's
-universal link carries the venue as the destination and `pickup=my_location`, so
-Uber resolves the rider's position rather than this app asking for a geolocation
-permission to fill in a half it would only hand straight back. Empower publishes
-no deep-link scheme at all, so its link deliberately carries nothing — inventing
-query parameters their app does not read would produce a link that looks precise
-and silently arrives nowhere.
+universal link carries the venue as the destination and `pickup=my_location`;
+Lyft's carries the destination and omits pickup entirely, which is its way of
+saying the same thing. Either way the rider's position is the ride app's
+problem — which is why this app never asks for a geolocation permission it
+would only hand straight back.
 
-> **Worth knowing about Empower.** NYC's TLC has publicly warned that Empower
-> operates in the city unlicensed, that trips booked through it are unlawful, and
-> that they may not be insured. It is in the app on the user's explicit
-> instruction, and the button is one function in `rideLinks.ts` if that changes.
+> **Empower was here first, for one round, and was replaced on request.** Two
+> reasons it was the weaker choice anyway: it publishes no deep-link scheme at
+> all — no docs, no parameters — so its button could never carry the
+> destination and deliberately carried nothing rather than inventing query
+> parameters their app does not read. And NYC's TLC has publicly warned that
+> Empower operates in the city unlicensed and that trips booked through it may
+> not be insured. Lyft has neither problem and is one documented universal link.
 
 Two bugs caught building it, both invisible in a diff and both found by the eye
 and the browser rather than by reasoning:
