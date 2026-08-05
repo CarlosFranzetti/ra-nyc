@@ -54,8 +54,11 @@ h0l0. Picking a result jumps the listings to that night and opens it.
 **Sounds like.** Only SoundCloud tracks of 45 minutes or more count as sets;
 below that it's a single, not a night.
 
-**Where it is.** Tapping a venue name opens a map, with a link out to your phone's
-map app. Venue names carry their own colour per theme so they're easy to scan for.
+**Where it is.** Tapping a venue name opens a coloured street map — tiles
+composed in the page rather than a mapping library, so it costs nothing until you
+open one — with the address and one-tap hand-offs to your map app, Uber and
+Empower. Venue names carry their own colour per theme so they're easy to scan
+for.
 
 **Speed.** The query cache is persisted to disk, so returning to the app paints
 your last day before the network answers. Adjacent days are prefetched, and every

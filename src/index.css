@@ -473,15 +473,6 @@ html {
   }
 }
 
-/* OpenStreetMap only serves light tiles, which would be a white slab in a dark
-   app at 2am. Inverting and rotating the hue produces a dark map that stays
-   legible — the filter does the job a paid dark tile server would charge for.
-   Slightly desaturated and dimmed so it sits behind the UI rather than shouting
-   over it. */
-.map-dark {
-  filter: invert(1) hue-rotate(180deg) saturate(0.7) brightness(0.85) contrast(1.05);
-}
-
 /* Press feedback. The scale is deliberately tiny — enough to acknowledge the
    tap, not enough to read as an animation — and it settles fast, because what
    makes a native control feel responsive is that it reacts before you have
