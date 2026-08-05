@@ -43,7 +43,7 @@ seconds on a phone on the subway?"
 
 React 19 · TypeScript 5.9 · Vite 7 · Tailwind 3.4 · TanStack Query 5 ·
 React Router 7 · date-fns 4 · lucide-react · vaul · react-day-picker ·
-Vercel Analytics · five Vercel Node 22 functions. Dev-only: Vitest,
+Vercel Analytics · seven Vercel Node 22 functions. Dev-only: Vitest,
 playwright-core.
 
 ### Routes
@@ -56,6 +56,8 @@ playwright-core.
 | `/api/artist?id=<ra id>&name=<name>` | Function | Resolves a DJ to sets + profile links |
 | `/api/search?q=<term>` | Function | Windowed listing search — upcoming, then past |
 | `/api/venue?name=<venue>` | Function | Geocodes a venue for the map sheet |
+| `/api/health` | Function | What is configured, reachable and migrated. No secrets |
+| `/api/backfill` | Function | Fills index gaps. Bearer `CRON_SECRET`; daily cron |
 
 The app is a single route. The event, artist and search views are all sheets, not
 pages — tapping a DJ opens the artist *over* the event, and dismissing returns to
@@ -1208,6 +1210,44 @@ is nothing left to disclaim.
 Still a cache, in the sense the rest of this file means it: no `DATABASE_URL`, a
 missing table or an unreachable Neon and search is exactly the live-window
 search it was before, day views are untouched, and nothing 500s.
+
+### 2026-08-05 — Answering "is the database even on?"
+
+Asked whether a database is needed now. It is, and the answer changed with the
+search index: `artist_links` was always a pure cache — delete it and you lose
+latency — but without `event_cache` search is *structurally* capped at about
+three days ahead, which is a missing capability rather than a slow one. That is
+exactly the trigger DATABASE.md predicted.
+
+Then the follow-up question could not be answered: **is `DATABASE_URL` actually
+set in production?** Vercel's project API does not expose environment variables,
+this sandbox has no route to Neon or to the deployment, and every optional
+dependency in this app degrades silently by design. A missing connection string
+looks exactly like an empty table, which looks exactly like a city with no
+events. That ambiguity has now cost debugging time three separate times: a
+SoundCloud key set but never deployed, four migrations that appeared to
+invalidate a cache and did not, and this.
+
+`GET /api/health` ends it. It reports whether each dependency is configured,
+whether Neon is reachable, and — via `to_regclass` — which migrations have
+actually run, judged by the tables they create rather than by a migrations
+table nobody maintains. It never reports what anything is set *to*.
+
+`GET /api/backfill` fills the index gaps, nearest days first, because the index
+otherwise only learns about days somebody visited. Two design points worth
+keeping:
+
+- **It refuses to run without `CRON_SECRET` rather than falling open.** An
+  endpoint that causes upstream requests on demand and quietly becomes public
+  when an env var is missing is a worse failure than one that stops working.
+- **No per-route `maxDuration` override.** An overlapping `functions` glob in
+  `vercel.json` is a deploy-time risk, and this is a background job that can
+  simply take another pass tomorrow — so it budgets 11s under the shared 15s
+  limit and reports `remaining` instead.
+
+A day RA genuinely has no events for stays "missing" and is retried every run.
+Cheap at this volume; the alternative is inventing a sentinel event that does
+not exist.
 
 ## 4 · Map of the code
 
