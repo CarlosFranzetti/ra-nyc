@@ -228,6 +228,42 @@ export async function searchCachedEvents(options: {
   }
 }
 
+/**
+ * One day's listings, straight from the index.
+ *
+ * The fallback for when `ra.co` is unreachable or blocking. A day view has
+ * always been all-or-nothing — RA answers or the page shows an error — and
+ * "RA may block Vercel's egress IPs" has been an open risk in memorystate since
+ * the migration. Serving what we last saw turns that from an outage into
+ * slightly-old listings, which for a listings app is the difference between
+ * useless and fine.
+ *
+ * Ordered busiest-first to match the live path exactly, so the fallback is
+ * indistinguishable from a normal response apart from the flag on it.
+ */
+export async function cachedEventsForDay(options: {
+  areaId: number;
+  date: string;
+}): Promise<RAEvent[]> {
+  const sql = getSql();
+  if (!sql) return [];
+
+  try {
+    const rows = (await sql.query(
+      `select ra_event_id, event_date, title, venue_name, venue_area, artists,
+              url, image_url, attending, is_pick, pick_blurb, start_time, end_time
+         from event_cache
+        where area_id = $1 and event_date = $2::date
+        order by attending desc`,
+      [options.areaId, options.date],
+    )) as unknown as CacheRow[];
+    return rows.map(toEvent);
+  } catch (error) {
+    console.warn("[eventCache] day read failed", error);
+    return [];
+  }
+}
+
 /** A bounded slice of the window, for the in-memory fuzzy pass. */
 export async function recentCachedEvents(options: {
   areaId: number;

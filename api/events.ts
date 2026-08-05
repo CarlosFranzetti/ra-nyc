@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { cacheEvents } from "./_lib/eventCache.js";
+import { cacheEvents, cachedEventsForDay } from "./_lib/eventCache.js";
 import {
   fetchRAEvents,
   isValidDate,
@@ -13,6 +13,11 @@ export interface EventsResponse {
   date: string;
   events: RAEvent[];
   count: number;
+  /**
+   * Set when RA could not be reached and these came out of the index instead.
+   * Absent on a normal response, so the UI can say so without guessing.
+   */
+  stale?: boolean;
 }
 
 const UPSTREAM_TIMEOUT_MS = 10_000;
@@ -125,6 +130,42 @@ export default async function handler(
         // a cold region or an RA outage degrades to slightly-old listings
         // rather than an error state.
         "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
+      );
+    } catch (upstream) {
+      // RA is unreachable, blocking, or timed out. A day view has always been
+      // all-or-nothing here — RA answers or the page shows an error — and "RA
+      // may block Vercel's egress IPs" has been an open risk since the
+      // migration. Anything the index already holds for this day is a better
+      // answer than an error state, and for a listings app that is the gap
+      // between useless and fine.
+      //
+      // Caught here rather than in the outer handler because `date` and
+      // `areaId` are only in scope here — and the outer version silently
+      // hardcoded NYC, which would have served the wrong city's listings the
+      // day anyone passed `?area=`.
+      const fallback = await cachedEventsForDay({ areaId, date }).catch(
+        () => [] as RAEvent[],
+      );
+
+      if (fallback.length === 0) throw upstream;
+
+      console.warn(
+        `[api/events] RA unavailable; serving ${fallback.length} indexed events for ${date}`,
+        upstream instanceof Error ? upstream.message : upstream,
+      );
+      return send(
+        res,
+        200,
+        {
+          date,
+          events: fallback,
+          count: fallback.length,
+          stale: true,
+        } satisfies EventsResponse,
+        // Deliberately short and without stale-while-revalidate: this is a
+        // degraded answer and the edge must not keep serving it once RA
+        // recovers. The long SWR on the healthy path is what makes that safe.
+        "public, max-age=30, s-maxage=60",
       );
     } finally {
       clearTimeout(timeout);

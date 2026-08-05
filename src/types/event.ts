@@ -23,4 +23,9 @@ export interface EventsResponse {
   date: string;
   events: Event[];
   count: number;
+  /**
+   * True when ra.co could not be reached and these came from the saved index.
+   * Absent on a normal response — see `api/events.ts`.
+   */
+  stale?: boolean;
 }

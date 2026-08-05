@@ -15,9 +15,10 @@
     "test:e2e": "node tests/player.e2e.mjs",
     "test:search": "node tests/search.e2e.mjs",
     "test:layout": "node tests/layout.e2e.mjs",
+    "test:offline": "npm run build && node tests/offline.e2e.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:all": "npm run test && npm run test:e2e && npm run test:search && npm run test:layout"
+    "test:all": "npm run test && npm run test:e2e && npm run test:search && npm run test:layout && npm run test:offline"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

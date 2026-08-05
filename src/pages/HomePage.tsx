@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { addDays, format, subDays } from "date-fns";
+import { CloudOff } from "lucide-react";
 import { DatePicker } from "@/components/DatePicker";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -112,6 +113,16 @@ export default function HomePage() {
               ? `${data!.count} event${data!.count !== 1 ? "s" : ""} · ${format(selectedDate, "EEE, MMM d")}`
               : format(selectedDate, "EEE, MMM d")}
           </p>
+
+          {/* Saying so matters more than it looks: without it, listings that
+              are hours old are indistinguishable from listings that are
+              current, and the app would be confidently wrong about tonight. */}
+          {data?.stale && (
+            <span className="flex flex-shrink-0 items-center gap-1 text-[0.6875rem] text-muted-foreground/70">
+              <CloudOff className="h-3 w-3" />
+              Saved listings
+            </span>
+          )}
         </div>
 
         <main className={cn("shell", mainPadding)}>

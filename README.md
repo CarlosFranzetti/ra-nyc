@@ -71,6 +71,11 @@ Lyft. Venue names carry their own colour per theme so they're easy to scan for.
 your last day before the network answers. Adjacent days are prefetched, and every
 API response is shared across visitors by Vercel's edge cache.
 
+**When things break.** If `ra.co` is unreachable the listings come from the saved
+index instead, labelled *Saved listings* rather than passed off as current. And
+with no network at all the app still opens and still shows the days you looked at
+— which is the point, given most of the walk to a venue is underground.
+
 ---
 
 ## Stack

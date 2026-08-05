@@ -35,7 +35,7 @@ seconds on a phone on the subway?"
 | **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
 | **Database** | Optional Neon: artist links + the search index. See [DATABASE.md](./DATABASE.md) |
 | **Env vars** | None required; `DATABASE_URL` and `DISCOGS_TOKEN` optional |
-| **Tests** | ✅ 104 Vitest units + 80 Playwright assertions (`npm run test:all`) |
+| **Tests** | ✅ 104 Vitest units + 88 Playwright assertions (`npm run test:all`) |
 | **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
 
@@ -71,7 +71,8 @@ it. Sets play in a transport bar docked to the bottom, which outlives every shee
 | `npm run test:e2e` | 32 Playwright assertions for the transport bar |
 | `npm run test:search` | 30 Playwright assertions for search and venue maps |
 | `npm run test:layout` | 18 Playwright assertions for responsive layout and preferences |
-| `npm run test:all` | all four |
+| `npm run test:offline` | 7 Playwright assertions for the service worker, against `dist/` |
+| `npm run test:all` | all five |
 
 ---
 
@@ -1249,6 +1250,57 @@ A day RA genuinely has no events for stays "missing" and is retried every run.
 Cheap at this volume; the alternative is inventing a sentinel event that does
 not exist.
 
+### 2026-08-05 — The index earns two more jobs
+
+Asked to use the events index for everything discussed except "follow an
+artist". Two features, both of which only became cheap because the index exists.
+
+**RA outages stop being outages.** A day view was all-or-nothing — RA answers or
+the page shows an error — and "RA may block Vercel's egress IPs" has sat in §5
+as an untested risk since the migration. `/api/events` now falls back to what
+the index holds for that day and flags the response `stale: true`; the header
+says *Saved listings*. Saying so is not decoration: without it, listings that
+are hours old are indistinguishable from current ones and the app would be
+confidently wrong about tonight.
+
+The fallback is caught **inside** the inner try, not in the outer handler,
+because `date` and `areaId` are only in scope there. The first version put it
+outside and had to hardcode NYC — which would have served the wrong city's
+listings the day anyone passed `?area=`. Its cache header is deliberately short
+and carries no `stale-while-revalidate`: a degraded answer must not keep being
+served once RA recovers, and the long SWR on the healthy path is what makes
+that safe.
+
+**Offline.** A hand-written service worker rather than Workbox — the whole
+policy is three rules and a plugin would add a build step and ~15 kB to save
+writing them:
+
+- Navigations: network first, falling back to the cached shell.
+- `/assets/*`: cache first. Vite content-hashes them, so revalidating is waste.
+- `/api/events`: stale-while-revalidate. **This is the rule that makes the app
+  usable underground** — the listings you looked at last are the ones you want
+  on the platform.
+
+Everything else is network-only. Search, artist resolution and venue geocoding
+answer questions asked *now*, and a stale answer is worse than an honest
+failure. Cross-origin requests — tiles, players, fonts — are not touched at all.
+
+`skipWaiting` is deliberately **not** called. A new worker taking over
+mid-session leaves the page holding old hashed asset URLs the new cache no
+longer has, and lazy chunks start 404ing under someone's fingers. Activating on
+the next load is one visit slower and cannot break a live one.
+
+`tests/offline.e2e.mjs` runs against the **built** output over a real static
+server, because a worker is not installed for routes the browser never fetched
+and is registered only in a production build. The assertion that matters is the
+one with the network cut: the app loads and renders listings with no network at
+all. 7/7.
+
+> **Known gap.** The RA-outage fallback has no automated test — exercising it
+> needs a live database, which no test environment here has. It is verified by
+> construction and by typecheck only. The offline path, which could be tested,
+> is.
+
 ## 4 · Map of the code
 
 ```
@@ -1308,7 +1360,9 @@ vercel.json              Runtime, SPA rewrite, asset cache headers.
    exhaustive. NYC produces roughly a hundred listing *rows* a day — every day
    of a multi-day run is its own row — which is the number every mis-sizing of
    this window came from.
-4. **No error boundary.** A render crash blanks the page.
+4. **No error boundary.** A render crash blanks the page. Now the last
+   all-or-nothing failure left in the app, since RA outages degrade to saved
+   listings and a dead network degrades to the offline cache.
 5. **`ownUploads` still disables per-track filtering.** Once a profile matches,
    its whole catalogue is trusted. That is correct when the match is right and
    total when it is wrong; the two matching fixes narrow how often it is wrong
