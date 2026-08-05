@@ -41,17 +41,24 @@ export function uberLink(destination: RideDestination): string {
 }
 
 /**
- * Empower.
+ * Lyft's documented universal link.
  *
- * Empower publishes no deep-link scheme — no developer documentation, no
- * documented URL parameters — so unlike Uber this cannot carry the destination
- * and deliberately does not pretend to. Inventing query parameters that their
- * app does not read would produce a link that looks precise and silently
- * arrives at nothing. It opens the app or their site, and the rider enters the
- * venue themselves.
+ * `id=lyft` picks the standard ride type. Pickup is omitted rather than set,
+ * which is Lyft's way of saying "wherever the rider is" — the same reasoning as
+ * Uber's `pickup=my_location`, and the same reason this app never asks for a
+ * geolocation permission it would only hand straight back.
  *
- * If they ever publish a scheme, this function is the only thing that changes.
+ * No `partner`: that parameter is a Lyft developer Client ID used for
+ * attribution, and the link deep-links correctly without one.
+ *
+ * This replaced Empower, which publishes no deep-link scheme at all and so
+ * could never carry the destination.
  */
-export function empowerLink(_destination: RideDestination): string {
-  return "https://www.driveempower.com/";
+export function lyftLink(destination: RideDestination): string {
+  const params = new URLSearchParams({
+    id: "lyft",
+    "destination[latitude]": String(destination.lat),
+    "destination[longitude]": String(destination.lon),
+  });
+  return `https://lyft.com/ride?${params.toString()}`;
 }
