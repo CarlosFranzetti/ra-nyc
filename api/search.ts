@@ -13,6 +13,8 @@ export interface SearchResponse {
   past: RAEvent[];
   /** The search window was full, so there may be more beyond it. */
   truncated: boolean;
+  /** Days of the window the durable index holds, out of how many it spans. */
+  coverage: { indexed: number; window: number };
 }
 
 /** Six pages of listings per search, so this is the most expensive endpoint. */
@@ -78,7 +80,7 @@ export default async function handler(
     const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
     try {
-      const { upcoming, past, truncated } = await searchRAEvents({
+      const { upcoming, past, truncated, coverage } = await searchRAEvents({
         term: q,
         areaId: NYC_AREA_ID,
         signal: controller.signal,
@@ -90,7 +92,7 @@ export default async function handler(
       return send(
         res,
         200,
-        { q, upcoming, past, truncated } satisfies SearchResponse,
+        { q, upcoming, past, truncated, coverage } satisfies SearchResponse,
         "public, max-age=120, s-maxage=900, stale-while-revalidate=86400",
       );
     } finally {

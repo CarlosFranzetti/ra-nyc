@@ -33,9 +33,9 @@ seconds on a phone on the subway?"
 | **Build** | ✅ `npm run build` passes |
 | **Types** | ✅ `npm run typecheck` passes (app + api) |
 | **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
-| **Database** | Optional Neon, caches artist links only. See [DATABASE.md](./DATABASE.md) |
+| **Database** | Optional Neon: artist links + the search index. See [DATABASE.md](./DATABASE.md) |
 | **Env vars** | None required; `DATABASE_URL` and `DISCOGS_TOKEN` optional |
-| **Tests** | ✅ 101 Vitest units + 80 Playwright assertions (`npm run test:all`) |
+| **Tests** | ✅ 104 Vitest units + 80 Playwright assertions (`npm run test:all`) |
 | **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
 
@@ -65,7 +65,7 @@ it. Sets play in a transport bar docked to the bottom, which outlives every shee
 
 | Command | What it runs |
 | --- | --- |
-| `npm test` | 101 Vitest units over the pure functions in `api/_lib` and `src/lib` |
+| `npm test` | 104 Vitest units over the pure functions in `api/_lib` and `src/lib` |
 | `npm run test:e2e` | 32 Playwright assertions for the transport bar |
 | `npm run test:search` | 30 Playwright assertions for search and venue maps |
 | `npm run test:layout` | 18 Playwright assertions for responsive layout and preferences |
@@ -1161,6 +1161,51 @@ and the browser rather than by reasoning:
   percent. Only visible in a screenshot with grid lines in it. Tiles are now
   sized inline, and two assertions check the drawn size matches the placed size
   and that no two tiles overlap.
+
+### 2026-08-05 — Search gets an index instead of a wider window
+
+Asked for a month ahead, two months back, and a cache of recent events. The
+first two are constants; the third is the only reason they can mean anything.
+
+**The window was never the limit — the page size was.** RA caps a page at 100
+rows and returns a date range in *ascending* order, and NYC generates roughly a
+hundred listing rows a day (every day of a multi-day run is its own row). Three
+pages forward therefore reached about **three days** ahead, not sixty. Widening
+the window without changing anything else would have widened only the label on
+it. Behind, the recent past was one request per day for four days and openly
+sampled after that.
+
+No amount of paging fixes this inside one request. Remembering does.
+`event_cache` (migration `0007`) holds one row per event, filed under the night
+it starts, with a `search_key` computed by the same `searchKey` the matcher
+uses — so the SQL substring filter and the JS matcher cannot disagree about what
+"holo" and **h0l0** have in common.
+
+**It fills itself.** Every day view writes what it fetched; so does every
+search. No cron, no backfill job, no separate ingest path to keep correct — the
+index is a by-product of the app being used, which is also why it needs no
+operational attention.
+
+Search now unions three sources: the index (the only one that can cover ninety
+days), the live windows (which keep the nearest days fresh — a party announced
+this morning is not indexed yet — and are the entire answer with no database),
+and, only when both found nothing, a bounded in-memory scan of the index so a
+*typo'd* term still gets the edit-distance pass SQL cannot do.
+
+`coverage: { indexed, window }` is now on the response, and `truncated` means
+something narrower: saturated live windows **and** an index that does not cover
+the window. A ninety-day search answered from three days of live listings should
+not read like a complete answer, and once the index does cover the window there
+is nothing left to disclaim.
+
+> **Caught by a test.** `SEARCH_BEHIND_DAYS` went to 60 while `PAST_SAMPLED`
+> still stopped at 40, so a cold index would never have reached two months no
+> matter what the constant said. The last sampled range is now pinned to
+> `SEARCH_BEHIND_DAYS` so the two cannot drift again.
+
+Still a cache, in the sense the rest of this file means it: no `DATABASE_URL`, a
+missing table or an unreachable Neon and search is exactly the live-window
+search it was before, day views are untouched, and nothing 500s.
 
 ## 4 · Map of the code
 
