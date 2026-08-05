@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
+import { cacheEvents } from "./_lib/eventCache.js";
 import {
   fetchRAEvents,
   isValidDate,
@@ -105,6 +106,13 @@ export default async function handler(
         areaId,
         signal: controller.signal,
       });
+
+      // Every day someone looks at is a day search can answer later. This is
+      // what makes the index fill on its own — no cron, no backfill job, just
+      // the app being used. Awaited because a Vercel invocation can be frozen
+      // the moment its response is sent, and bounded internally so it can only
+      // ever resolve: a listing must never fail because an index write did.
+      await cacheEvents(events, areaId);
 
       // Listings barely move within a day, so let the Vercel edge cache absorb
       // the traffic and keep serving stale data while it revalidates.

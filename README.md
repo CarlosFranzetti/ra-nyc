@@ -47,9 +47,17 @@ picked. Installed, it runs without an address bar or tab strip on every platform
 that supports it.
 
 **Search.** The magnifier next to the calendar searches NYC listings by DJ,
-party, promoter or venue — upcoming first, then past. Matching is accent- and
-leet-insensitive and tolerates a typo, so `bjork` finds Björk and `holo` finds
-h0l0. Picking a result jumps the listings to that night and opens it.
+party, promoter or venue — a month ahead and two months back, upcoming first,
+then past. Matching is accent- and leet-insensitive and tolerates a typo, so
+`bjork` finds Björk and `holo` finds h0l0. Picking a result jumps the listings to
+that night and opens it.
+
+RA caps a page at 100 listings and New York produces about that many a day, so
+searching live reaches roughly three days no matter how it is paged. Instead,
+every listing the app fetches is remembered, and search reads that index — it
+fills as the app is used, with no cron and no backfill job. Live listings still
+cover the newest days, and the response says how much of the window it actually
+had.
 
 **Sounds like.** Only SoundCloud tracks of 45 minutes or more count as sets;
 below that it's a single, not a night.

@@ -4,6 +4,8 @@ import {
   isValidDate,
   normalizeImageUrl,
   searchRAEvents,
+  SEARCH_AHEAD_DAYS,
+  SEARCH_BEHIND_DAYS,
 } from "../../api/_lib/ra.js";
 
 const day = (offset: number) =>
@@ -41,11 +43,15 @@ function listing(options: {
 }
 
 /** Stubs RA, honouring the date range and page window it is asked for. */
-function stubRA(rows: ReturnType<typeof listing>[], opts: { pageCap?: number } = {}) {
+function stubRA(
+  rows: ReturnType<typeof listing>[],
+  opts: { pageCap?: number; onRequest?: (range: { from: string; to: string }) => void } = {},
+) {
   const cap = opts.pageCap ?? 100;
   vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
     const body = JSON.parse(init.body);
     const { gte, lte } = body.variables.filters.listingDate;
+    opts.onRequest?.({ from: gte, to: lte });
     const size = body.variables.pageSize;
     const page = body.variables.page;
     // RA errors on an oversized page rather than truncating — the behaviour
@@ -226,6 +232,37 @@ describe("searchRAEvents", () => {
     stubRA(corpus, { pageCap: 100 });
     const { upcoming } = await searchRAEvents({ term: "lakuti" });
     expect(upcoming.length).toBeGreaterThan(0);
+  });
+
+  it("looks a month ahead and two months back", async () => {
+    const ranges: { from: string; to: string }[] = [];
+    stubRA(corpus, { onRequest: (r) => ranges.push(r) });
+    await searchRAEvents({ term: "lakuti" });
+
+    const furthestAhead = ranges.map((r) => r.to).sort().at(-1)!;
+    const furthestBack = ranges.map((r) => r.from).sort()[0]!;
+    expect(furthestAhead).toBe(day(SEARCH_AHEAD_DAYS));
+    expect(furthestBack).toBe(day(-SEARCH_BEHIND_DAYS));
+  });
+
+  it("reports how much of the window the index actually holds", async () => {
+    // Without a database the index holds nothing, and saying so is the point:
+    // a ninety-day search answered from three days of live listings is not a
+    // complete answer and must not read like one.
+    stubRA(corpus);
+    const { coverage } = await searchRAEvents({ term: "lakuti" });
+    expect(coverage.window).toBe(SEARCH_AHEAD_DAYS + SEARCH_BEHIND_DAYS + 1);
+    expect(coverage.indexed).toBe(0);
+  });
+
+  it("still works with no database at all", async () => {
+    // The index is a cache, not a dependency. DATABASE_URL is unset in tests,
+    // so every assertion in this file already runs on the fallback path — this
+    // one just says so out loud.
+    stubRA(corpus);
+    const { upcoming, past } = await searchRAEvents({ term: "lakuti" });
+    expect(upcoming.length).toBeGreaterThan(0);
+    expect(past.length).toBeGreaterThan(0);
   });
 
   // NYC generates ~100 listing rows a day. Paging one wide backward range hands

@@ -7,6 +7,7 @@ export interface SearchResponse {
   upcoming: Event[];
   past: Event[];
   truncated: boolean;
+  coverage?: { indexed: number; window: number };
 }
 
 /** Below this a search matches half the city and costs a round trip to say so. */

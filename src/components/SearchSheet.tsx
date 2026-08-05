@@ -148,9 +148,12 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
           <Section title="Upcoming" events={upcoming} onSelect={onSelect} />
           <Section title="Past" events={past} onSelect={onSelect} />
 
+          {/* Only shown when the answer really is partial. Once the index
+              covers the window there is nothing to disclaim, and a permanent
+              "this may be incomplete" teaches people to ignore it. */}
           {data?.truncated && (upcoming.length > 0 || past.length > 0) && (
             <p className="px-1 pb-2 text-center text-[0.6875rem] text-muted-foreground/60">
-              Searching the last and next two months.
+              Searching the next month and the last two.
             </p>
           )}
         </div>

@@ -10,6 +10,11 @@
  * getting `flyerFront` and `attending` back is what fixed missing flyers.
  */
 
+import {
+  cacheEvents,
+  recentCachedEvents,
+  searchCachedEvents,
+} from "./eventCache.js";
 import { normalizeName, searchKey, withinEditDistance } from "./normalize.js";
 
 export const RA_GRAPHQL_URL = "https://ra.co/graphql";
@@ -301,13 +306,17 @@ export function isValidDate(value: string): boolean {
 /**
  * How far either side of today a search looks.
  *
- * RA's filter input has no text predicate that this client can rely on, so
- * search means pulling a window of listings and matching them here. That makes
- * the window a direct trade against upstream load, and 60 days each way covers
- * the question people actually ask — "is X playing soon, and when were they
- * last on?" — without paging through a year of listings for every query.
+ * Asymmetric, because the two directions answer different questions. Ahead, the
+ * question is "is X playing soon" — a month is as far as anyone plans a night
+ * out, and RA itself thins out beyond it. Behind, it is "when were they last
+ * on", and that reaches further back before it stops being interesting: two
+ * months covers a residency's rhythm and a touring artist's last pass through.
  */
-export const SEARCH_WINDOW_DAYS = 60;
+export const SEARCH_AHEAD_DAYS = 30;
+export const SEARCH_BEHIND_DAYS = 60;
+
+/** Kept for callers that only care how wide the whole window is. */
+export const SEARCH_WINDOW_DAYS = SEARCH_BEHIND_DAYS;
 
 
 /** Requests per direction. Each is one call to RA; the edge cache absorbs repeats. */
@@ -330,10 +339,22 @@ const SEARCH_PAGE_SIZE = 100;
  */
 const PAST_DAYS_EXACT = 4;
 
-/** Sampled ranges beyond the day-by-day window, as [from, to] days before today. */
+/**
+ * Sampled ranges beyond the day-by-day window, as [from, to] days before today.
+ *
+ * The last entry is pinned to `SEARCH_BEHIND_DAYS` rather than written out, so
+ * widening the window cannot leave the live path quietly stopping short of it —
+ * which is exactly what happened when the window went from 60 days to two
+ * months and these still reached only 40.
+ *
+ * These are samples, not coverage, and always were. The durable index is what
+ * actually answers for these days once it has them; this is what a cold index,
+ * or no database at all, degrades to.
+ */
 const PAST_SAMPLED: readonly (readonly [number, number])[] = [
   [14, PAST_DAYS_EXACT],
   [40, 14],
+  [SEARCH_BEHIND_DAYS, 40],
 ];
 
 /** Most results anyone scrolls; also bounds the response size. */
@@ -344,6 +365,8 @@ export interface SearchResults {
   past: RAEvent[];
   /** True when the window was exhausted, so the UI can say the list is partial. */
   truncated: boolean;
+  /** Days of the window the durable index holds, and how many it could. */
+  coverage: { indexed: number; window: number };
 }
 
 function shiftDate(days: number): string {
@@ -438,8 +461,22 @@ async function collect(
 /**
  * Events matching a term, upcoming first and then past.
  *
- * Both directions are fetched in parallel — a search is one user action and
- * should not cost two round trips in series.
+ * Three sources, unioned:
+ *
+ * 1. **The durable index**, which is the only one that can actually cover the
+ *    window. RA caps a page at 100 rows and NYC produces about a hundred
+ *    listing rows a day, so a live search reaches roughly three days ahead no
+ *    matter how it is paged. The index accumulates instead, filling as the app
+ *    is used, and answers the whole ninety days once it has them.
+ * 2. **Live windows**, unchanged, which keep the nearest days fresh — a party
+ *    announced this morning is not in the index yet — and are the entire
+ *    answer when there is no database at all.
+ * 3. **A bounded in-memory scan** of the index, used only when the first two
+ *    found nothing, so a typo'd term still gets the edit-distance pass that
+ *    SQL cannot do.
+ *
+ * Everything the live windows fetch is written back, so searching warms the
+ * index for the next person.
  */
 export async function searchRAEvents(options: {
   term: string;
@@ -448,6 +485,9 @@ export async function searchRAEvents(options: {
 }): Promise<SearchResults> {
   const areaId = options.areaId ?? NYC_AREA_ID;
   const today = shiftDate(0);
+  const windowFrom = shiftDate(-SEARCH_BEHIND_DAYS);
+  const windowTo = shiftDate(SEARCH_AHEAD_DAYS);
+  const windowDays = SEARCH_AHEAD_DAYS + SEARCH_BEHIND_DAYS + 1;
 
   // Forward and backward are paged differently, and the reason is not symmetry.
   //
@@ -458,11 +498,11 @@ export async function searchRAEvents(options: {
   // last week was never fetched, which is the opposite of "when did they last
   // play". So the backward direction is split into consecutive sub-windows and
   // the nearest one is fetched first.
-  const [ahead, behind] = await Promise.all([
+  const [ahead, behind, cached] = await Promise.all([
     collect(
       Array.from({ length: SEARCH_PAGES }, (_, i) => ({
         from: today,
-        to: shiftDate(SEARCH_WINDOW_DAYS),
+        to: shiftDate(SEARCH_AHEAD_DAYS),
         page: i + 1,
       })),
       areaId,
@@ -484,25 +524,63 @@ export async function searchRAEvents(options: {
       areaId,
       options.signal,
     ),
+    searchCachedEvents({
+      term: options.term,
+      areaId,
+      from: windowFrom,
+      to: windowTo,
+      // Both buckets come out of one query, so it has to hold both.
+      limit: SEARCH_LIMIT * 2,
+    }),
   ]);
+
+  const live = dedupeById([...ahead.events, ...behind.events]);
+
+  // Warm the index with whatever the live windows just pulled, so the next
+  // search over these days does not need them. Not awaited against the
+  // response — but see `cacheEvents`, which awaits internally under a timeout.
+  await cacheEvents(live, areaId);
 
   const matching = (bucket: RAEvent[]) =>
     bucket.filter((event) => matchesTerm(event, options.term));
 
-  // An event on today's date can arrive from both windows; treat it as upcoming
-  // and keep it out of the past list rather than showing it twice.
-  const upcoming = matching(ahead.events)
-    .filter((event) => (event.date.slice(0, 10) ?? "") >= today)
+  // The index has already filtered on substring and leet-folding; the live
+  // windows have not been filtered at all. Running the matcher over the union
+  // is both correct and idempotent, and it is the only way the third pass —
+  // edit distance — reaches indexed rows.
+  let hits = dedupeById([...matching(live), ...cached.events]);
+
+  // Nothing matched either way. A term that only matches by typo cannot be
+  // found by a SQL substring, so fall back to scanning a bounded slice of the
+  // index in memory. Rare enough to be worth the extra query when it happens.
+  if (hits.length === 0) {
+    const scanned = await recentCachedEvents({ areaId, from: windowFrom, to: windowTo });
+    hits = matching(scanned);
+  }
+
+  const day = (event: RAEvent) => event.date.slice(0, 10);
+
+  const upcoming = hits
+    .filter((event) => day(event) >= today)
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, SEARCH_LIMIT);
 
+  // An event on today's date belongs to one list, not both.
   const upcomingIds = new Set(upcoming.map((event) => event.id));
-  const past = matching(behind.events)
-    .filter((event) => !upcomingIds.has(event.id) && event.date.slice(0, 10) < today)
+  const past = hits
+    .filter((event) => !upcomingIds.has(event.id) && day(event) < today)
     // Most recent first: the last time someone played is more interesting than
     // the first.
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, SEARCH_LIMIT);
 
-  return { upcoming, past, truncated: ahead.full || behind.full };
+  return {
+    upcoming,
+    past,
+    // Saturated live windows still mean RA had more than we took — but only
+    // matters where the index has not covered the day anyway.
+    truncated:
+      (ahead.full || behind.full) && cached.daysCovered < windowDays,
+    coverage: { indexed: cached.daysCovered, window: windowDays },
+  };
 }
