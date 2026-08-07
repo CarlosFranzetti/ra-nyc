@@ -35,7 +35,7 @@ seconds on a phone on the subway?"
 | **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
 | **Database** | Optional Neon: artist links + the search index. See [DATABASE.md](./DATABASE.md) |
 | **Env vars** | None required; `DATABASE_URL` and `DISCOGS_TOKEN` optional |
-| **Tests** | ✅ 104 Vitest units + 88 Playwright assertions (`npm run test:all`) |
+| **Tests** | ✅ 122 Vitest units + 96 Playwright assertions (`npm run test:all`) |
 | **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
 
@@ -67,12 +67,13 @@ it. Sets play in a transport bar docked to the bottom, which outlives every shee
 
 | Command | What it runs |
 | --- | --- |
-| `npm test` | 104 Vitest units over the pure functions in `api/_lib` and `src/lib` |
-| `npm run test:e2e` | 32 Playwright assertions for the transport bar |
+| `npm test` | 122 Vitest units over the pure functions in `api/_lib` and `src/lib` |
+| `npm run test:e2e` | 33 Playwright assertions for the transport bar |
 | `npm run test:search` | 30 Playwright assertions for search and venue maps |
 | `npm run test:layout` | 18 Playwright assertions for responsive layout and preferences |
+| `npm run test:preview` | 7 Playwright assertions for the party preview |
 | `npm run test:offline` | 7 Playwright assertions for the service worker, against `dist/` |
-| `npm run test:all` | all five |
+| `npm run test:all` | all six |
 
 ---
 
@@ -1300,6 +1301,76 @@ all. 7/7.
 > needs a live database, which no test environment here has. It is verified by
 > construction and by typecheck only. The offline path, which could be tested,
 > is.
+
+### 2026-08-05 — Party previews, and a ticket link that has to be earned
+
+**Audio starts on the tap now.** Two taps became one: opening a DJ *is* the
+request to hear them — there is only one reason to do it — so `ArtistSheet`
+starts the newest set on open rather than waiting for a second tap on a row.
+Tapping the playing row now pauses it, which is the same gesture doing the
+obvious thing.
+
+The other half of "as soon as possible" is the network. Opening a party now
+warms every DJ on the bill through `usePrefetchArtist`, so by the time anyone
+taps a name the request is usually already answered.
+
+**Preview the night.** One set per DJ, queued in lineup order, so you can hear
+what a room sounds like without committing to anyone's hour.
+
+- **It starts on the first DJ back, not the last.** A six-name bill is six
+  `/api/artist` round trips; waiting for all of them would put seconds of
+  silence between the tap and the music. Whoever resolves first starts playing
+  and the rest are appended behind the music. Measured in the browser: 120ms
+  with the slowest artist stubbed at 1.5s.
+- **The pick is seeded, not random.** `Math.random()` re-rolls on every reopen,
+  so the party you sampled two minutes ago becomes a different party. FNV-1a
+  over `eventId:artistId` keeps one night sounding like itself while giving
+  different nights, and different DJs, different picks.
+- **It is a button, not automatic on opening the event.** The brief said to
+  play on clicking a party; the instruction that outranked it was "least
+  obstructive". People open a party to read a time and a bill, and sound nobody
+  asked for is the rudest thing an app does on a phone. One obvious button is
+  the same idea without the ambush — and it keeps playback tied to a real
+  gesture, which browsers require anyway. Asserted: opening a party plays
+  nothing.
+
+**The ticket link is earned.** `listened` counts seconds of *actual playback* —
+a phone paused in a pocket never accumulates any — and at sixty seconds a small
+Tickets link appears in the transport. That threshold is the whole ethic: at a
+minute in, "where do I get tickets" is a question the listener now has, and
+answering it is help. Shown at the start it is an advert, and an app that has to
+be ignored to be used. The rule lives in `src/lib/tickets.ts` on its own so it
+can be argued with rather than buried in a component.
+
+`VenueSheet` also gained one above the ride buttons — someone working out how to
+*get* there has already decided they want to go, which is the one screen where a
+ticket link is the answer rather than an interruption.
+
+**Three bugs of mine, all caught by tests rather than by reading:**
+
+- **A hook after an early return.** The lineup-warming `useEffect` landed below
+  `if (!event) return null`, so React saw a different number of hooks the moment
+  an event arrived: *"Rendered more hooks than during the previous render."* The
+  sheet did not render at all.
+- **An effect depending on `data?.sets ?? []`.** That fallback is a fresh array
+  every render, so the auto-play effect re-ran constantly. Depends on
+  `data?.sets` now, which React Query keeps stable.
+- **`usePrefetchArtist` returned a new function every render**, which made it
+  useless as an effect dependency — the warm effect would have re-run on every
+  render. Memoised.
+
+**Reuse.** `artistQuery(id, name)` in `useArtist.ts` is now the single
+definition of how to fetch an artist, shared by the sheet, the prefetch and the
+preview. They have to agree on the query key above all else: three hand-written
+keys that drift do not error, they just quietly stop sharing a cache and every
+prefetch warms nothing.
+
+> **Two honest gaps.** The 60-second reveal is unit-tested, not exercised in a
+> browser — Playwright's fake clock must be installed before navigation, and
+> advancing it a minute blanks the app by firing every startup timer at once.
+> What the browser suite does assert is the guarantee that matters: nothing is
+> promoted to someone who has only just arrived. And the Sonnet review of this
+> change never ran — the agent died on an API session limit.
 
 ## 4 · Map of the code
 

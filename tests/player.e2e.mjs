@@ -242,10 +242,16 @@ check(
   await page.locator(`text=Show all ${SET_COUNT} sets`).isVisible(),
 );
 
-// ── start playback
-await page.locator('button[aria-label="Play Set Number 1"]').click();
+// ── playback starts on its own
+//
+// Opening a DJ *is* the request to hear them — there is only one reason to do
+// it — so the tap on a set that used to be required here is gone. Tapping the
+// row that is already playing now pauses it, which is why this no longer
+// clicks: it would stop the very playback the rest of the file measures.
 await page.waitForSelector('input[aria-label="Seek"]', { timeout: 8000 });
-check("player bar appears on play", true);
+check("opening a DJ starts playing without a second tap", true);
+check("the row for the playing set offers to pause it",
+  (await page.locator('button[aria-label^="Pause Set"]').count()) > 0);
 
 // The queue is the whole catalogue even though the list is showing six.
 check(

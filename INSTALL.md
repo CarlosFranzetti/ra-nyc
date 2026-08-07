@@ -40,8 +40,9 @@ production, and `vercel dev` is not required.
 | `npm run test:e2e` | Playwright transport-bar behaviour. |
 | `npm run test:search` | Playwright search behaviour. |
 | `npm run test:layout` | Playwright responsive layout and preferences. |
+| `npm run test:preview` | Playwright party preview and the ticket link. |
 | `npm run test:offline` | Playwright service worker, against a production build. |
-| `npm run test:all` | All five. |
+| `npm run test:all` | All six. |
 
 The Playwright suites use `playwright-core` and look for an existing Chromium
 rather than downloading one — set `PLAYWRIGHT_CHROMIUM_PATH` if it can't find
