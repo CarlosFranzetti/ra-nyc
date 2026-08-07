@@ -6,7 +6,9 @@ import {
   Clock,
   ExternalLink,
   Headphones,
+  Loader,
   MapPin,
+  Play,
   Users,
   X,
 } from "lucide-react";
@@ -18,9 +20,17 @@ import {
 } from "@/components/ui/drawer";
 import { EventThumb } from "@/components/EventThumb";
 import { usePrefetchArtist } from "@/hooks/useArtist";
+import { useEventPreview } from "@/hooks/useEventPreview";
 import { formatTime } from "@/lib/formatTime";
 import { cn } from "@/lib/utils";
 import type { Artist, Event } from "@/types/event";
+
+/**
+ * How many of the bill to warm on open. Matches the preview's own cap, so the
+ * requests made are exactly the ones the preview will use — warming a name the
+ * preview will never reach is a request spent on nothing.
+ */
+const LINEUP_WARM_LIMIT = 6;
 
 interface EventDetailsSheetProps {
   event: Event | null;
@@ -50,6 +60,7 @@ export function EventDetailsSheet({
   onSelectVenue,
 }: EventDetailsSheetProps) {
   const prefetchArtist = usePrefetchArtist();
+  const preview = useEventPreview();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [blurbExpanded, setBlurbExpanded] = useState(false);
@@ -86,6 +97,22 @@ export function EventDetailsSheet({
       observer.disconnect();
     };
   }, [open, event?.id, expanded, blurbExpanded, lineupExpanded]);
+
+  // Warm every DJ on the bill the moment the sheet opens, so tapping any of
+  // them — or the preview button — has nothing left to wait for. These are
+  // edge-cached and mostly cache hits; the cost is a handful of requests during
+  // the time it takes to read a lineup.
+  //
+  // Above the `if (!event) return null` below, and it has to stay there: hooks
+  // run in a fixed order, so one placed after an early return is skipped
+  // whenever that return fires and React throws "rendered more hooks than
+  // during the previous render" the moment an event arrives.
+  useEffect(() => {
+    if (!open || !event) return;
+    for (const artist of event.artists.slice(0, LINEUP_WARM_LIMIT)) {
+      prefetchArtist(artist.id, artist.name);
+    }
+  }, [open, event, prefetchArtist]);
 
   if (!event) return null;
 
@@ -227,6 +254,30 @@ export function EventDetailsSheet({
                   <Headphones className="h-3.5 w-3.5" />
                   Lineup — tap to hear a set
                 </h3>
+
+                {/* Deliberately a tap, not automatic on opening the event.
+                    People open a party to read the time and the bill, and
+                    sound they did not ask for is the rudest thing an app can
+                    do on a phone. One obvious button is the same idea without
+                    the ambush — and it keeps playback tied to a real user
+                    gesture, which is also what browsers require. */}
+                <button
+                  onClick={() => preview.start(event)}
+                  disabled={preview.preparing}
+                  className="press mb-3 flex w-full items-center justify-center gap-2 rounded-lg border border-primary/50 bg-card py-2.5 text-sm font-medium text-foreground disabled:opacity-60"
+                >
+                  {preview.preparing ? (
+                    <Loader className="h-4 w-4 animate-spin text-primary" />
+                  ) : (
+                    <Play className="h-4 w-4 fill-primary text-primary" />
+                  )}
+                  {preview.preparing ? "Finding sets…" : "Preview the night"}
+                </button>
+                {preview.empty && (
+                  <p className="mb-3 text-center text-xs text-muted-foreground">
+                    No sets found for this lineup.
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {artists.map((artist) => (
                     <button

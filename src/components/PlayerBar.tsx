@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader, Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
+import { Loader, Pause, Play, SkipBack, SkipForward, Ticket, X } from "lucide-react";
 import { usePlayer } from "@/context/PlayerContext";
 import { formatClock } from "@/lib/formatClock";
+import { shouldOfferTickets } from "@/lib/tickets";
 import { cn } from "@/lib/utils";
 import { PROVIDER_LABELS } from "@/types/artist";
 
@@ -31,6 +32,8 @@ export function PlayerBar() {
     artistName,
     queue,
     index,
+    source,
+    listened,
     playing,
     loading,
     position,
@@ -45,6 +48,8 @@ export function PlayerBar() {
     seek,
     stop,
   } = usePlayer();
+
+  const ticketsVisible = shouldOfferTickets(source, listened);
 
   const barRef = useRef<HTMLDivElement>(null);
   // While dragging, the thumb follows the finger instead of the playhead —
@@ -92,7 +97,9 @@ export function PlayerBar() {
     error ??
     [
       artistName,
-      PROVIDER_LABELS[current.provider],
+      // A party preview is a different thing from one artist's catalogue, and
+      // the bar is the only place that says which you are hearing.
+      source ? `at ${source.label}` : PROVIDER_LABELS[current.provider],
       queue.length > 1 ? `${index + 1} of ${queue.length}` : null,
     ]
       .filter(Boolean)
@@ -190,6 +197,30 @@ export function PlayerBar() {
             {subtitle}
           </p>
         </div>
+
+        {/* Earned, not shown.
+            It appears only once someone has actually listened to a party
+            preview for a while — `listened` ticks only while audio is playing,
+            so a phone paused in a pocket never gets here. That is the whole
+            ethic of it: at a minute in, "where do I get tickets" is a question
+            the listener now has, and answering it is help. Shown at the start it
+            would be an advert, and the app would have to be ignored to be used.
+
+            Deliberately a small link rather than a banner or a sheet: it takes
+            no space from the transport, interrupts nothing, and costs one tap
+            to ignore forever by simply not tapping it. */}
+        {ticketsVisible && source && (
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Tickets for ${source.label} on Resident Advisor`}
+            className="press flex flex-shrink-0 items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-1 text-[0.625rem] font-medium text-primary"
+          >
+            <Ticket className="h-3 w-3" />
+            Tickets
+          </a>
+        )}
 
         <button
           onClick={stop}

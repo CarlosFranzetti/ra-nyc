@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Car, MapPin, Navigation } from "lucide-react";
+import { Car, MapPin, Navigation, Ticket } from "lucide-react";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { lyftLink, uberLink } from "@/lib/rideLinks";
 import { TILE_SIZE, tileMosaic } from "@/lib/tiles";
@@ -15,6 +15,8 @@ interface VenueResponse {
 
 interface VenueSheetProps {
   venue: string | null;
+  /** The event this venue was opened from, so tickets are one tap from the map. */
+  ticketsUrl?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -79,7 +81,7 @@ function useMeasuredSize<T extends HTMLElement>() {
  * is the right weight for something most sessions never open. See that file for
  * why this stopped being an OpenStreetMap iframe.
  */
-export function VenueSheet({ venue, open, onOpenChange }: VenueSheetProps) {
+export function VenueSheet({ venue, ticketsUrl, open, onOpenChange }: VenueSheetProps) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["venue", venue],
     queryFn: ({ signal }) => fetchVenue(venue!, signal),
@@ -187,6 +189,23 @@ export function VenueSheet({ venue, open, onOpenChange }: VenueSheetProps) {
             >
               {data.label}
             </p>
+          )}
+
+          {/* Above the ride buttons on purpose. Someone who has got as far as
+              working out how to *get* there has already decided they want to
+              go — this is the one screen where a ticket link is the helpful
+              answer rather than an interruption. Small, and it sits out of the
+              way of the three things this sheet is actually for. */}
+          {ticketsUrl && (
+            <a
+              href={ticketsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="press flex items-center justify-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 py-2 text-xs font-medium text-primary"
+            >
+              <Ticket className="h-3.5 w-3.5" />
+              Tickets on RA
+            </a>
           )}
 
           {/* Getting there is the next thing you do after finding out where it

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ExternalLink,
@@ -74,6 +74,35 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
 
   const sets = data?.sets ?? [];
   const links = data?.links ?? [];
+
+  /**
+   * Tapping a DJ starts them playing. No second tap on a set.
+   *
+   * Opening an artist is not an ambiguous action — there is one reason to do
+   * it, and making someone then hunt for a play button was a tax on the app's
+   * whole point. The sheet still lists the catalogue, so picking a *different*
+   * set is one tap; this just removes the tap that only ever had one answer.
+   *
+   * Guarded on `startedFor` rather than on `playing`, so it fires once per
+   * artist: re-rendering while paused must not yank playback back on under
+   * someone who deliberately paused it.
+   */
+  const startedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      startedFor.current = null;
+      return;
+    }
+    const id = artist?.id;
+    const resolved = data?.sets;
+    if (!id || startedFor.current === id || !resolved?.length) return;
+    startedFor.current = id;
+    playSets(resolved, 0, artist?.name ?? null);
+    // `data?.sets` rather than the `?? []` fallback above: that fallback is a
+    // fresh array on every render, so depending on it re-runs this effect
+    // constantly. React Query hands back a stable reference until the data
+    // actually changes.
+  }, [open, artist?.id, artist?.name, data?.sets, playSets]);
   // The list is a short read by default; the *queue* is always the full
   // catalogue, so `next` keeps going past whatever is on screen.
   const shownSets = allSetsShown ? sets : sets.slice(0, COLLAPSED_SETS);

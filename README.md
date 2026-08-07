@@ -17,9 +17,17 @@ and no navigation to learn.
 first with RA Picks flagged. Swipe left or right to change day, or jump to any
 date with the calendar. Tap an event for the full flyer, blurb and lineup.
 
+**Preview a night.** One tap on a party queues one set from each DJ on the bill
+and starts playing — it begins on whichever DJ resolves first rather than waiting
+for the whole lineup, and the rest arrive behind the music. Enough to tell what a
+room sounds like without committing to anyone's hour. If you keep listening for a
+minute, a small link to tickets on RA appears in the transport; before that there
+is nothing to ignore.
+
 **DJ sets.** Tap any name in a lineup and it resolves that artist to their
 SoundCloud and Mixcloud catalogue, newest first, plus a bio and up to five
-profile links. Sets play in a transport bar docked at the bottom — play/pause,
+profile links. It starts playing on the tap — opening a DJ is the request to
+hear them. Sets play in a transport bar docked at the bottom — play/pause,
 next/previous, scrubbable timeline — and **keep playing while you browse**, so
 finding out what someone sounds like doesn't cost you your place in the listings.
 The set also reaches the lock screen with its real title and cover art, rather

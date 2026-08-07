@@ -16,11 +16,23 @@ import {
 import { playerFor, type PlayerHandle } from "@/lib/players";
 import type { ArtistSet } from "@/types/artist";
 
+/** What a queue was started *from*, so the transport can link back to it. */
+export interface PlaybackSource {
+  /** Shown in the bar — the party's name. */
+  label: string;
+  /** Where tickets are. Always an ra.co event page. */
+  url: string;
+}
+
 interface PlayerContextValue {
   queue: ArtistSet[];
   index: number;
   current: ArtistSet | null;
   artistName: string | null;
+  /** Set when the queue is a party preview rather than one artist's catalogue. */
+  source: PlaybackSource | null;
+  /** Seconds of *actual playback* since this source started. */
+  listened: number;
   playing: boolean;
   loading: boolean;
   position: number;
@@ -30,7 +42,19 @@ interface PlayerContextValue {
   hasNext: boolean;
   hasPrevious: boolean;
   /** Loads a queue and starts at `startIndex`. Re-tapping the live set resumes. */
-  playSets(sets: ArtistSet[], startIndex: number, artistName: string | null): void;
+  playSets(
+    sets: ArtistSet[],
+    startIndex: number,
+    artistName: string | null,
+    source?: PlaybackSource | null,
+  ): void;
+  /**
+   * Adds to the end of the queue without disturbing what is playing.
+   *
+   * This is what lets a party preview start on the first DJ who resolves
+   * instead of waiting for the whole lineup — the rest arrive behind the music.
+   */
+  appendSets(sets: ArtistSet[]): void;
   toggle(): void;
   next(): void;
   previous(): void;
@@ -64,6 +88,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [queue, setQueue] = useState<ArtistSet[]>([]);
   const [index, setIndex] = useState(0);
   const [artistName, setArtistName] = useState<string | null>(null);
+  const [source, setSource] = useState<PlaybackSource | null>(null);
+  const [listened, setListened] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [position, setPosition] = useState(0);
@@ -206,16 +232,37 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     publishPlaybackState(playing);
   }, [playing]);
 
+  /**
+   * Time actually spent listening to the current source.
+   *
+   * A wall clock would count the twenty minutes the phone spent in a pocket
+   * paused, which is the opposite of interest. Ticking only while `playing` is
+   * what makes this mean "kept listening" — and that is the whole basis for
+   * showing a ticket link, so it has to be honest or the link is just an ad.
+   */
+  useEffect(() => {
+    if (!playing) return undefined;
+    const timer = setInterval(() => setListened((seconds) => seconds + 1), 1000);
+    return () => clearInterval(timer);
+  }, [playing]);
+
   useEffect(() => {
     publishPosition(position, duration);
   }, [position, duration]);
 
   const playSets = useCallback(
-    (sets: ArtistSet[], startIndex: number, name: string | null) => {
+    (
+      sets: ArtistSet[],
+      startIndex: number,
+      name: string | null,
+      from: PlaybackSource | null = null,
+    ) => {
       if (sets.length === 0) return;
       const target = Math.min(Math.max(startIndex, 0), sets.length - 1);
       setQueue(sets);
       setArtistName(name);
+      setSource(from);
+      setListened(0);
       setIndex(target);
       // Tapping the set that is already loaded should resume it, not tear the
       // player down and rebuild it from zero.
@@ -225,6 +272,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     },
     [],
   );
+
+  const appendSets = useCallback((sets: ArtistSet[]) => {
+    if (sets.length === 0) return;
+    setQueue((existing) => {
+      // A late arrival that is already queued must not create a duplicate — the
+      // preview resolves artists concurrently and two of them can legitimately
+      // return the same b2b recording.
+      const seen = new Set(existing.map((set) => set.url || set.id));
+      const additions = sets.filter((set) => !seen.has(set.url || set.id));
+      return additions.length === 0 ? existing : [...existing, ...additions];
+    });
+  }, []);
 
   const toggle = useCallback(() => {
     const handle = handleRef.current;
@@ -260,6 +319,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setQueue([]);
     setIndex(0);
     setArtistName(null);
+    setSource(null);
+    setListened(0);
     setPlaying(false);
     setLoading(false);
     setPosition(0);
@@ -293,6 +354,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       index,
       current,
       artistName,
+      source,
+      listened,
       playing,
       loading,
       position,
@@ -302,6 +365,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       hasNext,
       hasPrevious,
       playSets,
+      appendSets,
       toggle,
       next,
       previous,
@@ -314,6 +378,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       index,
       current,
       artistName,
+      source,
+      listened,
       playing,
       loading,
       position,
@@ -323,6 +389,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       hasNext,
       hasPrevious,
       playSets,
+      appendSets,
       toggle,
       next,
       previous,

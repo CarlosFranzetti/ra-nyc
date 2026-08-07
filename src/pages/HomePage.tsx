@@ -174,6 +174,7 @@ export default function HomePage() {
             to the event rather than to the listings. */}
         <VenueSheet
           venue={selectedVenue}
+          ticketsUrl={selectedEvent?.url ?? null}
           open={venueOpen}
           onOpenChange={setVenueOpen}
         />
