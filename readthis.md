@@ -36,9 +36,24 @@ no connection strings, no keys.
 
 Both are outstanding and everything database-backed is dark until they run.
 
+**If §1.1 said `"configured": false`, there is no database yet — do this first.**
+Vercel → **ra-nyc** → **Storage** → *Create* / *Connect Database* → **Neon**
+(Serverless Postgres) → free plan → Connect. The integration sets
+`DATABASE_URL` for you and redeploys, which is the whole reason to go this way
+rather than signing up at Neon separately and pasting a connection string on a
+phone keyboard. Then come back here.
+
+On a brand-new database `artist_links` does not exist either, so run
+`migrations/0001` through `0005` in order first — `0001` creates the table and
+`0002`/`0003` add columns the resolver reads. (`0004`–`0006` are only `update`
+and `delete` statements, so on an empty table they are no-ops you can skip; they
+cost nothing to run anyway.) `0006` failing with *relation does not exist* is
+harmless and means exactly that.
+
 **From a phone:** log in to [console.neon.tech](https://console.neon.tech),
 open the project, choose **SQL Editor**, paste and run. It is a normal web app
-and works fine in mobile Safari or Chrome.
+and works fine in mobile Safari or Chrome. Vercel also exposes the same editor
+under Storage → your database → *Query*, which saves a login.
 
 **`0006` — re-resolve every artist.** This is the one with immediate visible
 payoff. Migrations 0002–0005 each *believed* they were invalidating the cache
@@ -94,10 +109,21 @@ morning at 09:00 UTC until this is set.
 
 1. [vercel.com](https://vercel.com) → **ra-nyc** → Settings → Environment
    Variables.
-2. Add `CRON_SECRET`, value = any long random string.
-3. **Redeploy.** Changing an environment variable does *not* redeploy on its
+2. **Key** `CRON_SECRET`, **Value** any long random string — it is a shared
+   secret, not a password anyone types, so length beats memorability. On iOS,
+   asking a password manager for a 32-character password is the easiest way to
+   get one on a phone.
+3. Leave all three environments ticked (Production, Preview, Development) and
+   save. You never need to see this value again — nothing displays it, and
+   `/api/health` deliberately reports only *whether* things are set.
+4. **Redeploy.** Changing an environment variable does *not* redeploy on its
    own — this is the exact trap that cost a round with `SOUNDCLOUD_CLIENT_ID`.
-   Deployments → latest → ⋯ → Redeploy.
+   Deployments → latest → ⋯ → Redeploy. Leave *Use existing Build Cache* on;
+   it only needs to pick up the new environment.
+
+Nothing visible changes when this works. The check is that the cron stops
+failing: Vercel → ra-nyc → **Cron Jobs**, where `/api/backfill` should report a
+`200` rather than a `503` after the next 09:00 UTC run.
 
 ### 1.4 ~~Fill in the donate links~~ — done
 
@@ -113,10 +139,17 @@ Removing an entry from the array hides that link; an empty array hides the row.
 
 ### 1.5 Delete merged branches — phone, via GitHub
 
-All fully merged into `main`; nothing is lost. The git proxy in these sessions
-**403s on ref deletion**, so I cannot do it.
+All eleven are fully merged into `main` (verified with `git merge-base
+--is-ancestor`, not by name), so nothing is lost by deleting them.
 
-github.com → ra-nyc → Branches → bin icon:
+**I cannot do this from a session.** Two routes, both blocked, both at the
+proxy rather than at permissions:
+
+- `git push origin --delete` → `HTTP 403` on `git-receive-pack`.
+- `DELETE /repos/.../git/refs/heads/...` → `403 {"message": "Write access to
+  this GitHub API path is not permitted through this proxy."}`
+
+github.com → ra-nyc → **Branches** → *All branches* → bin icon on each:
 
 - `claude/lovable-vercel-migration-hyp0a1` ← deleting this one finally retires
   the Lovable name from the repo
@@ -128,6 +161,12 @@ github.com → ra-nyc → Branches → bin icon:
 - `claude/polish-and-readthis`
 - `claude/filter-chips-and-mono`
 - `claude/logo-and-donate`
+- `claude/night-rollover-and-palette`
+- `claude/donate-links`
+
+**Then stop this happening again:** Settings → General → *Pull Requests* →
+tick **Automatically delete head branches**. Every future merge cleans up after
+itself and this section stops needing to exist.
 
 ### 1.6 Optional: kick the backfill along — phone, awkwardly
 
