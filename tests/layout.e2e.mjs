@@ -93,7 +93,7 @@ for (let attempt = 0; ; attempt += 1) {
 const browser = await chromium.launch({ executablePath: findChromium() });
 
 /** Loads the app at a viewport with preferences pre-seeded, and measures it. */
-async function measure({ width, height, density = "default", textSize = "default", typography = "display" }) {
+async function measure({ width, height, density = "default", textSize = "0", typography = "slab" }) {
   const context = await browser.newContext({ viewport: { width, height } });
   const page = await context.newPage();
   await page.route("**/api/events*", (route) =>
@@ -124,6 +124,7 @@ async function measure({ width, height, density = "default", textSize = "default
       cardPadding: card ? parseFloat(getComputedStyle(card).padding) : 0,
       rootFontSize: parseFloat(root.fontSize),
       titleFont: title ? getComputedStyle(title).fontFamily.split(",")[0].replace(/"/g, "") : "",
+      bodyFont: getComputedStyle(document.body).fontFamily.split(",")[0].replace(/"/g, ""),
       // The logo is the one thing on screen that must not move with any
       // preference, so it is read the same way everything else is.
       logo: (() => {
@@ -180,15 +181,26 @@ check("desktop type is larger than phone type",
   `${phone.rootFontSize}px vs ${desktop.rootFontSize}px`);
 
 // ── typography preference actually applies
-check("the display preference selects a distinct family",
-  phone.titleFont === "Atkinson Hyperlegible", phone.titleFont);
+check("the slab preference selects a distinct family",
+  phone.titleFont === "Zilla Slab", phone.titleFont);
 const systemType = await measure({ width: 390, height: 844, typography: "system" });
-check("and the system preference does not", systemType.titleFont !== "Atkinson Hyperlegible",
+check("and the system preference does not", systemType.titleFont !== "Zilla Slab",
   systemType.titleFont);
 
+// Impact is the one option that is deliberately not applied to body text, so
+// asserting the family on a heading is asserting the pairing, not the font.
+const impactType = await measure({ width: 390, height: 844, typography: "impact" });
+check("the impact preference reaches headings", impactType.titleFont === "Anton",
+  impactType.titleFont);
+check("and leaves body text to the system sans",
+  impactType.bodyFont !== "Anton", impactType.bodyFont);
+
 // ── the whole point of coupling spacing to text size
-const smaller = await measure({ width: 390, height: 844, textSize: "smaller" });
-const larger = await measure({ width: 390, height: 844, textSize: "larger" });
+// The ladder is six rungs, all upward, so the bottom of it *is* the default —
+// there is no "smaller". Ends and middle are enough to prove monotonicity.
+const smaller = await measure({ width: 390, height: 844, textSize: "0" });
+const midsize = await measure({ width: 390, height: 844, textSize: "2" });
+const larger = await measure({ width: 390, height: 844, textSize: "5" });
 
 // ── the logo opts out of all of it
 // It used to inherit the typeface from <html> and the tint from the theme, so
@@ -206,8 +218,8 @@ check("and is a fixed near-white rather than the theme's foreground",
   phone.logo.includes("rgb(242, 244, 245)"), phone.logo);
 
 check("padding grows with text size instead of standing still",
-  larger.cardPadding > phone.cardPadding && phone.cardPadding > smaller.cardPadding,
-  `${smaller.cardPadding} < ${phone.cardPadding} < ${larger.cardPadding}`);
+  larger.cardPadding > midsize.cardPadding && midsize.cardPadding > smaller.cardPadding,
+  `${smaller.cardPadding} < ${midsize.cardPadding} < ${larger.cardPadding}`);
 
 // Coupled, but at partial strength — full coupling is what blew the layout
 // apart before, and none at all is what made "Larger" read cramped.
@@ -218,7 +230,7 @@ check("but at partial strength, not one for one",
   `padding x${padRatio.toFixed(3)} vs type x${fontRatio.toFixed(3)}`);
 
 // Ink-to-air is the thing being held steady across the nine combinations.
-const ratios = [smaller, phone, larger].map((m) => m.cardPadding / m.rootFontSize);
+const ratios = [smaller, midsize, larger].map((m) => m.cardPadding / m.rootFontSize);
 const spread = Math.max(...ratios) - Math.min(...ratios);
 check("so the ratio of padding to type stays close across sizes",
   spread < 0.06, `spread ${spread.toFixed(3)}`);

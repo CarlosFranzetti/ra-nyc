@@ -149,7 +149,8 @@ proxy rather than at permissions:
 - `DELETE /repos/.../git/refs/heads/...` → `403 {"message": "Write access to
   this GitHub API path is not permitted through this proxy."}`
 
-github.com → ra-nyc → **Branches** → *All branches* → bin icon on each:
+github.com → ra-nyc → **Branches** → *All branches* → bin icon on each. Ten
+left, all verified merged:
 
 - `claude/lovable-vercel-migration-hyp0a1` ← deleting this one finally retires
   the Lovable name from the repo
@@ -160,9 +161,8 @@ github.com → ra-nyc → **Branches** → *All branches* → bin icon on each:
 - `claude/party-preview`
 - `claude/polish-and-readthis`
 - `claude/filter-chips-and-mono`
-- `claude/logo-and-donate`
-- `claude/night-rollover-and-palette`
-- `claude/donate-links`
+- `claude/readthis-runbook`
+- `claude/type-size-and-spacing`
 
 **Then stop this happening again:** Settings → General → *Pull Requests* →
 tick **Automatically delete head branches**. Every future merge cleans up after
