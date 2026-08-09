@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays, format, subDays } from "date-fns";
 import { CloudOff } from "lucide-react";
 import { DatePicker } from "@/components/DatePicker";
@@ -8,6 +8,7 @@ import { EventCard } from "@/components/EventCard";
 import { ArtistSheet } from "@/components/ArtistSheet";
 import { EventDetailsSheet } from "@/components/EventDetailsSheet";
 import { EventSkeleton } from "@/components/EventSkeleton";
+import { FilterChips } from "@/components/FilterChips";
 import { Header } from "@/components/Header";
 import { PlayerBar } from "@/components/PlayerBar";
 import { SearchSheet } from "@/components/SearchSheet";
@@ -16,6 +17,7 @@ import { SplashScreen } from "@/components/SplashScreen";
 import { useTheme } from "@/context/ThemeContext";
 import { useEvents } from "@/hooks/useEvents";
 import { useSwipe } from "@/hooks/useSwipe";
+import { applyFilters, filterCounts, type FilterKey } from "@/lib/filters";
 import { cn } from "@/lib/utils";
 import type { Artist, Event } from "@/types/event";
 
@@ -29,6 +31,7 @@ export default function HomePage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedVenue, setSelectedVenue] = useState<string | null>(null);
   const [venueOpen, setVenueOpen] = useState(false);
+  const [filters, setFilters] = useState<FilterKey[]>([]);
 
   const { layoutDensity } = useTheme();
   const dateString = format(selectedDate, "yyyy-MM-dd");
@@ -82,8 +85,27 @@ export default function HomePage() {
     layoutDensity === "airy" && "px-4 pb-8",
   );
 
-  const hasEvents = Boolean(data?.events?.length);
-  const isEmpty = Boolean(data && data.events.length === 0);
+  const allEvents = useMemo(() => data?.events ?? [], [data?.events]);
+  const visibleEvents = useMemo(
+    () => applyFilters(allEvents, filters),
+    [allEvents, filters],
+  );
+  const counts = useMemo(
+    () => filterCounts(allEvents, filters),
+    [allEvents, filters],
+  );
+
+  const toggleFilter = useCallback((key: FilterKey) => {
+    setFilters((current) =>
+      current.includes(key) ? current.filter((k) => k !== key) : [...current, key],
+    );
+  }, []);
+
+  const hasEvents = allEvents.length > 0;
+  const isEmpty = Boolean(data && allEvents.length === 0);
+  // A filtered-to-nothing night is not an empty night, and saying "no events"
+  // there would be a lie the user can't undo without guessing why.
+  const filteredOut = hasEvents && visibleEvents.length === 0;
 
   return (
     <>
@@ -107,21 +129,27 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className={cn("shell py-2 flex items-center justify-between gap-2", padX)}>
-          <p className="text-xs text-muted-foreground">
-            {hasEvents
-              ? `${data!.count} event${data!.count !== 1 ? "s" : ""} · ${format(selectedDate, "EEE, MMM d")}`
-              : format(selectedDate, "EEE, MMM d")}
-          </p>
+        <div className={cn("shell py-2 space-y-1.5", padX)}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {hasEvents
+                ? `${visibleEvents.length} event${visibleEvents.length !== 1 ? "s" : ""} · ${format(selectedDate, "EEE, MMM d")}`
+                : format(selectedDate, "EEE, MMM d")}
+            </p>
 
-          {/* Saying so matters more than it looks: without it, listings that
-              are hours old are indistinguishable from listings that are
-              current, and the app would be confidently wrong about tonight. */}
-          {data?.stale && (
-            <span className="flex flex-shrink-0 items-center gap-1 text-[0.6875rem] text-muted-foreground/70">
-              <CloudOff className="h-3 w-3" />
-              Saved listings
-            </span>
+            {/* Saying so matters more than it looks: without it, listings that
+                are hours old are indistinguishable from listings that are
+                current, and the app would be confidently wrong about tonight. */}
+            {data?.stale && (
+              <span className="flex flex-shrink-0 items-center gap-1 text-[0.6875rem] text-muted-foreground/70">
+                <CloudOff className="h-3 w-3" />
+                Saved listings
+              </span>
+            )}
+          </div>
+
+          {hasEvents && (
+            <FilterChips active={filters} counts={counts} onToggle={toggleFilter} />
           )}
         </div>
 
@@ -140,9 +168,22 @@ export default function HomePage() {
               />
             ) : isEmpty ? (
               <EmptyState />
+            ) : filteredOut ? (
+              <div className="py-10 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Nothing tonight matches those filters.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setFilters([])}
+                  className="mt-2 text-xs text-primary underline underline-offset-4"
+                >
+                  Clear filters
+                </button>
+              </div>
             ) : hasEvents ? (
               <div key={listKey} className={cn(listClass, "stagger-animation")}>
-                {data!.events.map((event) => (
+                {visibleEvents.map((event) => (
                   <EventCard key={event.id} event={event} onSelect={handleEventSelect} />
                 ))}
               </div>
