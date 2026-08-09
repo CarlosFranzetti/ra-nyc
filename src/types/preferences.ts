@@ -1,4 +1,4 @@
-export const COLOR_THEMES = ["neon", "vapor", "matrix", "sunset"] as const;
+export const COLOR_THEMES = ["neon", "vapor", "matrix", "sunset", "mono"] as const;
 export const DENSITIES = ["tight", "default", "airy"] as const;
 export const TYPOGRAPHIES = ["system", "mono", "display"] as const;
 export const TEXT_SIZES = ["smaller", "default", "larger"] as const;
@@ -21,6 +21,7 @@ export const THEME_OPTIONS: { value: ColorTheme; label: string; color: string }[
   { value: "vapor", label: "Vapor", color: "hsl(320 100% 60%)" },
   { value: "matrix", label: "Matrix", color: "hsl(120 100% 45%)" },
   { value: "sunset", label: "Sunset", color: "hsl(25 100% 55%)" },
+  { value: "mono", label: "Mono", color: "hsl(0 0% 92%)" },
 ];
 
 export const DENSITY_OPTIONS: { value: LayoutDensity; label: string; desc: string }[] = [
