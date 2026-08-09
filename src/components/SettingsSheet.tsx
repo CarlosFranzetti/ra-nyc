@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Heart, Settings } from "lucide-react";
+import { Heart, Minus, Plus, Settings } from "lucide-react";
 import {
   Drawer,
   DrawerContent,
@@ -11,7 +11,7 @@ import { DONATE } from "@/lib/donate";
 import { cn } from "@/lib/utils";
 import {
   DENSITY_OPTIONS,
-  TEXT_SIZE_OPTIONS,
+  TEXT_SIZES,
   THEME_OPTIONS,
   TYPOGRAPHY_OPTIONS,
 } from "@/types/preferences";
@@ -22,7 +22,7 @@ function OptionGroup({
   children,
 }: {
   title: string;
-  columns: 2 | 3 | 4 | 5;
+  columns: 1 | 2 | 3 | 4 | 5;
   children: React.ReactNode;
 }) {
   return (
@@ -33,6 +33,7 @@ function OptionGroup({
       <div
         className={cn(
           "grid gap-2",
+          columns === 1 && "grid-cols-1",
           columns === 2 && "grid-cols-2",
           columns === 3 && "grid-cols-3",
           columns === 4 && "grid-cols-4",
@@ -45,16 +46,47 @@ function OptionGroup({
   );
 }
 
+function StepButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      className={cn(
+        "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95",
+        disabled
+          ? "border-border/40 text-muted-foreground/40"
+          : "border-border/60 bg-card text-foreground hover:bg-accent",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 function OptionButton({
   active,
   onClick,
   label,
   description,
+  labelClassName,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   description: string;
+  labelClassName?: string;
 }) {
   return (
     <button
@@ -67,7 +99,9 @@ function OptionButton({
           : "border-border/50 bg-card hover:bg-accent active:bg-accent text-muted-foreground hover:text-foreground",
       )}
     >
-      <span className="text-[0.8125rem] font-medium leading-tight">{label}</span>
+      <span className={cn("text-[0.8125rem] font-medium leading-tight", labelClassName)}>
+        {label}
+      </span>
       <span className="text-[0.6875rem] leading-tight opacity-60">{description}</span>
     </button>
   );
@@ -85,6 +119,10 @@ export function SettingsSheet() {
     textSize,
     setTextSize,
   } = useTheme();
+
+  // Position on the ladder, which is what a stepper moves — the stored value is
+  // the label on the rung, not the rung.
+  const sizeIndex = Math.max(0, TEXT_SIZES.indexOf(textSize));
 
   /**
    * Close on any tap that isn't an option.
@@ -168,6 +206,9 @@ export function SettingsSheet() {
               ))}
             </OptionGroup>
 
+            {/* Each option's label is set in the face it selects. A font picker
+                that names three fonts in a fourth font is asking you to take
+                its word for it. */}
             <OptionGroup title="Typography" columns={3}>
               {TYPOGRAPHY_OPTIONS.map((opt) => (
                 <OptionButton
@@ -176,20 +217,51 @@ export function SettingsSheet() {
                   onClick={() => setTypography(opt.value)}
                   label={opt.label}
                   description={opt.desc}
+                  labelClassName={cn(opt.className, "type-headline")}
                 />
               ))}
             </OptionGroup>
 
-            <OptionGroup title="Text size" columns={3}>
-              {TEXT_SIZE_OPTIONS.map((opt) => (
-                <OptionButton
-                  key={opt.value}
-                  active={textSize === opt.value}
-                  onClick={() => setTextSize(opt.value)}
-                  label={opt.label}
-                  description={opt.desc}
-                />
-              ))}
+            {/* A stepper, not six buttons. Six cells across a 360px drawer
+                would be 50px each of unreadable numbers, and the axis is
+                ordered — "one more" is the actual thought, not "pick the
+                fourth". */}
+            <OptionGroup title="Text size" columns={1}>
+              <div className="flex items-center gap-2">
+                <StepButton
+                  label="Smaller text"
+                  disabled={sizeIndex === 0}
+                  onClick={() => setTextSize(TEXT_SIZES[sizeIndex - 1]!)}
+                >
+                  <Minus className="h-4 w-4" />
+                </StepButton>
+
+                {/* The bar is the readout. A number would be a number; this
+                    shows how much room is left in either direction. */}
+                <div className="flex flex-1 items-center gap-1">
+                  {TEXT_SIZES.map((value, i) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setTextSize(value)}
+                      aria-label={`Text size ${i + 1} of ${TEXT_SIZES.length}`}
+                      aria-pressed={sizeIndex === i}
+                      className={cn(
+                        "h-6 flex-1 rounded-sm transition-colors",
+                        i <= sizeIndex ? "bg-primary" : "bg-secondary",
+                      )}
+                    />
+                  ))}
+                </div>
+
+                <StepButton
+                  label="Larger text"
+                  disabled={sizeIndex === TEXT_SIZES.length - 1}
+                  onClick={() => setTextSize(TEXT_SIZES[sizeIndex + 1]!)}
+                >
+                  <Plus className="h-4 w-4" />
+                </StepButton>
+              </div>
             </OptionGroup>
 
             <p className="px-1 text-[0.6875rem] leading-snug text-muted-foreground">
@@ -208,18 +280,22 @@ export function SettingsSheet() {
                 cannot scan a code with the camera behind it, so every tap was
                 a detour through a picture on the way to the link underneath. */}
             {DONATE.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/40 px-1 pt-3 pb-safe text-[0.6875rem] text-muted-foreground/70">
-                <span className="flex items-center gap-1.5">
-                  <Heart className="h-3 w-3 flex-shrink-0" />
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/40 px-1 pt-3 pb-safe text-sm">
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
+                  <Heart className="h-3.5 w-3.5 flex-shrink-0" />
                   Free, no ads.
                 </span>
+                {/* Bigger and bold than the caption beside them, because they
+                    are the only two things in this panel that are a decision
+                    rather than a setting — everything else here you can fiddle
+                    with and undo. */}
                 {DONATE.map((target) => (
                   <a
                     key={target.label}
                     href={target.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground"
+                    className="font-bold text-foreground underline decoration-dotted underline-offset-2 transition-colors hover:text-primary"
                   >
                     {target.label}
                   </a>

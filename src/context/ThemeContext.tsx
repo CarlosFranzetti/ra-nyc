@@ -88,7 +88,7 @@ function readSettings(): ThemeSettings {
     colorTheme,
     layoutDensity: "default",
     typography: "system",
-    textSize: "default",
+    textSize: "0",
   };
 
   try {
@@ -100,7 +100,11 @@ function readSettings(): ThemeSettings {
       colorTheme,
       layoutDensity: oneOf(DENSITIES, parsed.layoutDensity, "default"),
       typography: oneOf(TYPOGRAPHIES, parsed.typography, "system"),
-      textSize: oneOf(TEXT_SIZES, parsed.textSize, "default"),
+      // Both of these unions were renamed, so anyone carrying the old values
+      // ("larger", "display") lands on the fallback rather than on a class that
+      // does not exist. `oneOf` already did that; it is the reason the rename
+      // did not need a migration.
+      textSize: oneOf(TEXT_SIZES, parsed.textSize, "0"),
     };
   } catch {
     // Private-mode Safari throws on localStorage rather than returning null.
@@ -128,8 +132,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.classList.remove(...TYPOGRAPHIES.map((t) => `type-${t}`));
     root.classList.add(`type-${settings.typography}`);
 
-    root.classList.remove(...TEXT_SIZES.map((t) => `text-${t}`));
-    root.classList.add(`text-${settings.textSize}`);
+    // `text-size-` rather than `text-`: the old prefix produced `.text-larger`,
+    // which was one rename away from colliding with a Tailwind `text-*` utility.
+    root.classList.remove(...TEXT_SIZES.map((t) => `text-size-${t}`));
+    root.classList.add(`text-size-${settings.textSize}`);
   }, [
     settings.colorTheme,
     settings.layoutDensity,

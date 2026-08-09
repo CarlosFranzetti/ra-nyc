@@ -1,7 +1,19 @@
 export const COLOR_THEMES = ["neon", "vapor", "matrix", "sunset", "mono"] as const;
 export const DENSITIES = ["tight", "default", "airy"] as const;
-export const TYPOGRAPHIES = ["system", "mono", "display"] as const;
-export const TEXT_SIZES = ["smaller", "default", "larger"] as const;
+export const TYPOGRAPHIES = ["system", "impact", "slab"] as const;
+
+/**
+ * Six steps, not three, and the old default is now step 0 — the smallest.
+ *
+ * The previous three-way smaller/default/larger topped out at +10%, which is
+ * not enough range to matter to anyone who actually needs bigger text, and
+ * spent a third of its range going *down* from a size nobody complained about.
+ * Every step from here is up.
+ *
+ * Stored as strings because the whole settings blob is JSON and these become
+ * class names; the numbers are the ladder in `index.css`.
+ */
+export const TEXT_SIZES = ["0", "1", "2", "3", "4", "5"] as const;
 
 export type ColorTheme = (typeof COLOR_THEMES)[number];
 export type LayoutDensity = (typeof DENSITIES)[number];
@@ -35,15 +47,23 @@ export const DENSITY_OPTIONS: { value: LayoutDensity; label: string; desc: strin
   { value: "airy", label: "Airy", desc: "Spacious" },
 ];
 
-export const TYPOGRAPHY_OPTIONS: { value: Typography; label: string; desc: string }[] = [
-  { value: "system", label: "System", desc: "Clean & native" },
-  { value: "mono", label: "Mono", desc: "JetBrains Mono" },
-  { value: "display", label: "Legible", desc: "Atkinson Hyperlegible" },
-];
-
-/** Separate from density: this scales type only, that scales spacing only. */
-export const TEXT_SIZE_OPTIONS: { value: TextSize; label: string; desc: string }[] = [
-  { value: "smaller", label: "Smaller", desc: "More per screen" },
-  { value: "default", label: "Default", desc: "Balanced" },
-  { value: "larger", label: "Larger", desc: "Easier to read" },
+/**
+ * Three faces that cannot be mistaken for each other at a glance.
+ *
+ * The previous set failed that: JetBrains Mono and Atkinson Hyperlegible are
+ * both moderate, evenly-coloured text faces, so beside system-ui the picker
+ * offered three shades of the same idea. These are three *categories* — a
+ * neutral sans, a compressed poster face, a slab — and each preview renders in
+ * its own face, which is the only honest way to show a font picker.
+ */
+export const TYPOGRAPHY_OPTIONS: {
+  value: Typography;
+  label: string;
+  desc: string;
+  /** Applied to the option's own label, so the button shows what it sells. */
+  className: string;
+}[] = [
+  { value: "system", label: "System", desc: "Clean & native", className: "type-system" },
+  { value: "impact", label: "Impact", desc: "Tall & condensed", className: "type-impact" },
+  { value: "slab", label: "Slab", desc: "Typewriter-ish", className: "type-slab" },
 ];

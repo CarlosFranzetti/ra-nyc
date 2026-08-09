@@ -177,41 +177,64 @@
   --venue: 0 0% 66%;
 }
 
-/* Typography variants */
+/* ─────────────────────────────────────────────────────────────────────────────
+   Typography variants.
+
+   Three categories rather than three text faces. Every previous set failed the
+   same way: JetBrains Mono, Atkinson Hyperlegible, Space Grotesk and Bricolage
+   Grotesque are all moderate, evenly-coloured faces, so beside system-ui the
+   picker offered three shades of one idea and the complaint was always "the
+   third one still looks like the first". A neutral sans, a compressed poster
+   face and a slab cannot be confused with each other at any size.
+   ───────────────────────────────────────────────────────────────────────────── */
 .type-system {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-.type-mono {
-  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-  letter-spacing: -0.02em;
+/* Impact — headlines only, deliberately.
+
+   Anton is a poster face: single weight, near-zero sidebearings, tight
+   apertures. Set a venue name and a head count in it and the app becomes a
+   flyer you cannot read. So it takes the titles and hands everything else to
+   the system sans, which is what a real editorial pairing does and what makes
+   this option survivable at 2am.
+
+   The fallback matters more than usual here: Impact itself ships on essentially
+   every Windows and macOS install, so if Google Fonts is blocked or slow the
+   option still looks like what it is called. */
+.type-impact {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* The third slot has to do two jobs that usually fight: be obviously different
-   from the system font, and stay readable at 2am.
-
-   Three attempts. Bebas Neue was distinctive and close to unreadable — condensed
-   caps narrow the counters and remove the word shapes you skim by. Space Grotesk
-   fixed the legibility and lost the distinctiveness. Bricolage Grotesque was
-   more characterful but still a grotesque, so beside system-ui it read as the
-   same font again — which was the complaint both times.
-
-   Atkinson Hyperlegible is a different answer rather than a better grotesque.
-   The Braille Institute commissioned it to be legible to low-vision readers, so
-   its whole design goal is that letters cannot be mistaken for each other: the
-   tail on the l, the slab on the i, an unmistakable G, and a genuinely
-   double-storey a. Those decisions also make it look nothing like Helvetica at
-   a glance, which is the other thing being asked for here. */
-.type-display {
-  font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
-  letter-spacing: 0.005em;
+.type-impact h1,
+.type-impact h2,
+.type-impact h3,
+.type-impact .type-headline {
+  font-family: 'Anton', Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
+  font-weight: 400;
+  /* Anton is already condensed; the extra tracking stops long titles from
+     closing up into a single dark bar at small sizes. */
+  letter-spacing: 0.01em;
+  line-height: 1.15;
 }
 
-.type-display h1,
-.type-display h2,
-.type-display h3 {
+/* Slab — typewriter lineage, without the typewriter's width.
+
+   The obvious pick for "typewriter" is Courier, and it is the wrong one: a
+   monospace face gives an i the same width as an m, so a listing set in it runs
+   about a third longer and two-line titles become three. Zilla Slab keeps the
+   blunt rectangular serifs that read as typewriter and drops the fixed pitch,
+   so it is narrower than the system sans rather than wider. */
+.type-slab {
+  font-family: 'Zilla Slab', Rockwell, 'Roboto Slab', Georgia, serif;
+}
+
+.type-slab h1,
+.type-slab h2,
+.type-slab h3,
+.type-slab .type-headline {
   font-weight: 700;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.01em;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -287,35 +310,37 @@
    The steps themselves are geometric rather than the ad-hoc −8%/+12% they were,
    so a step down looks like the same size of change as a step up. */
 :root {
-  --density: 1.04;
+  --density: 0.988;
   --text-scale: 1;
   --space: calc(var(--density) * (1 + (var(--text-scale) - 1) * 0.6));
 }
 
+/* Every density is five percent tighter than it was. The ratios between the
+   three are untouched, so "Airy" is still exactly as much airier than
+   "Default" as it was — the whole ladder just moved down together, which is
+   what keeps the relationship between the three options meaningful. */
 .density-tight {
-  --density: 0.87;
+  --density: 0.827;
 }
 
 .density-default {
-  /* 1.04, not 1: four percent looser than the layout shipped with. */
-  --density: 1.04;
+  --density: 0.988;
 }
 
 .density-airy {
-  --density: 1.25;
+  --density: 1.188;
 }
 
-.text-smaller {
-  --text-scale: 0.909;
-}
-
-.text-default {
-  --text-scale: 1;
-}
-
-.text-larger {
-  --text-scale: 1.1;
-}
+/* Six steps, all upward, geometric at ~6% each so every tick feels like the
+   same size of change. Step 0 is the old default: nobody ever asked for
+   smaller than this, and the previous three-way control spent a third of its
+   range going somewhere nobody wanted while topping out at +10%. */
+.text-size-0 { --text-scale: 1; }
+.text-size-1 { --text-scale: 1.06; }
+.text-size-2 { --text-scale: 1.124; }
+.text-size-3 { --text-scale: 1.191; }
+.text-size-4 { --text-scale: 1.262; }
+.text-size-5 { --text-scale: 1.338; }
 
 html {
   font-size: calc(16px * var(--text-scale, 1));
