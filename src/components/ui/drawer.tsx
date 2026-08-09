@@ -48,7 +48,7 @@ export function DrawerContent({
           "will-change-transform",
           direction === "bottom"
             ? "inset-x-0 bottom-[var(--player-h)] mx-auto max-h-[calc(90vh_-_var(--player-h))] max-w-md rounded-t-2xl border-t"
-            : "inset-y-0 bottom-[var(--player-h)] right-0 w-[320px] max-w-[85vw] border-l",
+            : "inset-y-0 bottom-[var(--player-h)] right-0 w-[360px] max-w-[92vw] border-l",
           className,
         )}
         {...props}

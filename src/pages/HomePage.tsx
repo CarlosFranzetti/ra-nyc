@@ -18,11 +18,15 @@ import { useTheme } from "@/context/ThemeContext";
 import { useEvents } from "@/hooks/useEvents";
 import { useSwipe } from "@/hooks/useSwipe";
 import { applyFilters, filterCounts, type FilterKey } from "@/lib/filters";
+import { currentNight } from "@/lib/night";
 import { cn } from "@/lib/utils";
 import type { Artist, Event } from "@/types/event";
 
 export default function HomePage() {
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  // The night the app opened on, which before 3:30am is yesterday's date — see
+  // `lib/night.ts`. Passed as an initialiser rather than a call so it is
+  // evaluated once, on mount, and not on every render.
+  const [selectedDate, setSelectedDate] = useState(currentNight);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedArtist, setSelectedArtist] = useState<Artist | null>(null);

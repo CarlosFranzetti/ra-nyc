@@ -169,7 +169,10 @@ const rendered = await offlinePage
   .catch(() => false);
 check("the app loads and shows listings with no network at all", rendered);
 
-const shellVisible = await offlinePage.locator("text=RA NYC Events").count();
+// The logo is a lockup of two spans, not one text node, so this matches the
+// mark rather than the whole string — `text=RA NYC Events` only ever matched
+// while the title was a single <h1> of plain text.
+const shellVisible = await offlinePage.locator(".logo-mark").count();
 check("the shell renders offline, not a browser error page", shellVisible > 0);
 
 // ── third-party and non-events API requests must not be intercepted

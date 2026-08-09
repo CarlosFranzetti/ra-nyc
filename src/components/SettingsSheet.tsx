@@ -22,7 +22,7 @@ function OptionGroup({
   children,
 }: {
   title: string;
-  columns: 2 | 3 | 4;
+  columns: 2 | 3 | 4 | 5;
   children: React.ReactNode;
 }) {
   return (
@@ -36,6 +36,7 @@ function OptionGroup({
           columns === 2 && "grid-cols-2",
           columns === 3 && "grid-cols-3",
           columns === 4 && "grid-cols-4",
+          columns === 5 && "grid-cols-5 gap-1",
         )}
       >
         {children}
@@ -125,18 +126,19 @@ export function SettingsSheet() {
               scrolls, so the options below the fold are one flick away rather
               than hidden. */}
           <div className="mt-4 space-y-5">
-            {/* Three across, not four: five themes in a four-column grid
-                leaves Mono stranded alone on a second row, and the fifth
-                column that would fix it squeezes "Matrix" past its label
-                width in a drawer this narrow. */}
-            <OptionGroup title="Theme" columns={3}>
+            {/* One row. The drawer is 320px, so five cells with a 4px gutter
+                land at ~52px each — enough for a 20px swatch and "Matrix" at
+                10px, which is why that group alone drops a step in gap and
+                type. Seeing all five side by side is worth more than the two
+                points of label size it costs. */}
+            <OptionGroup title="Theme" columns={5}>
               {THEME_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => setColorTheme(opt.value)}
                   aria-pressed={colorTheme === opt.value}
                   className={cn(
-                    "flex flex-col items-center gap-1.5 p-2 rounded-lg border transition-all active:scale-95",
+                    "flex flex-col items-center gap-1.5 px-0.5 py-2 rounded-lg border transition-all active:scale-95",
                     colorTheme === opt.value
                       ? "border-primary bg-primary/10"
                       : "border-border/50 bg-card hover:bg-accent",
@@ -150,7 +152,7 @@ export function SettingsSheet() {
                     )}
                     style={{ background: opt.color }}
                   />
-                  <span className="text-[0.6875rem] font-medium">{opt.label}</span>
+                  <span className="text-[0.625rem] font-medium">{opt.label}</span>
                 </button>
               ))}
             </OptionGroup>
@@ -192,8 +194,8 @@ export function SettingsSheet() {
             </OptionGroup>
 
             <p className="px-1 text-[0.6875rem] leading-snug text-muted-foreground">
-              Swipe left or right on the list to change day. The colour theme is
-              picked at random each time you open the app.
+              Swipe the list left or right to change day. The colour theme is
+              random each time you open the app.
             </p>
 
             {/* Bottom of the last panel, one line, no illustration and no
@@ -239,11 +241,19 @@ export function SettingsSheet() {
                 {DONATE.filter((t) => t.label === shownQr).map((target) => (
                   <div
                     key={target.label}
-                    className="mt-3 flex flex-col items-center gap-2 rounded-lg border border-border/50 bg-card p-3"
+                    // Expanding it below the fold and leaving it there is the
+                    // bug this fixes: the panel scrolls, but a code you cannot
+                    // see reads as one that failed to open. `block: "end"`
+                    // rather than "center" so the row you tapped stays visible
+                    // above it and the panel does not appear to jump.
+                    ref={(node) =>
+                      node?.scrollIntoView({ behavior: "smooth", block: "end" })
+                    }
+                    className="mt-2 flex flex-col items-center gap-2 rounded-lg border border-border/50 bg-card p-2.5"
                   >
-                    <p className="text-[0.6875rem] text-muted-foreground">
-                      Donate via {target.label}
-                    </p>
+                    {/* No "Donate via X" heading — the row above it is the
+                        button you just pressed, and repeating its label costs
+                        a line of height the small screens do not have. */}
                     {/* Fixed pixel size, not a spacing utility: the spacing
                         scale is density-multiplied here, and a QR that lands on
                         a fractional pixel grid gets soft edges from the
@@ -251,10 +261,10 @@ export function SettingsSheet() {
                     <img
                       src={target.qr}
                       alt={`QR code for ${target.url}`}
-                      width={144}
-                      height={144}
+                      width={128}
+                      height={128}
                       className="rounded bg-white"
-                      style={{ width: 144, height: 144 }}
+                      style={{ width: 128, height: 128 }}
                     />
                     <a
                       href={target.url}

@@ -11,122 +11,137 @@
    the rules out of the build. Only Neon survived, because `:root` anchored it.
    Plain CSS is never purged.
    ───────────────────────────────────────────────────────────────────────────── */
+/* All five themes share one structure and differ only in hue.
+   ("A · Tuned", chosen over a single neutral charcoal and over a two-hue
+   duotone.) Every theme uses the same ladder: background at 5% lightness,
+   cards at 9%, secondary 13%, muted 15%, input 17%, borders 18%,
+   muted-foreground 58%, foreground ~95%, glow 0.38.
+
+   That is the whole fix. What read as incoherent between themes was never the
+   colours — it was that Matrix sat at 3% lightness while Sunset sat at 5%, with
+   borders and muted text drifting by up to eight points as well, so switching
+   theme changed how heavy the app felt and not just what colour it was. Hue is
+   now the only variable, which is what makes four accents look like one family.
+
+   If you add a sixth theme, copy the ladder and change only the hues. */
+
 /* Neon Theme - Electric Cyan */
 :root, .theme-neon {
-  --background: 200 15% 4%;
-  --foreground: 180 20% 95%;
-  --card: 200 15% 7%;
-  --card-foreground: 180 20% 95%;
-  --popover: 200 15% 7%;
-  --popover-foreground: 180 20% 95%;
-  --primary: 185 100% 50%;
-  --primary-foreground: 200 15% 4%;
-  --secondary: 200 15% 12%;
-  --secondary-foreground: 180 20% 95%;
-  --muted: 200 15% 15%;
-  --muted-foreground: 185 20% 55%;
-  --accent: 185 40% 12%;
-  --accent-foreground: 185 100% 70%;
+  --background: 200 16% 5%;
+  --foreground: 190 14% 95%;
+  --card: 200 14% 9%;
+  --card-foreground: 190 14% 95%;
+  --popover: 200 14% 9%;
+  --popover-foreground: 190 14% 95%;
+  --primary: 186 92% 52%;
+  --primary-foreground: 200 16% 5%;
+  --secondary: 200 14% 13%;
+  --secondary-foreground: 190 14% 95%;
+  --muted: 200 14% 15%;
+  --muted-foreground: 195 12% 58%;
+  --accent: 186 34% 13%;
+  --accent-foreground: 186 92% 72%;
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 185 25% 18%;
-  --input: 200 15% 18%;
-  --ring: 185 100% 50%;
-  --radius: 0.5rem;
-  --glow-color: 185 100% 50%;
-  --glow-intensity: 0.4;
+  --border: 195 16% 18%;
+  --input: 200 14% 17%;
+  --ring: 186 92% 52%;
+  --glow-color: 186 92% 52%;
+  --glow-intensity: 0.38;
   /* Cyan primary, so the venue takes the other half of a neon sign. */
-  --venue: 310 90% 68%;
+  --venue: 310 82% 70%;
+  --radius: 0.5rem;
 
   /* Play green.
      Deliberately one colour for every theme rather than a per-theme accent:
      it is not decoration, it is the signal that a thing makes sound, and a
      signal that changes colour with the wallpaper stops being learnable. Green
      because a green triangle already means play everywhere else on a phone.
-     Declared on :root, so all four themes inherit it and nothing has to
+     Declared on :root, so all five themes inherit it and nothing has to
      remember to redefine it. */
   --play: 145 80% 48%;
 }
 
 /* Vapor Theme - Pink/Magenta Vaporwave */
 .theme-vapor {
-  --background: 280 20% 4%;
-  --foreground: 300 20% 95%;
-  --card: 280 20% 7%;
-  --card-foreground: 300 20% 95%;
-  --popover: 280 20% 7%;
-  --popover-foreground: 300 20% 95%;
-  --primary: 320 100% 60%;
-  --primary-foreground: 280 20% 4%;
-  --secondary: 280 20% 12%;
-  --secondary-foreground: 300 20% 95%;
-  --muted: 280 20% 15%;
-  --muted-foreground: 320 20% 55%;
-  --accent: 320 40% 15%;
-  --accent-foreground: 320 100% 75%;
+  --background: 278 16% 5%;
+  --foreground: 300 12% 95%;
+  --card: 278 14% 9%;
+  --card-foreground: 300 12% 95%;
+  --popover: 278 14% 9%;
+  --popover-foreground: 300 12% 95%;
+  --primary: 320 88% 64%;
+  --primary-foreground: 278 16% 5%;
+  --secondary: 278 14% 13%;
+  --secondary-foreground: 300 12% 95%;
+  --muted: 278 14% 15%;
+  --muted-foreground: 305 12% 58%;
+  --accent: 320 34% 13%;
+  --accent-foreground: 320 88% 74%;
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 320 25% 20%;
-  --input: 280 20% 18%;
-  --ring: 320 100% 60%;
-  --glow-color: 320 100% 60%;
-  --glow-intensity: 0.35;
+  --border: 305 16% 18%;
+  --input: 278 14% 17%;
+  --ring: 320 88% 64%;
+  --glow-color: 320 88% 64%;
+  --glow-intensity: 0.38;
   /* The aqua half of the vaporwave pair. */
-  --venue: 190 95% 68%;
+  --venue: 188 86% 66%;
 }
 
 /* Matrix Theme - Terminal Green */
 .theme-matrix {
-  --background: 120 20% 3%;
-  --foreground: 120 50% 92%;
-  --card: 120 20% 6%;
-  --card-foreground: 120 50% 92%;
-  --popover: 120 20% 6%;
-  --popover-foreground: 120 50% 92%;
-  --primary: 120 100% 50%;
-  --primary-foreground: 120 20% 3%;
-  --secondary: 120 15% 12%;
-  --secondary-foreground: 120 50% 92%;
-  --muted: 120 15% 14%;
-  --muted-foreground: 120 40% 60%;
-  --accent: 120 40% 12%;
-  --accent-foreground: 120 100% 65%;
+  --background: 140 14% 5%;
+  --foreground: 140 12% 94%;
+  --card: 140 12% 9%;
+  --card-foreground: 140 12% 94%;
+  --popover: 140 12% 9%;
+  --popover-foreground: 140 12% 94%;
+  --primary: 142 76% 50%;
+  --primary-foreground: 140 14% 5%;
+  --secondary: 140 12% 13%;
+  --secondary-foreground: 140 12% 94%;
+  --muted: 140 12% 15%;
+  --muted-foreground: 140 10% 58%;
+  --accent: 142 34% 13%;
+  --accent-foreground: 142 76% 72%;
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 120 25% 16%;
-  --input: 120 15% 16%;
-  --ring: 120 100% 50%;
-  --glow-color: 120 100% 50%;
-  --glow-intensity: 0.35;
+  --border: 140 14% 18%;
+  --input: 140 12% 17%;
+  --ring: 142 76% 50%;
+  --glow-color: 142 76% 50%;
+  --glow-intensity: 0.38;
   /* Amber: the other phosphor a terminal ever came in. */
-  --venue: 45 100% 60%;
+  --venue: 48 92% 60%;
 }
 
 /* Sunset Theme - Orange Neon */
 .theme-sunset {
-  --background: 15 20% 5%;
-  --foreground: 35 60% 96%;
-  --card: 15 20% 8%;
-  --card-foreground: 35 60% 96%;
-  --popover: 15 20% 8%;
-  --popover-foreground: 35 60% 96%;
-  --primary: 30 100% 55%;
-  --primary-foreground: 15 20% 5%;
-  --secondary: 15 20% 12%;
-  --secondary-foreground: 35 60% 96%;
-  --muted: 15 20% 15%;
-  --muted-foreground: 30 50% 60%;
-  --accent: 280 30% 15%;
-  --accent-foreground: 30 100% 65%;
+  --background: 18 16% 5%;
+  --foreground: 30 16% 95%;
+  --card: 18 14% 9%;
+  --card-foreground: 30 16% 95%;
+  --popover: 18 14% 9%;
+  --popover-foreground: 30 16% 95%;
+  --primary: 26 94% 58%;
+  --primary-foreground: 18 16% 5%;
+  --secondary: 18 14% 13%;
+  --secondary-foreground: 30 16% 95%;
+  --muted: 18 14% 15%;
+  --muted-foreground: 25 14% 58%;
+  --accent: 26 34% 13%;
+  --accent-foreground: 26 94% 72%;
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 30 30% 20%;
-  --input: 15 20% 18%;
-  --ring: 30 100% 55%;
-  --glow-color: 30 100% 55%;
-  --glow-intensity: 0.4;
-  /* The violet already in this theme's --accent: sunset sky above the orange. */
-  --venue: 285 85% 72%;
+  --border: 25 16% 18%;
+  --input: 18 14% 17%;
+  --ring: 26 94% 58%;
+  --glow-color: 26 94% 58%;
+  --glow-intensity: 0.38;
+  /* The violet sky above the orange, and the one hue in this theme
+     that is not a neighbour of its primary. */
+  --venue: 286 78% 72%;
 }
 
 /* Mono Theme - Greyscale
@@ -144,23 +159,21 @@
   --popover-foreground: 0 0% 96%;
   --primary: 0 0% 92%;
   --primary-foreground: 0 0% 5%;
-  --secondary: 0 0% 14%;
+  --secondary: 0 0% 13%;
   --secondary-foreground: 0 0% 96%;
-  --muted: 0 0% 16%;
-  --muted-foreground: 0 0% 55%;
-  --accent: 0 0% 15%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 58%;
+  --accent: 0 0% 13%;
   --accent-foreground: 0 0% 92%;
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 20%;
-  --input: 0 0% 18%;
+  --border: 0 0% 18%;
+  --input: 0 0% 17%;
   --ring: 0 0% 92%;
   --glow-color: 0 0% 92%;
-  /* Almost nothing. A white glow at the intensity the colour themes use reads
-     as a smudge rather than as light. */
-  --glow-intensity: 0.12;
-  /* Venue names stay a step down from the title rather than a second colour —
-     the hierarchy that hue carries elsewhere is carried by lightness here. */
+  --glow-intensity: 0.38;
+  /* Venue names keep their hierarchy through lightness rather than a
+     second hue — the one job colour does everywhere else. */
   --venue: 0 0% 66%;
 }
 
@@ -245,10 +258,14 @@
 
 .logo-word {
   font-size: 15px;
-  letter-spacing: 0.14em;
-  /* Tracked-out caps add a trailing space the eye reads as a gap before the
-     icons; pulling it back keeps the lockup optically centred in its row. */
-  margin-right: -0.14em;
+  /* Tracked out enough to read as a wordmark beside the block, and no further.
+     0.14em set the letters far enough apart that the eye stopped reading NYC
+     EVENTS as two words and started reading it as ten characters. */
+  letter-spacing: 0.07em;
+  /* Tracking adds a trailing space after the last letter that the eye reads as
+     a gap before the icons; pulling it back keeps the lockup optically
+     centred in its row. */
+  margin-right: -0.07em;
 }
 
 /* Density and text size.
