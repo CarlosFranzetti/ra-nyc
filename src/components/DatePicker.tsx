@@ -1,5 +1,6 @@
-import { format, addDays, isSameDay, isToday, isTomorrow, differenceInDays } from "date-fns";
+import { format, addDays, isSameDay, differenceInDays } from "date-fns";
 import { cn } from "@/lib/utils";
+import { currentNight, isNextNight, isTonight } from "@/lib/night";
 import { usePrefetchEvents } from "@/hooks/useEvents";
 
 interface DatePickerProps {
@@ -9,8 +10,11 @@ interface DatePickerProps {
 
 export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   const prefetchEvents = usePrefetchEvents();
-  const today = new Date();
-  const yesterday = addDays(today, -1);
+  // The night, not the calendar date — before 3:30am these are different, and
+  // the strip has to agree with the day the app opened on or the highlighted
+  // chip sits one place left of "Tonight".
+  const tonight = currentNight();
+  const yesterday = addDays(tonight, -1);
 
   // Eight days starting yesterday, but shift the window if the calendar was
   // used to jump somewhere outside it — otherwise the selected day would have
@@ -23,9 +27,12 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
 
   const dates = Array.from({ length: 8 }, (_, i) => addDays(startDate, i));
 
+  // "Tonight", not "Today": at 2am the highlighted chip is yesterday's date,
+  // and "Today" sitting on yesterday would read as a bug rather than as the
+  // point.
   const getDateLabel = (date: Date) => {
-    if (isToday(date)) return "Today";
-    if (isTomorrow(date)) return "Tmrw";
+    if (isTonight(date)) return "Tonight";
+    if (isNextNight(date)) return "Tmrw";
     return format(date, "EEE");
   };
 

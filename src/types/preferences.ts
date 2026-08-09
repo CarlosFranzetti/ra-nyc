@@ -15,12 +15,17 @@ export interface ThemeSettings {
   textSize: TextSize;
 }
 
-/** Swatch colours for the settings UI, mirroring each theme's `--primary`. */
+/**
+ * Swatch colours for the settings UI, mirroring each theme's `--primary`.
+ *
+ * Hand-copied, so they drift if a theme's primary changes in `index.css` and
+ * this does not — the swatch then advertises a colour the app never shows.
+ */
 export const THEME_OPTIONS: { value: ColorTheme; label: string; color: string }[] = [
-  { value: "neon", label: "Neon", color: "hsl(185 100% 50%)" },
-  { value: "vapor", label: "Vapor", color: "hsl(320 100% 60%)" },
-  { value: "matrix", label: "Matrix", color: "hsl(120 100% 45%)" },
-  { value: "sunset", label: "Sunset", color: "hsl(25 100% 55%)" },
+  { value: "neon", label: "Neon", color: "hsl(186 92% 52%)" },
+  { value: "vapor", label: "Vapor", color: "hsl(320 88% 64%)" },
+  { value: "matrix", label: "Matrix", color: "hsl(142 76% 50%)" },
+  { value: "sunset", label: "Sunset", color: "hsl(26 94% 58%)" },
   { value: "mono", label: "Mono", color: "hsl(0 0% 92%)" },
 ];
 
