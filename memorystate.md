@@ -1480,17 +1480,24 @@ were four moderate text faces.
 The set is now three **categories** that cannot be confused at any size:
 
 - **System** — the native sans.
-- **Impact** — Anton, applied to headings only. It is a poster face: one weight,
-  near-zero sidebearings, tight apertures. Set a venue name and a head count in
-  it and the app becomes an unreadable flyer, so it takes titles and hands the
-  rest to the system sans. Its fallback is real Impact, which ships on nearly
-  every Windows and macOS install, so the option looks like its name even if
-  Google Fonts is blocked.
 - **Slab** — Zilla Slab. The obvious pick for "typewriter" is Courier and it is
   wrong: monospace gives an `i` the width of an `m`, so listings run about a
   third longer and two-line titles become three. Zilla keeps the blunt
   rectangular serifs and drops the fixed pitch, so it is *narrower* than the
   system sans rather than wider.
+- **Legible** — Atkinson Hyperlegible.
+
+**Anton lasted one round in the third slot.** It is a genuine poster face and
+that is exactly the problem on a phone at 2am — and it could not be toned down,
+because it ships **one weight**, so "a bit less bold" was not a thing that
+typeface could do. Atkinson went back in: commissioned by the Braille Institute
+so letters cannot be mistaken for each other, which also makes it look nothing
+like Helvetica at a glance. It is the version of "obviously not system-ui" that
+survives being read.
+
+Headings under both display faces are **600, not 700**. At full bold a column of
+titles reads as a stack of bars rather than as text. Order in the picker runs
+least-to-most departure from system: System · Slab · Legible.
 
 Each option's label in the picker renders in the face it selects. A font picker
 that names three fonts in a fourth font is asking you to take its word for it.

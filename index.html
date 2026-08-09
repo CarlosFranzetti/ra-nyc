@@ -50,17 +50,17 @@
     <link rel="dns-prefetch" href="https://player-widget.mixcloud.com" />
     <link rel="dns-prefetch" href="https://archive.org" />
 
-    <!-- Fonts for the Impact and Slab typography settings. Link tags rather
+    <!-- Fonts for the Slab and Legible typography settings. Link tags rather
          than a CSS @import, which would be render-blocking.
 
-         Anton is only loaded at 400 because it has one weight — it is already
-         as heavy as it gets, and asking for 700 silently returns the same file
-         while making the request look like it needs two. -->
+         Atkinson ships 400 and 700 only, so headings set at 600 are synthesised
+         from 400 by the browser rather than downloaded — which is the intended
+         weight here and one fewer file either way. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Anton&family=Zilla+Slab:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Zilla+Slab:wght@400;500;600;700&display=swap"
       media="print"
       onload="this.media='all'"
     />
