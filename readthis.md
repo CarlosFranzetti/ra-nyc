@@ -102,14 +102,12 @@ morning at 09:00 UTC until this is set.
 ### 1.4 ~~Fill in the donate links~~ — done
 
 Both are live: `cash.app/$hypedrum` and `paypal.me/losfiesta`, at the bottom of
-Customize. Tapping either name unfolds a QR.
+Customize. They are plain links — the QR that briefly lived here was solving a
+problem nobody had, since you cannot scan a code with the camera behind it.
 
-If a handle ever changes, edit [`src/lib/donate.ts`](./src/lib/donate.ts) **and
-regenerate that QR**, or the code keeps pointing at the previous wallet:
-
-```bash
-npx qrcode -t svg -o public/donate-cashapp.svg "https://cash.app/$newtag"
-```
+To change a handle, edit [`src/lib/donate.ts`](./src/lib/donate.ts) — and the
+matching line in `tests/donate.e2e.mjs`, which deliberately keeps its own copy
+so a typo has to be made twice to ship.
 
 Removing an entry from the array hides that link; an empty array hides the row.
 

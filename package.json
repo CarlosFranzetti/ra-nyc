@@ -19,7 +19,8 @@
     "test:preview": "node tests/preview.e2e.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:all": "npm run test && npm run test:e2e && npm run test:search && npm run test:layout && npm run test:preview && npm run test:offline"
+    "test:all": "npm run test && npm run test:e2e && npm run test:search && npm run test:layout && npm run test:preview && npm run test:donate && npm run test:offline",
+    "test:donate": "node tests/donate.e2e.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

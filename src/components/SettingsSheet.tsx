@@ -75,7 +75,6 @@ function OptionButton({
 
 export function SettingsSheet() {
   const [open, setOpen] = useState(false);
-  const [shownQr, setShownQr] = useState<string | null>(null);
   const {
     colorTheme,
     setColorTheme,
@@ -204,77 +203,26 @@ export function SettingsSheet() {
                 Anything larger would be the first thing in the app asking for
                 something rather than offering it.
 
-                The QR is folded away rather than shown, because on the phone
-                running this app a QR is the worst of the two paths — you cannot
-                scan a code with the camera that is behind it. It is there for
-                the other case: showing the screen to someone standing next to
-                you. */}
+                Plain links, straight out. The QR that used to live here was
+                solving a problem nobody had: on the phone running this app you
+                cannot scan a code with the camera behind it, so every tap was
+                a detour through a picture on the way to the link underneath. */}
             {DONATE.length > 0 && (
-              <div className="border-t border-border/40 px-1 pt-3 pb-safe">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] text-muted-foreground/70">
-                  <span className="flex items-center gap-1.5">
-                    <Heart className="h-3 w-3 flex-shrink-0" />
-                    Free, no ads.
-                  </span>
-                  {DONATE.map((target) => (
-                    <button
-                      key={target.label}
-                      type="button"
-                      onClick={() =>
-                        setShownQr((current) =>
-                          current === target.label ? null : target.label,
-                        )
-                      }
-                      aria-expanded={shownQr === target.label}
-                      className={cn(
-                        "underline decoration-dotted underline-offset-2 transition-colors",
-                        shownQr === target.label
-                          ? "text-foreground"
-                          : "hover:text-foreground",
-                      )}
-                    >
-                      {target.label}
-                    </button>
-                  ))}
-                </div>
-
-                {DONATE.filter((t) => t.label === shownQr).map((target) => (
-                  <div
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/40 px-1 pt-3 pb-safe text-[0.6875rem] text-muted-foreground/70">
+                <span className="flex items-center gap-1.5">
+                  <Heart className="h-3 w-3 flex-shrink-0" />
+                  Free, no ads.
+                </span>
+                {DONATE.map((target) => (
+                  <a
                     key={target.label}
-                    // Expanding it below the fold and leaving it there is the
-                    // bug this fixes: the panel scrolls, but a code you cannot
-                    // see reads as one that failed to open. `block: "end"`
-                    // rather than "center" so the row you tapped stays visible
-                    // above it and the panel does not appear to jump.
-                    ref={(node) =>
-                      node?.scrollIntoView({ behavior: "smooth", block: "end" })
-                    }
-                    className="mt-2 flex flex-col items-center gap-2 rounded-lg border border-border/50 bg-card p-2.5"
+                    href={target.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground"
                   >
-                    {/* No "Donate via X" heading — the row above it is the
-                        button you just pressed, and repeating its label costs
-                        a line of height the small screens do not have. */}
-                    {/* Fixed pixel size, not a spacing utility: the spacing
-                        scale is density-multiplied here, and a QR that lands on
-                        a fractional pixel grid gets soft edges from the
-                        browser's resampling. */}
-                    <img
-                      src={target.qr}
-                      alt={`QR code for ${target.url}`}
-                      width={128}
-                      height={128}
-                      className="rounded bg-white"
-                      style={{ width: 128, height: 128 }}
-                    />
-                    <a
-                      href={target.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[0.6875rem] text-primary underline underline-offset-2"
-                    >
-                      {target.url.replace(/^https:\/\//, "")}
-                    </a>
-                  </div>
+                    {target.label}
+                  </a>
                 ))}
               </div>
             )}
