@@ -9,15 +9,32 @@
  * Empty strings hide the link entirely, so a fork of this app shows nothing
  * rather than quietly collecting for someone else.
  */
-export const DONATE = {
+export interface DonateTarget {
+  label: string;
+  url: string;
   /**
-   * Deliberately blank until the real handles are filled in — see readthis.md.
-   * A guessed payment URL is worse than no link at all: it either 404s or, far
-   * worse, sends money to whoever happens to own that tag.
+   * A pre-rendered QR of `url`, served from `public/`.
    *
-   * e.g. "https://cash.app/$yourtag"
+   * Generated once and committed rather than encoded in the browser: the URL
+   * never changes, so a QR library in the bundle would be ~15 KB spent
+   * recomputing a constant on every visit. Each file is about 1.5 KB of paths.
+   *
+   * It has to stay in step with `url` by hand — regenerate with
+   * `npx qrcode -t svg -o public/donate-<name>.svg "<url>"` if a handle
+   * changes, or the code will point at the previous wallet.
    */
-  cashApp: "",
-  /** e.g. "https://paypal.me/yourname" */
-  payPal: "",
-} as const;
+  qr: string;
+}
+
+export const DONATE: readonly DonateTarget[] = [
+  {
+    label: "Cash App",
+    url: "https://cash.app/$hypedrum",
+    qr: "/donate-cashapp.svg",
+  },
+  {
+    label: "PayPal",
+    url: "https://paypal.me/losfiesta",
+    qr: "/donate-paypal.svg",
+  },
+].filter((target) => target.url !== "");

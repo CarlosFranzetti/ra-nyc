@@ -201,6 +201,56 @@
   letter-spacing: -0.015em;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   The logo.
+
+   Everything else on screen is meant to move with the preferences — that is the
+   point of them. The app's name is the exception: it is the one fixed mark, and
+   a wordmark that renders in JetBrains Mono on Tuesday and Atkinson Hyperlegible
+   on Wednesday is not a wordmark.
+
+   So it opts out of all four axes at once:
+
+   - **Typeface** — set here rather than inherited, so the `type-*` class on
+     <html> cannot reach it. Helvetica/Arial, the same block face as the
+     home-screen icon.
+   - **Size** — px rather than rem, so neither the Text size preference nor the
+     larger desktop root size scales it.
+   - **Colour** — a literal near-white, not `--foreground`, which each theme
+     tints (cyan-ish in Neon, green in Matrix, warm in Sunset).
+   - **Weight and tracking** — declared on the spans, not the <h1>, because
+     `.type-display h1` above is (0,1,1) and would otherwise win.
+
+   Written as plain CSS for the same reason as the themes: it must beat Tailwind
+   utilities, and unlayered author CSS beats every rule inside an @layer
+   regardless of specificity.
+   ───────────────────────────────────────────────────────────────────────────── */
+.logo-mark,
+.logo-word {
+  font-family: Helvetica, Arial, sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #f2f4f5;
+}
+
+.logo-mark {
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: #08090a;
+  background: #f2f4f5;
+  border-radius: 5px;
+  padding: 3px 6px 4px;
+}
+
+.logo-word {
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  /* Tracked-out caps add a trailing space the eye reads as a gap before the
+     icons; pulling it back keeps the lockup optically centred in its row. */
+  margin-right: -0.14em;
+}
+
 /* Density and text size.
 
    Two knobs, deliberately not independent.
