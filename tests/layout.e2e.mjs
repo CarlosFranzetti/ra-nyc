@@ -173,9 +173,9 @@ check("desktop type is larger than phone type",
 
 // ── typography preference actually applies
 check("the display preference selects a distinct family",
-  phone.titleFont === "Bricolage Grotesque", phone.titleFont);
+  phone.titleFont === "Atkinson Hyperlegible", phone.titleFont);
 const systemType = await measure({ width: 390, height: 844, typography: "system" });
-check("and the system preference does not", systemType.titleFont !== "Bricolage Grotesque",
+check("and the system preference does not", systemType.titleFont !== "Atkinson Hyperlegible",
   systemType.titleFont);
 
 // ── the whole point of coupling spacing to text size

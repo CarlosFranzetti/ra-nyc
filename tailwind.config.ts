@@ -42,6 +42,8 @@ export default {
         // Venue names get their own hue per theme, off the primary, so they read
         // as a distinct kind of information rather than another accent.
         venue: "hsl(var(--venue))",
+        // One green across every theme — see the note by --play in index.css.
+        play: "hsl(var(--play))",
       },
       // Spacing is driven by --space (set by the density preference) and
       // expressed in px rather than rem *on purpose*: the text-size preference

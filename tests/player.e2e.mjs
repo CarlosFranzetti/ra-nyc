@@ -235,7 +235,11 @@ await page.waitForSelector('[role="dialog"]', { timeout: 8000 });
 await page.locator('[role="dialog"] button:has-text("Test DJ")').first().click();
 await page.waitForSelector('button[aria-label="Play Set Number 1"]', { timeout: 8000 });
 
-const collapsedRows = await page.locator('button[aria-label^="Play Set Number"]').count();
+// Play *or* Pause: the sheet now starts the first set on open, so that row's
+// label is "Pause …" and counting only "Play …" undercounts the list by one.
+const collapsedRows = await page
+  .locator('button[aria-label^="Play Set Number"], button[aria-label^="Pause Set Number"]')
+  .count();
 check("set list is collapsed by default", collapsedRows === COLLAPSED, `${collapsedRows} rows`);
 check(
   "collapsed list offers the rest",

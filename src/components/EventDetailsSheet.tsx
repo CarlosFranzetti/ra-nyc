@@ -250,8 +250,8 @@ export function EventDetailsSheet({
 
             {event.artists.length > 0 && (
               <div className="border-t border-border pt-3">
-                <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  <Headphones className="h-3.5 w-3.5" />
+                <h3 className="mb-1.5 flex items-center gap-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Headphones className="h-3 w-3" />
                   Lineup — tap to hear a set
                 </h3>
 
@@ -264,17 +264,20 @@ export function EventDetailsSheet({
                 <button
                   onClick={() => preview.start(event)}
                   disabled={preview.preparing}
-                  className="press mb-3 flex w-full items-center justify-center gap-2 rounded-lg border border-primary/50 bg-card py-2.5 text-sm font-medium text-foreground disabled:opacity-60"
+                  // h-[2.3rem]: the 2.5rem this replaced, less 8%. A fixed
+                  // height rather than padding so the spinner and the triangle
+                  // cannot change it between states.
+                  className="press mb-2 flex h-[2.3rem] w-full items-center justify-center gap-1.5 rounded-lg border border-primary/50 bg-card text-[0.8125rem] font-medium text-foreground disabled:opacity-60"
                 >
                   {preview.preparing ? (
-                    <Loader className="h-4 w-4 animate-spin text-primary" />
+                    <Loader className="h-3.5 w-3.5 animate-spin text-play" />
                   ) : (
-                    <Play className="h-4 w-4 fill-primary text-primary" />
+                    <Play className="h-3.5 w-3.5 fill-play text-play" />
                   )}
                   {preview.preparing ? "Finding sets…" : "Preview the night"}
                 </button>
                 {preview.empty && (
-                  <p className="mb-3 text-center text-xs text-muted-foreground">
+                  <p className="mb-2 text-center text-[0.6875rem] text-muted-foreground">
                     No sets found for this lineup.
                   </p>
                 )}
@@ -283,17 +286,23 @@ export function EventDetailsSheet({
                     <button
                       key={artist.id || artist.name}
                       onClick={() => onSelectArtist(artist)}
+                      onPointerDown={() => prefetchArtist(artist.id, artist.name)}
                       onTouchStart={() => prefetchArtist(artist.id, artist.name)}
                       onMouseEnter={() => prefetchArtist(artist.id, artist.name)}
-                      className="rounded-full border border-border/60 bg-secondary px-2.5 py-1 text-sm text-secondary-foreground transition-smooth hover:border-primary hover:text-primary active:scale-95"
+                      className="flex items-center gap-1 rounded-full border border-border/60 bg-secondary px-2 py-0.5 text-xs text-secondary-foreground transition-smooth hover:border-primary hover:text-primary active:scale-95"
                     >
+                      {/* A name on its own does not look like a control. The
+                          same green triangle as the preview button says these
+                          make sound too, and says it in one glyph rather than
+                          the caption above that people were not reading. */}
+                      <Play className="h-2.5 w-2.5 flex-shrink-0 fill-play text-play" />
                       {artist.name}
                     </button>
                   ))}
                   {hiddenArtists > 0 && (
                     <button
                       onClick={() => setLineupExpanded(true)}
-                      className="rounded-full border border-dashed border-border px-2.5 py-1 text-sm text-muted-foreground active:scale-95"
+                      className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground active:scale-95"
                     >
                       +{hiddenArtists} more
                     </button>
