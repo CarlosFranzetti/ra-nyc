@@ -124,6 +124,14 @@ async function measure({ width, height, density = "default", textSize = "default
       cardPadding: card ? parseFloat(getComputedStyle(card).padding) : 0,
       rootFontSize: parseFloat(root.fontSize),
       titleFont: title ? getComputedStyle(title).fontFamily.split(",")[0].replace(/"/g, "") : "",
+      // The logo is the one thing on screen that must not move with any
+      // preference, so it is read the same way everything else is.
+      logo: (() => {
+        const word = document.querySelector(".logo-word");
+        if (!word) return "";
+        const s = getComputedStyle(word);
+        return [s.fontFamily.split(",")[0].replace(/"/g, ""), s.fontSize, s.color, s.fontWeight].join(" | ");
+      })(),
       mainWidth: Math.round(document.querySelector("main").getBoundingClientRect().width),
       headerWidth: Math.round(
         document.querySelector("header > div").getBoundingClientRect().width,
@@ -181,6 +189,21 @@ check("and the system preference does not", systemType.titleFont !== "Atkinson H
 // ── the whole point of coupling spacing to text size
 const smaller = await measure({ width: 390, height: 844, textSize: "smaller" });
 const larger = await measure({ width: 390, height: 844, textSize: "larger" });
+
+// ── the logo opts out of all of it
+// It used to inherit the typeface from <html> and the tint from the theme, so
+// the app's own name changed with the settings. Asserted across typography,
+// text size and viewport at once, because each of those is a separate way to
+// break it and any one of them turns the wordmark back into a heading.
+check("the logo ignores the typography preference",
+  phone.logo === systemType.logo, `${phone.logo}  vs  ${systemType.logo}`);
+check("and the text size preference",
+  smaller.logo === larger.logo && smaller.logo === phone.logo,
+  `${smaller.logo}  vs  ${larger.logo}`);
+check("and does not grow with the desktop root size",
+  desktop.logo === phone.logo, `${phone.logo}  vs  ${desktop.logo}`);
+check("and is a fixed near-white rather than the theme's foreground",
+  phone.logo.includes("rgb(242, 244, 245)"), phone.logo);
 
 check("padding grows with text size instead of standing still",
   larger.cardPadding > phone.cardPadding && phone.cardPadding > smaller.cardPadding,

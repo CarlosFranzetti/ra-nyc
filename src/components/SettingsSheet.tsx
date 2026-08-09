@@ -26,13 +26,13 @@ function OptionGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
-      <h3 className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+    <div className="space-y-2">
+      <h3 className="text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground px-1">
         {title}
       </h3>
       <div
         className={cn(
-          "grid gap-1.5",
+          "grid gap-2",
           columns === 2 && "grid-cols-2",
           columns === 3 && "grid-cols-3",
           columns === 4 && "grid-cols-4",
@@ -60,20 +60,21 @@ function OptionButton({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex flex-col items-start p-2 rounded-lg border transition-all duration-150 text-left active:scale-95",
+        "flex flex-col items-start gap-0.5 p-2.5 rounded-lg border transition-all duration-150 text-left active:scale-95",
         active
           ? "border-primary bg-primary/10 text-foreground"
           : "border-border/50 bg-card hover:bg-accent active:bg-accent text-muted-foreground hover:text-foreground",
       )}
     >
       <span className="text-[0.8125rem] font-medium leading-tight">{label}</span>
-      <span className="text-[0.625rem] leading-tight opacity-60">{description}</span>
+      <span className="text-[0.6875rem] leading-tight opacity-60">{description}</span>
     </button>
   );
 }
 
 export function SettingsSheet() {
   const [open, setOpen] = useState(false);
+  const [shownQr, setShownQr] = useState<string | null>(null);
   const {
     colorTheme,
     setColorTheme,
@@ -114,23 +115,28 @@ export function SettingsSheet() {
       <DrawerContent direction="right" className="overflow-y-auto">
         {/* min-h-full so the dead space below the options is still a close
             target, rather than only the content box being tappable. */}
-        <div className="min-h-full p-3 pt-safe" onClick={closeUnlessOption}>
-          <DrawerTitle className="text-sm font-semibold text-foreground">
+        <div className="min-h-full p-4 pt-safe" onClick={closeUnlessOption}>
+          <DrawerTitle className="text-base font-semibold text-foreground">
             Customize
           </DrawerTitle>
 
-          {/* Tightened so all four groups plus the footer fit one phone screen.
-              A preferences panel you have to scroll hides the options you have
-              not thought to look for. */}
-          <div className="mt-3 space-y-3">
-            <OptionGroup title="Theme" columns={4}>
+          {/* Opened back up. Fitting all four groups on one screen was worth
+              less than it cost: the groups ran together, and the panel already
+              scrolls, so the options below the fold are one flick away rather
+              than hidden. */}
+          <div className="mt-4 space-y-5">
+            {/* Three across, not four: five themes in a four-column grid
+                leaves Mono stranded alone on a second row, and the fifth
+                column that would fix it squeezes "Matrix" past its label
+                width in a drawer this narrow. */}
+            <OptionGroup title="Theme" columns={3}>
               {THEME_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => setColorTheme(opt.value)}
                   aria-pressed={colorTheme === opt.value}
                   className={cn(
-                    "flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all active:scale-95",
+                    "flex flex-col items-center gap-1.5 p-2 rounded-lg border transition-all active:scale-95",
                     colorTheme === opt.value
                       ? "border-primary bg-primary/10"
                       : "border-border/50 bg-card hover:bg-accent",
@@ -144,7 +150,7 @@ export function SettingsSheet() {
                     )}
                     style={{ background: opt.color }}
                   />
-                  <span className="text-[0.625rem] font-medium">{opt.label}</span>
+                  <span className="text-[0.6875rem] font-medium">{opt.label}</span>
                 </button>
               ))}
             </OptionGroup>
@@ -185,7 +191,7 @@ export function SettingsSheet() {
               ))}
             </OptionGroup>
 
-            <p className="px-1 text-[0.625rem] leading-snug text-muted-foreground">
+            <p className="px-1 text-[0.6875rem] leading-snug text-muted-foreground">
               Swipe left or right on the list to change day. The colour theme is
               picked at random each time you open the app.
             </p>
@@ -194,31 +200,72 @@ export function SettingsSheet() {
                 modal. This app is free, has no ads and sells nothing, so a way
                 to say thanks belongs somewhere findable — and nowhere else.
                 Anything larger would be the first thing in the app asking for
-                something rather than offering it. */}
-            {(DONATE.cashApp || DONATE.payPal) && (
-              <div className="flex items-center gap-2 border-t border-border/40 px-1 pt-2 pb-safe text-[0.625rem] text-muted-foreground/70">
-                <Heart className="h-3 w-3 flex-shrink-0" />
-                <span>Free, no ads.</span>
-                {DONATE.cashApp && (
-                  <a
-                    href={DONATE.cashApp}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+                something rather than offering it.
+
+                The QR is folded away rather than shown, because on the phone
+                running this app a QR is the worst of the two paths — you cannot
+                scan a code with the camera that is behind it. It is there for
+                the other case: showing the screen to someone standing next to
+                you. */}
+            {DONATE.length > 0 && (
+              <div className="border-t border-border/40 px-1 pt-3 pb-safe">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] text-muted-foreground/70">
+                  <span className="flex items-center gap-1.5">
+                    <Heart className="h-3 w-3 flex-shrink-0" />
+                    Free, no ads.
+                  </span>
+                  {DONATE.map((target) => (
+                    <button
+                      key={target.label}
+                      type="button"
+                      onClick={() =>
+                        setShownQr((current) =>
+                          current === target.label ? null : target.label,
+                        )
+                      }
+                      aria-expanded={shownQr === target.label}
+                      className={cn(
+                        "underline decoration-dotted underline-offset-2 transition-colors",
+                        shownQr === target.label
+                          ? "text-foreground"
+                          : "hover:text-foreground",
+                      )}
+                    >
+                      {target.label}
+                    </button>
+                  ))}
+                </div>
+
+                {DONATE.filter((t) => t.label === shownQr).map((target) => (
+                  <div
+                    key={target.label}
+                    className="mt-3 flex flex-col items-center gap-2 rounded-lg border border-border/50 bg-card p-3"
                   >
-                    Cash App
-                  </a>
-                )}
-                {DONATE.payPal && (
-                  <a
-                    href={DONATE.payPal}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline decoration-dotted underline-offset-2 hover:text-foreground"
-                  >
-                    PayPal
-                  </a>
-                )}
+                    <p className="text-[0.6875rem] text-muted-foreground">
+                      Donate via {target.label}
+                    </p>
+                    {/* Fixed pixel size, not a spacing utility: the spacing
+                        scale is density-multiplied here, and a QR that lands on
+                        a fractional pixel grid gets soft edges from the
+                        browser's resampling. */}
+                    <img
+                      src={target.qr}
+                      alt={`QR code for ${target.url}`}
+                      width={144}
+                      height={144}
+                      className="rounded bg-white"
+                      style={{ width: 144, height: 144 }}
+                    />
+                    <a
+                      href={target.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[0.6875rem] text-primary underline underline-offset-2"
+                    >
+                      {target.url.replace(/^https:\/\//, "")}
+                    </a>
+                  </div>
+                ))}
               </div>
             )}
           </div>

@@ -99,24 +99,21 @@ morning at 09:00 UTC until this is set.
    own — this is the exact trap that cost a round with `SOUNDCLOUD_CLIENT_ID`.
    Deployments → latest → ⋯ → Redeploy.
 
-### 1.4 Fill in the donate links — phone, via GitHub's web editor
+### 1.4 ~~Fill in the donate links~~ — done
 
-They are deliberately blank. A guessed payment URL either 404s or, far worse,
-sends money to whoever owns that tag.
+Both are live: `cash.app/$hypedrum` and `paypal.me/losfiesta`, at the bottom of
+Customize. Tapping either name unfolds a QR.
 
-Edit [`src/lib/donate.ts`](./src/lib/donate.ts) directly on github.com — the
-pencil icon works fine on mobile — and commit. Vercel redeploys automatically.
+If a handle ever changes, edit [`src/lib/donate.ts`](./src/lib/donate.ts) **and
+regenerate that QR**, or the code keeps pointing at the previous wallet:
 
-```ts
-export const DONATE = {
-  cashApp: "https://cash.app/$yourtag",
-  payPal: "https://paypal.me/yourname",
-} as const;
+```bash
+npx qrcode -t svg -o public/donate-cashapp.svg "https://cash.app/$newtag"
 ```
 
-Leave either as `""` to hide that link. Both blank hides the row entirely.
+Removing an entry from the array hides that link; an empty array hides the row.
 
-### 1.5 Delete five merged branches — phone, via GitHub
+### 1.5 Delete merged branches — phone, via GitHub
 
 All fully merged into `main`; nothing is lost. The git proxy in these sessions
 **403s on ref deletion**, so I cannot do it.
@@ -130,6 +127,9 @@ github.com → ra-nyc → Branches → bin icon:
 - `claude/search-index`
 - `claude/offline-and-fallback`
 - `claude/party-preview`
+- `claude/polish-and-readthis`
+- `claude/filter-chips-and-mono`
+- `claude/logo-and-donate`
 
 ### 1.6 Optional: kick the backfill along — phone, awkwardly
 
