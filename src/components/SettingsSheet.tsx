@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings } from "lucide-react";
+import { Heart, Settings } from "lucide-react";
 import {
   Drawer,
   DrawerContent,
@@ -7,6 +7,7 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { useTheme } from "@/context/ThemeContext";
+import { DONATE } from "@/lib/donate";
 import { cn } from "@/lib/utils";
 import {
   DENSITY_OPTIONS,
@@ -25,13 +26,13 @@ function OptionGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
+    <div className="space-y-1.5">
+      <h3 className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground px-1">
         {title}
       </h3>
       <div
         className={cn(
-          "grid gap-2",
+          "grid gap-1.5",
           columns === 2 && "grid-cols-2",
           columns === 3 && "grid-cols-3",
           columns === 4 && "grid-cols-4",
@@ -59,14 +60,14 @@ function OptionButton({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex flex-col items-start p-3 rounded-lg border transition-all duration-150 text-left active:scale-95",
+        "flex flex-col items-start p-2 rounded-lg border transition-all duration-150 text-left active:scale-95",
         active
           ? "border-primary bg-primary/10 text-foreground"
           : "border-border/50 bg-card hover:bg-accent active:bg-accent text-muted-foreground hover:text-foreground",
       )}
     >
-      <span className="text-sm font-medium">{label}</span>
-      <span className="text-xs opacity-60 mt-0.5">{description}</span>
+      <span className="text-[0.8125rem] font-medium leading-tight">{label}</span>
+      <span className="text-[0.625rem] leading-tight opacity-60">{description}</span>
     </button>
   );
 }
@@ -113,12 +114,15 @@ export function SettingsSheet() {
       <DrawerContent direction="right" className="overflow-y-auto">
         {/* min-h-full so the dead space below the options is still a close
             target, rather than only the content box being tappable. */}
-        <div className="min-h-full p-4 pt-safe" onClick={closeUnlessOption}>
-          <DrawerTitle className="text-base font-semibold text-foreground">
+        <div className="min-h-full p-3 pt-safe" onClick={closeUnlessOption}>
+          <DrawerTitle className="text-sm font-semibold text-foreground">
             Customize
           </DrawerTitle>
 
-          <div className="mt-6 space-y-6">
+          {/* Tightened so all four groups plus the footer fit one phone screen.
+              A preferences panel you have to scroll hides the options you have
+              not thought to look for. */}
+          <div className="mt-3 space-y-3">
             <OptionGroup title="Theme" columns={4}>
               {THEME_OPTIONS.map((opt) => (
                 <button
@@ -126,7 +130,7 @@ export function SettingsSheet() {
                   onClick={() => setColorTheme(opt.value)}
                   aria-pressed={colorTheme === opt.value}
                   className={cn(
-                    "flex flex-col items-center gap-1.5 p-2 rounded-lg border transition-all active:scale-95",
+                    "flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all active:scale-95",
                     colorTheme === opt.value
                       ? "border-primary bg-primary/10"
                       : "border-border/50 bg-card hover:bg-accent",
@@ -134,7 +138,7 @@ export function SettingsSheet() {
                 >
                   <div
                     className={cn(
-                      "w-6 h-6 rounded-full",
+                      "w-5 h-5 rounded-full",
                       colorTheme === opt.value &&
                         "ring-2 ring-offset-2 ring-offset-background ring-primary",
                     )}
@@ -181,10 +185,42 @@ export function SettingsSheet() {
               ))}
             </OptionGroup>
 
-            <p className="text-[0.6875rem] text-muted-foreground px-1">
+            <p className="px-1 text-[0.625rem] leading-snug text-muted-foreground">
               Swipe left or right on the list to change day. The colour theme is
               picked at random each time you open the app.
             </p>
+
+            {/* Bottom of the last panel, one line, no illustration and no
+                modal. This app is free, has no ads and sells nothing, so a way
+                to say thanks belongs somewhere findable — and nowhere else.
+                Anything larger would be the first thing in the app asking for
+                something rather than offering it. */}
+            {(DONATE.cashApp || DONATE.payPal) && (
+              <div className="flex items-center gap-2 border-t border-border/40 px-1 pt-2 pb-safe text-[0.625rem] text-muted-foreground/70">
+                <Heart className="h-3 w-3 flex-shrink-0" />
+                <span>Free, no ads.</span>
+                {DONATE.cashApp && (
+                  <a
+                    href={DONATE.cashApp}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+                  >
+                    Cash App
+                  </a>
+                )}
+                {DONATE.payPal && (
+                  <a
+                    href={DONATE.payPal}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+                  >
+                    PayPal
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </DrawerContent>

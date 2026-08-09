@@ -32,7 +32,7 @@ export const DENSITY_OPTIONS: { value: LayoutDensity; label: string; desc: strin
 export const TYPOGRAPHY_OPTIONS: { value: Typography; label: string; desc: string }[] = [
   { value: "system", label: "System", desc: "Clean & native" },
   { value: "mono", label: "Mono", desc: "JetBrains Mono" },
-  { value: "display", label: "Display", desc: "Bricolage Grotesque" },
+  { value: "display", label: "Legible", desc: "Atkinson Hyperlegible" },
 ];
 
 /** Separate from density: this scales type only, that scales spacing only. */

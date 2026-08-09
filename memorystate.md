@@ -1372,6 +1372,65 @@ prefetch warms nothing.
 > promoted to someone who has only just arrived. And the Sonnet review of this
 > change never ran — the agent died on an API session limit.
 
+### 2026-08-05 — Play arrows, a legible third font, and a theme that stops repeating
+
+**Green play triangles on the lineup chips.** A name on its own does not look
+like a control, and the "tap to hear a set" caption above them was not being
+read. The same triangle as the preview button says it in one glyph.
+
+The green is `--play`, declared once on `:root` and inherited by every theme
+rather than defined per theme. It is not decoration — it is the signal that a
+thing makes sound, and a signal that changes colour with the wallpaper stops
+being learnable. Green because a green triangle already means play everywhere
+else on a phone.
+
+**The preview section is tighter.** Heading and chips down a size, chips to
+`py-0.5`, and the preview button fixed at `h-[2.3rem]` — the 2.5rem it was, less
+eight percent. Fixed height rather than padding so the spinner and the triangle
+cannot change it between states.
+
+**Third typeface, fourth attempt — and a different kind of answer.** Bebas Neue
+was distinctive and unreadable. Space Grotesk was readable and looked like
+system-ui. Bricolage Grotesque was more characterful and *still* a grotesque, so
+the complaint repeated. Atkinson Hyperlegible stops trying to be a better
+grotesque: the Braille Institute commissioned it so that low-vision readers
+cannot confuse one letter for another — the tailed l, the slabbed i, an
+unmistakable G, a true double-storey a. Those same decisions are what make it
+look nothing like Helvetica at a glance, which is the other half of the ask.
+Renamed "Legible" in preferences, because that is what it is for.
+
+**"It always gives me green."** The roll was uniform over four themes, which
+repeats a quarter of the time — two or three Matrixes in a row is what
+randomness actually looks like, and it reads as a bug. `randomColorTheme` now
+excludes the previous pick, which is what people mean by random.
+
+> **The bug that hid inside that fix.** `readSettings` built a `defaults` object
+> eagerly — rolling once — and then rolled *again* on the branch that actually
+> ran. So the "previous" theme being excluded was a throwaway from milliseconds
+> earlier, and the no-repeat guarantee did nothing at all. Rolled exactly once
+> per load now.
+
+**Preferences fit one screen.** Everything down a step and the gaps tightened:
+measured at 664px of content in a 664px viewport. A preferences panel you have
+to scroll hides the options nobody thought to look for.
+
+**A way to say thanks.** One line at the bottom of the last panel — no
+illustration, no modal, no interstitial. This app is free, has no ads and sells
+nothing, so a donate link belongs somewhere findable and nowhere else; anything
+larger would be the first thing in the app asking for something rather than
+offering it. The handles live in `src/lib/donate.ts` and ship **blank**: a
+guessed payment URL either 404s or sends money to whoever owns that tag, and
+empty strings hide the row entirely so a fork collects nothing for anyone.
+
+**`readthis.md`** collects everything still needing a human. The useful finding
+in it: **all of it can be done from a phone** — Neon's SQL Editor, Vercel's env
+vars, GitHub's web editor and branch deletion are all ordinary web apps. Only
+the backfill trigger wants a header, and iOS Shortcuts can send one.
+
+Two test expectations needed updating rather than the code: the player suite
+counted only `Play Set …` labels, and the row that is playing now says `Pause`;
+and the layout suite asserted the old typeface by name.
+
 ## 4 · Map of the code
 
 ```

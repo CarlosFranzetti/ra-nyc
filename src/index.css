@@ -37,6 +37,15 @@
   --glow-intensity: 0.4;
   /* Cyan primary, so the venue takes the other half of a neon sign. */
   --venue: 310 90% 68%;
+
+  /* Play green.
+     Deliberately one colour for every theme rather than a per-theme accent:
+     it is not decoration, it is the signal that a thing makes sound, and a
+     signal that changes colour with the wallpaper stops being learnable. Green
+     because a green triangle already means play everywhere else on a phone.
+     Declared on :root, so all four themes inherit it and nothing has to
+     remember to redefine it. */
+  --play: 145 80% 48%;
 }
 
 /* Vapor Theme - Pink/Magenta Vaporwave */
@@ -133,16 +142,21 @@
 /* The third slot has to do two jobs that usually fight: be obviously different
    from the system font, and stay readable at 2am.
 
-   It started as Bebas Neue — condensed, all-caps, tight-tracked, and close to
-   the worst case for reading a venue name in a dark room. Space Grotesk fixed
-   the legibility and lost the distinctiveness; next to system-ui at a glance it
-   read as the same font. Bricolage Grotesque is the one that does both: the
-   asymmetric terminals and slightly irregular widths are visible in a single
-   word, but it was drawn for text as well as display, so the x-height is tall
-   and the apertures stay open. Lowercase throughout, so titles keep the word
-   shapes you actually skim by. */
+   Three attempts. Bebas Neue was distinctive and close to unreadable — condensed
+   caps narrow the counters and remove the word shapes you skim by. Space Grotesk
+   fixed the legibility and lost the distinctiveness. Bricolage Grotesque was
+   more characterful but still a grotesque, so beside system-ui it read as the
+   same font again — which was the complaint both times.
+
+   Atkinson Hyperlegible is a different answer rather than a better grotesque.
+   The Braille Institute commissioned it to be legible to low-vision readers, so
+   its whole design goal is that letters cannot be mistaken for each other: the
+   tail on the l, the slab on the i, an unmistakable G, and a genuinely
+   double-storey a. Those decisions also make it look nothing like Helvetica at
+   a glance, which is the other thing being asked for here. */
 .type-display {
-  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
+  letter-spacing: 0.005em;
 }
 
 .type-display h1,

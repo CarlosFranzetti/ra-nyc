@@ -30,14 +30,41 @@ interface ThemeContextType extends ThemeSettings {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const LAST_THEME_KEY = "ra-theme-last";
+
 /**
- * A random colour theme on every load. This is deliberate and carried over from
- * the original — the app feels different each time you open it, which is a lot
- * of the charm. The other three axes persist; only the colour is rerolled.
- * Make this read `parsed.colorTheme` if you'd rather it stuck.
+ * A random colour theme on every load — deliberate, and a lot of the charm: the
+ * app feels different each time you open it. The other axes persist; only the
+ * colour is rerolled.
+ *
+ * **Never the same one twice running.** A uniform roll over four themes repeats
+ * a quarter of the time, and two or three greens in a row reads as "it always
+ * gives me green" — which is exactly the complaint, and is what randomness
+ * actually looks like rather than a bug. Excluding the previous pick turns
+ * "random" into what people mean by it: a different one every time.
+ *
+ * Stored separately from the settings blob because it is not a preference, it
+ * is a memory of the last roll — and if reading it fails the roll simply falls
+ * back to uniform.
  */
 function randomColorTheme(): ColorTheme {
-  return COLOR_THEMES[Math.floor(Math.random() * COLOR_THEMES.length)]!;
+  let previous: string | null = null;
+  try {
+    previous = localStorage.getItem(LAST_THEME_KEY);
+  } catch {
+    // Private-mode Safari throws rather than returning null.
+  }
+
+  const choices = COLOR_THEMES.filter((theme) => theme !== previous);
+  const pool = choices.length > 0 ? choices : COLOR_THEMES;
+  const picked = pool[Math.floor(Math.random() * pool.length)]!;
+
+  try {
+    localStorage.setItem(LAST_THEME_KEY, picked);
+  } catch {
+    // Not being able to remember only costs the no-repeat guarantee.
+  }
+  return picked;
 }
 
 function oneOf<T extends readonly string[]>(
@@ -51,8 +78,14 @@ function oneOf<T extends readonly string[]>(
 }
 
 function readSettings(): ThemeSettings {
-  const fallback: ThemeSettings = {
-    colorTheme: randomColorTheme(),
+  // Rolled exactly once per load, and that matters now the roll remembers what
+  // it last returned: the old shape built a `fallback` object eagerly and then
+  // rolled *again* on the path that actually ran, so the "previous" theme being
+  // avoided was a throwaway from milliseconds earlier rather than the one the
+  // user last saw — and the no-repeat guarantee quietly did nothing.
+  const colorTheme = randomColorTheme();
+  const defaults: ThemeSettings = {
+    colorTheme,
     layoutDensity: "default",
     typography: "system",
     textSize: "default",
@@ -60,11 +93,11 @@ function readSettings(): ThemeSettings {
 
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return fallback;
+    if (!saved) return defaults;
 
     const parsed = JSON.parse(saved) as Partial<ThemeSettings>;
     return {
-      colorTheme: randomColorTheme(),
+      colorTheme,
       layoutDensity: oneOf(DENSITIES, parsed.layoutDensity, "default"),
       typography: oneOf(TYPOGRAPHIES, parsed.typography, "system"),
       textSize: oneOf(TEXT_SIZES, parsed.textSize, "default"),
@@ -72,7 +105,7 @@ function readSettings(): ThemeSettings {
   } catch {
     // Private-mode Safari throws on localStorage rather than returning null.
     // Preferences are a nicety; never let them break the app.
-    return fallback;
+    return defaults;
   }
 }
 
