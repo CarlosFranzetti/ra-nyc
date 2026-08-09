@@ -35,7 +35,8 @@ seconds on a phone on the subway?"
 | **Dev server** | ✅ `npm run dev` on :8080, serves UI + `/api` |
 | **Database** | Optional Neon: artist links + the search index. See [DATABASE.md](./DATABASE.md) |
 | **Env vars** | None required; `DATABASE_URL` and `DISCOGS_TOKEN` optional |
-| **Tests** | ✅ 122 Vitest units + 96 Playwright assertions (`npm run test:all`) |
+| **Tests** | ✅ 139 Vitest units + 109 Playwright assertions (`npm run test:all`) |
+| **Preferences** | 5 themes · 3 densities · 3 type categories · 6 text sizes |
 | **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
 
@@ -1430,6 +1431,104 @@ the backfill trigger wants a header, and iOS Shortcuts can send one.
 Two test expectations needed updating rather than the code: the player suite
 counted only `Play Set …` labels, and the row that is playing now says `Pause`;
 and the layout suite asserted the old typeface by name.
+
+### 3.x · The night ends at 3:30am
+
+RA files an event under the calendar date it **starts**, so at 1am the app had
+already discarded tonight and was showing tomorrow — with tonight still
+running. The person on their phone at 2am is the one most likely to want the
+next room on the same night out, and the calendar had just abandoned them.
+
+`src/lib/night.ts` moves the boundary to **3:30am**: late enough for the second
+and third stop of a normal night, early enough that someone awake at 8am gets
+the day they expect. Past about 4am it starts stealing the following evening
+from early risers, which is the same bug pointing the other way.
+
+Only what the app *calls* today moved. The query is untouched — a night running
+past midnight still lives under its own start date in the payload, which is
+exactly why the boundary had to move on the client.
+
+Two things that are easy to get wrong and are asserted:
+
+- The chip says **"Tonight"**, not "Today". At 2am it sits on yesterday's date,
+  and "Today" there reads as a bug rather than as the point.
+- `currentNight()` anchors at **local noon**. A midnight-anchored date minus 24h
+  lands at 23:00 the previous day in a spring-forward zone, which silently
+  reads as the day before that.
+
+### 3.x · One palette structure, five hues
+
+All five themes share one ladder: background 5%, cards 9%, secondary 13%, muted
+15%, input 17%, borders 18%, muted-foreground 58%, glow 0.38. Switching theme
+changes hue and nothing else.
+
+What read as incoherent between themes was never the colours. Matrix sat at 3%
+lightness while Sunset sat at 5%, with borders and muted text drifting by up to
+eight points, so changing theme changed *how heavy the app felt*. Chosen over a
+single neutral charcoal (cost Matrix its terminal) and a two-hue duotone (least
+uniform). **A sixth theme copies the ladder and changes only the hues.**
+
+### 3.x · Three type categories, not three text faces
+
+Every previous attempt at the third font slot failed identically. Bebas Neue was
+distinctive and unreadable; Space Grotesk readable and indistinguishable from
+system-ui; Bricolage Grotesque more characterful and still a grotesque; Atkinson
+Hyperlegible genuinely different in its letterforms but the same *colour* on the
+page. Four rounds of "the third one still looks like the first", because they
+were four moderate text faces.
+
+The set is now three **categories** that cannot be confused at any size:
+
+- **System** — the native sans.
+- **Impact** — Anton, applied to headings only. It is a poster face: one weight,
+  near-zero sidebearings, tight apertures. Set a venue name and a head count in
+  it and the app becomes an unreadable flyer, so it takes titles and hands the
+  rest to the system sans. Its fallback is real Impact, which ships on nearly
+  every Windows and macOS install, so the option looks like its name even if
+  Google Fonts is blocked.
+- **Slab** — Zilla Slab. The obvious pick for "typewriter" is Courier and it is
+  wrong: monospace gives an `i` the width of an `m`, so listings run about a
+  third longer and two-line titles become three. Zilla keeps the blunt
+  rectangular serifs and drops the fixed pitch, so it is *narrower* than the
+  system sans rather than wider.
+
+Each option's label in the picker renders in the face it selects. A font picker
+that names three fonts in a fourth font is asking you to take its word for it.
+
+### 3.x · Six text sizes, all upward
+
+The old smaller/default/larger topped out at **+10%** and spent a third of its
+range going below a size nobody had complained about. It is now six geometric
+steps of ~6%, with **step 0 = the old default**, reaching +34%.
+
+It is a stepper (− bar +) rather than six buttons: six cells across a 360px
+drawer would be 50px each of unreadable numbers, and the axis is ordered — "one
+more" is the actual thought, not "pick the fourth". The bar doubles as the
+readout, showing how much room is left in each direction, which a number cannot.
+
+The class prefix moved from `text-` to `text-size-`; `.text-larger` was one
+rename away from colliding with a Tailwind `text-*` utility. Both renamed unions
+(`TEXT_SIZES`, `TYPOGRAPHIES`) needed no migration because `oneOf()` already
+falls back on any unrecognised stored value.
+
+### 3.x · Equal air above and below the thumbnail
+
+`EventCard`'s row is `items-center`. The text column is almost never exactly
+96px tall — a one-line title with no head count is short, a two-line title with
+a full lineup is tall — and top-aligned, every pixel of that difference
+collected underneath the image as one lopsided gap.
+
+Centring is the fix rather than a padding value, and that distinction is the
+point: alignment holds at **every density and text size** automatically, where a
+padding value would have to be re-tuned for each of the eighteen combinations.
+Measured equal to 0.1px at tight/default/airy across the size range.
+
+Separately, all three densities came down **5%** — 0.87/1.04/1.25 →
+0.827/0.988/1.188. The ratios between them are untouched, so "Airy" is still
+exactly as much airier than "Default" as it was; the ladder moved as a unit,
+which is what keeps the three options meaningful relative to each other. Borders
+stayed at 1px: sub-pixel borders render as a hairline on retina and get dropped
+or rounded up at 1x, so "thinner" would mean "inconsistent".
 
 ## 4 · Map of the code
 

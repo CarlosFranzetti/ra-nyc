@@ -27,7 +27,15 @@ interface EventCardProps {
 function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
   return (
     <button onClick={() => onSelect(event)} className="block w-full text-left group">
-      <article className="press flex gap-3 bg-card rounded-lg overflow-hidden hover:bg-accent active:bg-accent border border-border/50 p-2 glow-primary-hover">
+      {/* items-center is what puts equal air above and below the thumbnail.
+          The column beside it is almost never exactly 96px tall — a one-line
+          title with no head count is short, a two-line title with a full
+          lineup is tall — and top-aligned, every pixel of that difference
+          collected underneath the image as a single lopsided gap. Centred, the
+          leftover splits in two, and it does so at every density and text size
+          because the rule is alignment rather than a padding value that would
+          have to be re-tuned for each. */}
+      <article className="press flex items-center gap-3 bg-card rounded-lg overflow-hidden hover:bg-accent active:bg-accent border border-border/50 p-2 glow-primary-hover">
         <div className="relative w-24 h-24 flex-shrink-0 rounded-md overflow-hidden bg-muted">
           <EventThumb
             imageUrl={event.imageUrl}
@@ -42,7 +50,7 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
           )}
         </div>
 
-        <div className="flex-1 min-w-0 py-0.5">
+        <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-foreground leading-tight line-clamp-2 group-hover:text-primary transition-colors">
             {event.title}
           </h3>
