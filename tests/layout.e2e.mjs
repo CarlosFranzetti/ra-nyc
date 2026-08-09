@@ -125,6 +125,7 @@ async function measure({ width, height, density = "default", textSize = "0", typ
       rootFontSize: parseFloat(root.fontSize),
       titleFont: title ? getComputedStyle(title).fontFamily.split(",")[0].replace(/"/g, "") : "",
       bodyFont: getComputedStyle(document.body).fontFamily.split(",")[0].replace(/"/g, ""),
+      titleWeight: title ? getComputedStyle(title).fontWeight : "",
       // The logo is the one thing on screen that must not move with any
       // preference, so it is read the same way everything else is.
       logo: (() => {
@@ -187,13 +188,14 @@ const systemType = await measure({ width: 390, height: 844, typography: "system"
 check("and the system preference does not", systemType.titleFont !== "Zilla Slab",
   systemType.titleFont);
 
-// Impact is the one option that is deliberately not applied to body text, so
-// asserting the family on a heading is asserting the pairing, not the font.
-const impactType = await measure({ width: 390, height: 844, typography: "impact" });
-check("the impact preference reaches headings", impactType.titleFont === "Anton",
-  impactType.titleFont);
-check("and leaves body text to the system sans",
-  impactType.bodyFont !== "Anton", impactType.bodyFont);
+const legibleType = await measure({ width: 390, height: 844, typography: "legible" });
+check("the legible preference selects a third, different family",
+  legibleType.titleFont === "Atkinson Hyperlegible", legibleType.titleFont);
+// The reason this slot changed faces again: 700 set a column of titles dark
+// enough to read as bars rather than as text.
+check("neither display face sets headings at full bold",
+  phone.titleWeight === "600" && legibleType.titleWeight === "600",
+  `slab ${phone.titleWeight}, legible ${legibleType.titleWeight}`);
 
 // ── the whole point of coupling spacing to text size
 // The ladder is six rungs, all upward, so the bottom of it *is* the default —

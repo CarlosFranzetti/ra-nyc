@@ -191,33 +191,6 @@
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* Impact — headlines only, deliberately.
-
-   Anton is a poster face: single weight, near-zero sidebearings, tight
-   apertures. Set a venue name and a head count in it and the app becomes a
-   flyer you cannot read. So it takes the titles and hands everything else to
-   the system sans, which is what a real editorial pairing does and what makes
-   this option survivable at 2am.
-
-   The fallback matters more than usual here: Impact itself ships on essentially
-   every Windows and macOS install, so if Google Fonts is blocked or slow the
-   option still looks like what it is called. */
-.type-impact {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-
-.type-impact h1,
-.type-impact h2,
-.type-impact h3,
-.type-impact .type-headline {
-  font-family: 'Anton', Impact, 'Haettenschweiler', 'Arial Narrow Bold', sans-serif;
-  font-weight: 400;
-  /* Anton is already condensed; the extra tracking stops long titles from
-     closing up into a single dark bar at small sizes. */
-  letter-spacing: 0.01em;
-  line-height: 1.15;
-}
-
 /* Slab — typewriter lineage, without the typewriter's width.
 
    The obvious pick for "typewriter" is Courier, and it is the wrong one: a
@@ -229,11 +202,37 @@
   font-family: 'Zilla Slab', Rockwell, 'Roboto Slab', Georgia, serif;
 }
 
+/* Legible — Atkinson Hyperlegible.
+
+   This slot has been through five faces. Bebas Neue was distinctive and
+   unreadable. Space Grotesk was readable and indistinguishable from system-ui.
+   Bricolage Grotesque was more characterful and still a grotesque. Anton went
+   the whole other way and was a poster face on a phone at 2am — and could not
+   be toned down, because it ships exactly one weight, so "a bit less bold" was
+   not a thing it could do.
+
+   Atkinson is the one that keeps working. The Braille Institute commissioned it
+   for low-vision readers, so its design goal is that letters cannot be mistaken
+   for each other — the tail on the l, the slab on the i, an unmistakable G, a
+   genuinely double-storey a. That also makes it look nothing like Helvetica at
+   a glance, which is the other half of what this slot is for. */
+.type-legible {
+  font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
+  letter-spacing: 0.005em;
+}
+
+/* 600, not 700. Semibold is enough to separate a title from the venue line
+   under it; at 700 both of these faces set headings dark enough that a list of
+   them reads as a stack of bars rather than as titles. */
 .type-slab h1,
 .type-slab h2,
 .type-slab h3,
-.type-slab .type-headline {
-  font-weight: 700;
+.type-slab .type-headline,
+.type-legible h1,
+.type-legible h2,
+.type-legible h3,
+.type-legible .type-headline {
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 

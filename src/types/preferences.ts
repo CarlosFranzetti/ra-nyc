@@ -1,6 +1,6 @@
 export const COLOR_THEMES = ["neon", "vapor", "matrix", "sunset", "mono"] as const;
 export const DENSITIES = ["tight", "default", "airy"] as const;
-export const TYPOGRAPHIES = ["system", "impact", "slab"] as const;
+export const TYPOGRAPHIES = ["system", "slab", "legible"] as const;
 
 /**
  * Six steps, not three, and the old default is now step 0 — the smallest.
@@ -48,13 +48,18 @@ export const DENSITY_OPTIONS: { value: LayoutDensity; label: string; desc: strin
 ];
 
 /**
- * Three faces that cannot be mistaken for each other at a glance.
+ * Three faces that cannot be mistaken for each other at a glance, ordered from
+ * least to most departure from the system default.
  *
- * The previous set failed that: JetBrains Mono and Atkinson Hyperlegible are
- * both moderate, evenly-coloured text faces, so beside system-ui the picker
- * offered three shades of the same idea. These are three *categories* — a
- * neutral sans, a compressed poster face, a slab — and each preview renders in
- * its own face, which is the only honest way to show a font picker.
+ * Anton sat in the third slot for one round and came out again: a genuine
+ * poster face is too much weight for a screen you read at 2am, and "less bold"
+ * is not available from a typeface that ships exactly one weight. Atkinson
+ * Hyperlegible is the version of "obviously not system-ui" that survives being
+ * read — the Braille Institute designed it so letters cannot be confused with
+ * each other — and it had already earned its place here before the detour.
+ *
+ * Each preview renders in its own face, which is the only honest way to show a
+ * font picker.
  */
 export const TYPOGRAPHY_OPTIONS: {
   value: Typography;
@@ -64,6 +69,6 @@ export const TYPOGRAPHY_OPTIONS: {
   className: string;
 }[] = [
   { value: "system", label: "System", desc: "Clean & native", className: "type-system" },
-  { value: "impact", label: "Impact", desc: "Tall & condensed", className: "type-impact" },
   { value: "slab", label: "Slab", desc: "Typewriter-ish", className: "type-slab" },
+  { value: "legible", label: "Legible", desc: "Open & distinct", className: "type-legible" },
 ];
