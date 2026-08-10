@@ -1,6 +1,7 @@
-import { format, addDays, isSameDay, differenceInDays } from "date-fns";
+import { useEffect, useRef } from "react";
+import { addDays, format, isSameDay } from "date-fns";
 import { cn } from "@/lib/utils";
-import { currentNight, isNextNight, isTonight } from "@/lib/night";
+import { currentNight } from "@/lib/night";
 import { usePrefetchEvents } from "@/hooks/useEvents";
 
 interface DatePickerProps {
@@ -8,33 +9,40 @@ interface DatePickerProps {
   onDateChange: (date: Date) => void;
 }
 
+/**
+ * How far the strip runs either side of tonight.
+ *
+ * It used to be eight chips wide and it moved its own window when you used the
+ * calendar to jump outside it — which meant the strip you scrolled back to was
+ * never the strip you left. A long scrollable rail has no window to shift, so
+ * position is just position, and the past is reachable by dragging rather than
+ * by knowing that the calendar exists.
+ */
+const DAYS_BACK = 14;
+const DAYS_FORWARD = 45;
+
 export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   const prefetchEvents = usePrefetchEvents();
-  // The night, not the calendar date — before 3:30am these are different, and
-  // the strip has to agree with the day the app opened on or the highlighted
-  // chip sits one place left of "Tonight".
+  const railRef = useRef<HTMLDivElement>(null);
+
+  // The night, not the calendar date — before 3:30am these differ, and the
+  // strip has to agree with the day the app opened on.
   const tonight = currentNight();
-  const yesterday = addDays(tonight, -1);
+  const start = addDays(tonight, -DAYS_BACK);
+  const dates = Array.from({ length: DAYS_BACK + DAYS_FORWARD + 1 }, (_, i) =>
+    addDays(start, i),
+  );
 
-  // Eight days starting yesterday, but shift the window if the calendar was
-  // used to jump somewhere outside it — otherwise the selected day would have
-  // no visible chip.
-  const daysFromYesterday = differenceInDays(selectedDate, yesterday);
-  const startDate =
-    daysFromYesterday >= 8 || daysFromYesterday < 0
-      ? addDays(selectedDate, -4)
-      : yesterday;
-
-  const dates = Array.from({ length: 8 }, (_, i) => addDays(startDate, i));
-
-  // "Tonight", not "Today": at 2am the highlighted chip is yesterday's date,
-  // and "Today" sitting on yesterday would read as a bug rather than as the
-  // point.
-  const getDateLabel = (date: Date) => {
-    if (isTonight(date)) return "Tonight";
-    if (isNextNight(date)) return "Tmrw";
-    return format(date, "EEE");
-  };
+  // Keep the selected chip on screen when the date changes from somewhere else
+  // — the calendar, a search result. Without this, picking a date three weeks
+  // out silently highlights a chip nobody can see.
+  useEffect(() => {
+    const rail = railRef.current;
+    const chip = rail?.querySelector<HTMLElement>("[data-selected='true']");
+    if (!rail || !chip) return;
+    const target = chip.offsetLeft - rail.clientWidth / 2 + chip.clientWidth / 2;
+    rail.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+  }, [selectedDate]);
 
   // Warm the day before it's tapped. On touch, `touchstart` fires well before
   // the click, so the fetch is usually already in flight by the time it lands.
@@ -43,33 +51,50 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   };
 
   return (
-    // The strip fills a phone because eight chips is exactly what a phone
-    // holds. Left to fill a laptop it becomes eight 160px slabs of empty card
-    // around a two-digit number, so on desktop it stops growing and centres —
-    // a date chip has a natural size and it is close to the phone's.
-    <div className="flex gap-1 justify-between px-2 lg:mx-auto lg:max-w-xl">
+    <div
+      ref={railRef}
+      // `snap-x` so a flick settles on a chip rather than mid-gap, and
+      // `overscroll-x-contain` so dragging past the end does not hand the
+      // gesture to Safari's back-swipe.
+      className="flex gap-1.5 overflow-x-auto overscroll-x-contain scroll-smooth snap-x px-2 pb-1 no-scrollbar"
+    >
       {dates.map((date) => {
         const isSelected = isSameDay(date, selectedDate);
         const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+        const isPast = date < tonight && !isSameDay(date, tonight);
 
         return (
           <button
             key={date.toISOString()}
+            data-selected={isSelected}
             onClick={() => onDateChange(date)}
             onTouchStart={() => handlePrefetch(date)}
             onMouseEnter={() => handlePrefetch(date)}
             aria-pressed={isSelected}
+            aria-label={format(date, "EEEE d MMMM")}
             className={cn(
-              "flex flex-col items-center flex-1 py-1 rounded-md transition-all duration-200 border border-border/30 active:scale-95",
+              "flex w-[3.25rem] flex-shrink-0 snap-start flex-col items-center rounded-md border py-1.5 transition-all duration-200 active:scale-95",
               isSelected
-                ? "bg-primary text-primary-foreground border-primary glow-primary-sm"
+                // Filled, ringed and slightly raised. On a rail where every
+                // chip looks alike, one of those three alone reads as a hover
+                // state rather than as the current day.
+                ? "border-primary bg-primary text-primary-foreground ring-2 ring-primary/40 glow-primary-sm"
                 : isWeekend
-                  ? "bg-accent/50 hover:bg-accent active:bg-accent text-muted-foreground"
-                  : "bg-card hover:bg-accent active:bg-accent",
+                  ? "border-border/30 bg-accent/50 hover:bg-accent active:bg-accent"
+                  : "border-border/30 bg-card hover:bg-accent active:bg-accent",
+              // Days already gone are still reachable — "what did I miss" is a
+              // real question — but they should not compete with the ones you
+              // can still go to.
+              !isSelected && isPast && "opacity-45",
             )}
           >
-            <span className="text-[0.5rem] font-medium uppercase tracking-wide">
-              {getDateLabel(date)}
+            <span
+              className={cn(
+                "text-[0.5rem] font-medium uppercase tracking-wide",
+                isSelected ? "text-primary-foreground" : "text-muted-foreground",
+              )}
+            >
+              {format(date, "EEE")}
             </span>
             <span
               className={cn(

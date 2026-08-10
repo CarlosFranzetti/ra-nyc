@@ -1,85 +1,75 @@
 import type { Event } from "@/types/event";
 
 /**
- * The three things worth narrowing a night down by, as predicates over an event
- * that is already in hand — no extra request, no extra round trip.
+ * Three ways to narrow a night down, all computed from the payload already in
+ * hand — no extra request, no extra round trip.
  *
- * Two of these read a real field. The third does not, and that is worth being
- * blunt about: **RA's listing payload carries no price.** There is no `cost`,
- * no `isFree`, no ticket tier — the fields are title, date, times, venue,
- * lineup, attending count and the RA Pick blurb. So "Free" here is a text
- * match, not a fact, and it is deliberately a conservative one (see below).
+ * The first pass at this shipped **Free** and **Before 12** and both were dead
+ * weight. Free was a text match over the title, because RA's listing payload
+ * carries no price at all, so it read 0 on most nights and could never be
+ * trusted on the nights it did not. Before 12 was worse in the opposite
+ * direction: almost every listing starts before midnight, so it matched
+ * everything and filtered nothing — a chip reading "21" beside a count of 21.
+ *
+ * What is left is one editorial signal and two crowd-size ones, which is the
+ * question people actually arrive with: *is this the big one tonight, or the
+ * one nobody has found yet?*
  */
-export const FILTER_KEYS = ["pick", "free", "early"] as const;
+export const FILTER_KEYS = ["pick", "busy", "lowkey"] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
-
-/**
- * Free entry, inferred from what the promoter wrote.
- *
- * The naive version — `/\bfree\b/` — is wrong often enough to be worse than no
- * filter: *Free Your Mind* is a long-running party, "sugar free" and "free
- * jazz" are genres, and a chip that lies about money is a chip that gets people
- * turned away at a door. So the word only counts when it is doing the job of
- * quoting a price: next to entry/admission/RSVP, at the end of the line where a
- * price would go, or spelled as a number.
- *
- * The cost of that caution is misses — a free party whose title never says so
- * simply will not appear — and misses are the right side to fail on.
- */
-const FREE_PATTERNS: readonly RegExp[] = [
-  // The trailing \b lives inside the alternation rather than after it: `w/`
-  // ends on a non-word character, so a boundary assertion outside the group
-  // fails on exactly the phrasing it was added for.
-  /\bfree\s*(?:(?:entry|entrance|admission|before|b4|rsvp|with\s+rsvp|all\s+night)\b|w\/)/i,
-  /\b(?:entry|entrance|admission|cover)\s*[:=–—-]?\s*free\b/i,
-  /\bno\s+cover\b/i,
-  /\$\s*0(?:\.00)?\b/,
-  // A trailing "· Free" / "— FREE", which is how a price gets appended.
-  /[·|—–\-:]\s*free\s*$/i,
-];
-
-export function isFree(event: Event): boolean {
-  const text = `${event.title} ${event.pickBlurb ?? ""}`;
-  return FREE_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-/**
- * Starts before midnight — i.e. you can get there, hear something and still go
- * home on the same date you left.
- *
- * RA gives `startTime` as a local wall-clock stamp, and for a 2am party that
- * stamp lands on the *following* calendar day while the listing stays filed
- * under the night it belongs to. So the test is not "hour < 24" (always true)
- * but "the clock has not rolled over yet": same day as the listing, and not one
- * of the small hours.
- */
-export function startsBeforeMidnight(event: Event): boolean {
-  const start = event.startTime || event.date;
-  if (!start) return false;
-
-  const listingDay = (event.date || start).slice(0, 10);
-  if (start.slice(0, 10) > listingDay) return false;
-
-  const hour = Number(start.slice(11, 13));
-  return Number.isFinite(hour) && hour >= 6 && hour <= 23;
-}
-
-const PREDICATES: Record<FilterKey, (event: Event) => boolean> = {
-  pick: (event) => event.isPick,
-  free: isFree,
-  early: startsBeforeMidnight,
-};
 
 export const FILTER_LABELS: Record<FilterKey, string> = {
   pick: "RA Pick",
-  free: "Free",
-  early: "Before 12",
+  busy: "Busy",
+  lowkey: "Low-key",
 };
+
+/**
+ * The share of a night that counts as busy, and the share that counts as
+ * low-key. A third each, so the middle third belongs to neither.
+ *
+ * Relative to the night, never absolute. A Tuesday's biggest room draws fewer
+ * people than a Saturday's quietest, so any fixed head count would make one of
+ * those chips useless on half the days of the week — which is exactly how the
+ * two filters this replaced failed.
+ */
+const TIER_SHARE = 1 / 3;
+
+/**
+ * The attending counts that bound each tier for a given night.
+ *
+ * Computed over the whole day's listings rather than over whatever is currently
+ * filtered, so turning **Busy** on and off does not redefine what busy means.
+ */
+function tiers(events: Event[]): { busyFrom: number; lowkeyTo: number } {
+  const counts = events
+    .map((event) => event.attending)
+    .filter((n) => n > 0)
+    .sort((a, b) => b - a);
+
+  // Nothing to rank: a day with no head counts at all leaves both chips empty
+  // rather than declaring every event both busy and low-key.
+  if (counts.length === 0) return { busyFrom: Infinity, lowkeyTo: -1 };
+
+  const cut = Math.max(1, Math.round(counts.length * TIER_SHARE));
+  return {
+    busyFrom: counts[cut - 1]!,
+    lowkeyTo: counts[Math.max(0, counts.length - cut)]!,
+  };
+}
 
 /** All selected filters must hold — narrowing, not widening. */
 export function applyFilters(events: Event[], active: readonly FilterKey[]): Event[] {
   if (active.length === 0) return events;
-  return events.filter((event) => active.every((key) => PREDICATES[key](event)));
+
+  const { busyFrom, lowkeyTo } = tiers(events);
+  const holds: Record<FilterKey, (event: Event) => boolean> = {
+    pick: (event) => event.isPick,
+    busy: (event) => event.attending >= busyFrom,
+    lowkey: (event) => event.attending > 0 && event.attending <= lowkeyTo,
+  };
+
+  return events.filter((event) => active.every((key) => holds[key](event)));
 }
 
 /**

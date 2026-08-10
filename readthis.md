@@ -156,6 +156,12 @@ browser address bar cannot send. From a phone:
   the `remaining` field reaches 0.
 - Or just wait — the cron does 14 days a night.
 
+The window is now **four months back and one ahead**, which is 151 days, so a
+cold index takes about eleven nights to fill on its own. That is fine and needs
+no action: search reads whatever the index already holds and falls back to live
+sampling for the rest, so coverage improves each morning rather than arriving
+all at once.
+
 ---
 
 ## 2 · What I could not do, and why

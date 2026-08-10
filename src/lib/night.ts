@@ -20,8 +20,8 @@ import { addDays, isSameDay } from "date-fns";
  * date in the payload, which is precisely why the boundary has to move here
  * rather than in the query.
  */
-export const ROLLOVER_HOUR = 3;
-export const ROLLOVER_MINUTE = 30;
+const ROLLOVER_HOUR = 3;
+const ROLLOVER_MINUTE = 30;
 
 /**
  * The night `at` belongs to, as a Date at local noon.

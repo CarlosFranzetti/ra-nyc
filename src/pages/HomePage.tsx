@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { addDays, format, subDays } from "date-fns";
+import { format } from "date-fns";
 import { CloudOff } from "lucide-react";
 import { DatePicker } from "@/components/DatePicker";
 import { EmptyState } from "@/components/EmptyState";
@@ -16,7 +16,6 @@ import { VenueSheet } from "@/components/VenueSheet";
 import { SplashScreen } from "@/components/SplashScreen";
 import { useTheme } from "@/context/ThemeContext";
 import { useEvents } from "@/hooks/useEvents";
-import { useSwipe } from "@/hooks/useSwipe";
 import { applyFilters, filterCounts, type FilterKey } from "@/lib/filters";
 import { currentNight } from "@/lib/night";
 import { cn } from "@/lib/utils";
@@ -54,11 +53,6 @@ export default function HomePage() {
     if (error) setShowSplash(false);
     return undefined;
   }, [isLoading, data, error]);
-
-  const swipe = useSwipe({
-    onSwipeLeft: () => setSelectedDate((d) => addDays(d, 1)),
-    onSwipeRight: () => setSelectedDate((d) => subDays(d, 1)),
-  });
 
   // Stable, or memoising EventCard achieves nothing — a fresh function
   // reference each render invalidates every card.
@@ -117,15 +111,34 @@ export default function HomePage() {
 
       {/* pb-[var(--player-h)]: the transport is fixed, so without this the last
           card sits underneath it. The variable is 0px when nothing is playing. */}
-      <div
-        className="min-h-screen bg-background pb-[var(--player-h)]"
-        {...swipe}
-      >
+      {/* No swipe-to-change-day. It competed with scrolling the listings and
+          with dragging the date rail, and losing a day under your thumb
+          mid-scroll is a worse failure than an extra tap. The rail is the way
+          to move between days now, and it is draggable. */}
+      <div className="min-h-screen bg-background pb-[var(--player-h)]">
         <Header
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}
           onSearchClick={() => setSearchOpen(true)}
         />
+
+        {/* Directly under the header and hairline-separated from the rail, so
+            the top of the screen reads as one block: who you are, then what
+            you are looking at, then which day. Centred because it is a caption
+            for the rail below it rather than a label on the left. */}
+        <div className="border-b border-border/40 py-1.5">
+          <p className="shell text-center text-xs text-muted-foreground">
+            {hasEvents && (
+              <>
+                {visibleEvents.length} event{visibleEvents.length !== 1 ? "s" : ""}
+                <span className="mx-1 opacity-40">·</span>
+              </>
+            )}
+            <span className="font-semibold text-foreground">
+              {format(selectedDate, "EEE, MMM d")}
+            </span>
+          </p>
+        </div>
 
         <div className="py-2 border-b border-border/50">
           <div className="shell">
@@ -133,13 +146,13 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className={cn("shell py-2 space-y-1.5", padX)}>
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">
-              {hasEvents
-                ? `${visibleEvents.length} event${visibleEvents.length !== 1 ? "s" : ""} · ${format(selectedDate, "EEE, MMM d")}`
-                : format(selectedDate, "EEE, MMM d")}
-            </p>
+        {(hasEvents || data?.stale) && (
+          <div className={cn("shell flex items-center justify-between gap-2 py-2", padX)}>
+            {hasEvents ? (
+              <FilterChips active={filters} counts={counts} onToggle={toggleFilter} />
+            ) : (
+              <span />
+            )}
 
             {/* Saying so matters more than it looks: without it, listings that
                 are hours old are indistinguishable from listings that are
@@ -151,11 +164,7 @@ export default function HomePage() {
               </span>
             )}
           </div>
-
-          {hasEvents && (
-            <FilterChips active={filters} counts={counts} onToggle={toggleFilter} />
-          )}
-        </div>
+        )}
 
         <main className={cn("shell", mainPadding)}>
           <div

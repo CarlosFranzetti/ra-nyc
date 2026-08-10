@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Loader, Search, X } from "lucide-react";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { EventCard } from "@/components/EventCard";
@@ -53,14 +53,24 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
   const inputRef = useRef<HTMLInputElement>(null);
   const { data, isFetching, error, pending, enabled } = useSearch(query);
 
-  // Focus on open. The delay lets the sheet finish sliding first — focusing
-  // mid-animation makes iOS raise the keyboard into a moving panel, and the
-  // layout visibly jumps.
-  useEffect(() => {
-    if (!open) return undefined;
-    const timer = setTimeout(() => inputRef.current?.focus(), 380);
-    return () => clearTimeout(timer);
-  }, [open]);
+  /**
+   * Focus the moment the field exists, not 380ms later.
+   *
+   * The old version waited for the slide-in to finish, on the theory that
+   * focusing mid-animation makes iOS raise the keyboard into a moving panel.
+   * The cost was worse than the cure: for a third of a second the sheet is open
+   * and typing goes nowhere, so you tap the box out of habit and the delayed
+   * focus then fires into a field you have already focused.
+   *
+   * A callback ref runs during the commit that mounts the input, which is as
+   * early as it can possibly happen. `preventScroll` stops Safari yanking the
+   * still-animating panel to put the field in view — that was the actual
+   * source of the jump the delay was working around.
+   */
+  const focusInput = useCallback((node: HTMLInputElement | null) => {
+    inputRef.current = node;
+    node?.focus({ preventScroll: true });
+  }, []);
 
   const busy = isFetching || pending;
   const upcoming = data?.upcoming ?? [];
@@ -89,12 +99,13 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
               <Search className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
             )}
             <input
-              ref={inputRef}
+              ref={focusInput}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               type="search"
               inputMode="search"
               enterKeyHint="search"
+              autoFocus
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
@@ -140,7 +151,7 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
             <div className="px-1 pt-6 text-center">
               <p className="text-sm text-foreground">No events found</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Nothing matching “{query.trim()}” in the last or next two months.
+                Nothing matching “{query.trim()}” in the last four months or the next one.
               </p>
             </div>
           )}
@@ -153,7 +164,7 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
               "this may be incomplete" teaches people to ignore it. */}
           {data?.truncated && (upcoming.length > 0 || past.length > 0) && (
             <p className="px-1 pb-2 text-center text-[0.6875rem] text-muted-foreground/60">
-              Searching the next month and the last two.
+              Searching the next month and the last four.
             </p>
           )}
         </div>

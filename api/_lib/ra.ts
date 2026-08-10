@@ -309,15 +309,17 @@ export function isValidDate(value: string): boolean {
  * Asymmetric, because the two directions answer different questions. Ahead, the
  * question is "is X playing soon" — a month is as far as anyone plans a night
  * out, and RA itself thins out beyond it. Behind, it is "when were they last
- * on", and that reaches further back before it stops being interesting: two
- * months covers a residency's rhythm and a touring artist's last pass through.
+ * on", and that keeps being interesting far longer: four months covers a
+ * quarterly residency, a season of a party, and a touring artist's last pass
+ * through, none of which fit in two.
+ *
+ * Widening the past is cheap in a way widening the future is not, because the
+ * past does not change — once the index holds a day it never needs that day
+ * again, so four months back costs a one-time backfill rather than ongoing
+ * requests.
  */
 export const SEARCH_AHEAD_DAYS = 30;
-export const SEARCH_BEHIND_DAYS = 60;
-
-/** Kept for callers that only care how wide the whole window is. */
-export const SEARCH_WINDOW_DAYS = SEARCH_BEHIND_DAYS;
-
+export const SEARCH_BEHIND_DAYS = 120;
 
 /** Requests per direction. Each is one call to RA; the edge cache absorbs repeats. */
 const SEARCH_PAGES = 3;
@@ -354,7 +356,8 @@ const PAST_DAYS_EXACT = 4;
 const PAST_SAMPLED: readonly (readonly [number, number])[] = [
   [14, PAST_DAYS_EXACT],
   [40, 14],
-  [SEARCH_BEHIND_DAYS, 40],
+  [80, 40],
+  [SEARCH_BEHIND_DAYS, 80],
 ];
 
 /** Most results anyone scrolls; also bounds the response size. */
