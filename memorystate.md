@@ -1537,6 +1537,63 @@ which is what keeps the three options meaningful relative to each other. Borders
 stayed at 1px: sub-pixel borders render as a hairline on retina and get dropped
 or rounded up at 1x, so "thinner" would mean "inconsistent".
 
+### 3.x · Filters that filter something
+
+The first three chips shipped **RA Pick**, **Free** and **Before 12**, and two
+of them were dead weight in opposite directions.
+
+**Free** was a text match over the title, because RA's listing payload carries
+no price at all — no `cost`, no tier. It read `0` on most nights, and on the
+nights it read anything it could not be trusted. **Before 12** was the mirror
+image: almost every listing starts before midnight, so it matched everything
+and filtered nothing — a chip reading `21` beside a count of `21`.
+
+Replaced with crowd-size tiers over `attending`, which is real data already in
+the payload: **Busy** is the top third of the night, **Low-key** the bottom
+third, and the middle third belongs to neither. The question people actually
+arrive with is *is this the big one tonight, or the one nobody has found yet*.
+
+**Relative to the night, never absolute.** A Tuesday's biggest room draws fewer
+people than a Saturday's quietest, so any fixed head count makes one chip
+useless on half the days of the week — the same failure as the two it replaced.
+Tiers are computed over the whole day's listings rather than over whatever is
+currently filtered, so turning Busy on and off cannot redefine what busy means.
+
+Genre chips were considered and rejected: RA's payload has no genre field, so
+they would need either a second request per event or a keyword guess over
+titles — the Free chip's mistake again. Venue and promoter are long tails, not
+three-chip axes.
+
+### 3.x · The date rail
+
+Eight fixed chips became a scrollable rail of sixty, running 14 days back and
+45 forward.
+
+The old strip shifted its own window when the calendar jumped outside it, which
+meant the strip you scrolled back to was never the strip you left. A long rail
+has no window to shift, so position is just position, and the past is reachable
+by dragging rather than by knowing the calendar exists. The selected chip is
+auto-centred on change, or picking a date three weeks out silently highlights
+something nobody can see.
+
+**"Tonight" and "Tmrw" are gone** — dates only. The relative labels made two
+chips read differently from the other six, and on a rail you drag, a label that
+means "wherever you are now" is worse than a date. `night.ts` still governs
+*which* day is current, it just no longer says so in words.
+
+**Swipe-to-change-day is gone too.** It competed with scrolling the listings
+and with dragging the rail, and losing a day under your thumb mid-scroll is a
+worse failure than an extra tap. `useSwipe` was deleted with it.
+
+### 3.x · Four months back
+
+`SEARCH_BEHIND_DAYS` 60 → 120, ahead unchanged at 30. Widening the past is
+cheap in a way widening the future is not: the past does not change, so once
+the index holds a day it never needs that day again — four months back costs a
+one-time backfill rather than ongoing requests. `PAST_SAMPLED` gains a fourth
+range so the cold-index fallback still reaches the new edge instead of quietly
+stopping at 80 days.
+
 ## 4 · Map of the code
 
 ```

@@ -86,7 +86,7 @@ export interface ArtistLink {
 }
 
 /** Links shown under the bio. RA is excluded — it *is* the bio. */
-export const MAX_LINKS = 5;
+const MAX_LINKS = 5;
 
 export interface ArtistLinks {
   id: string;

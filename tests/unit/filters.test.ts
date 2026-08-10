@@ -1,15 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {
-  applyFilters,
-  filterCounts,
-  isFree,
-  startsBeforeMidnight,
-} from "../../src/lib/filters";
+import { applyFilters, filterCounts } from "../../src/lib/filters";
 import type { Event } from "../../src/types/event";
 
-const ev = (over: Partial<Event> = {}): Event => ({
-  id: "e1",
-  title: "Untitled Night",
+const ev = (id: string, attending: number, isPick = false): Event => ({
+  id,
+  title: `Event ${id}`,
   date: "2026-08-09T00:00:00.000",
   startTime: "2026-08-09T22:00:00.000",
   endTime: "2026-08-10T04:00:00.000",
@@ -17,92 +12,90 @@ const ev = (over: Partial<Event> = {}): Event => ({
   imageUrl: null,
   venue: { name: "Nowadays", area: "New York" },
   artists: [],
-  attending: 0,
-  isPick: false,
+  attending,
+  isPick,
   pickBlurb: null,
-  ...over,
 });
 
-describe("isFree", () => {
-  it("accepts the phrasings that actually quote a price", () => {
-    for (const title of [
-      "Warehouse — Free Entry",
-      "Rooftop / free admission",
-      "Basement (No Cover)",
-      "Loft · FREE",
-      "Backyard — $0",
-      "Sunset Sessions: free before 10pm",
-      "Block Party free w/ RSVP",
-    ]) {
-      expect(isFree(ev({ title })), title).toBe(true);
-    }
-  });
-
-  it("does not read a party's name as a price", () => {
-    // The whole reason the naive /\bfree\b/ was rejected: these are titles, not
-    // door policies, and a wrong "Free" chip gets someone turned away.
-    for (const title of [
-      "Free Your Mind",
-      "Freedom Party",
-      "Sugar Free",
-      "Free Jazz Ensemble",
-      "Freeform w/ Objekt",
-    ]) {
-      expect(isFree(ev({ title })), title).toBe(false);
-    }
-  });
-
-  it("reads the RA Pick blurb too", () => {
-    expect(isFree(ev({ pickBlurb: "A rare free entry from the crew." }))).toBe(true);
-  });
-});
-
-describe("startsBeforeMidnight", () => {
-  it("counts an evening start", () => {
-    expect(startsBeforeMidnight(ev({ startTime: "2026-08-09T22:00:00.000" }))).toBe(true);
-    expect(startsBeforeMidnight(ev({ startTime: "2026-08-09T23:59:00.000" }))).toBe(true);
-  });
-
-  it("rejects a start that has already rolled past midnight", () => {
-    // Filed under the 9th, starts at 2am on the 10th — the case the hour alone
-    // cannot distinguish, because every hour is "before 24".
-    expect(startsBeforeMidnight(ev({ startTime: "2026-08-10T02:00:00.000" }))).toBe(false);
-    expect(startsBeforeMidnight(ev({ startTime: "2026-08-09T03:00:00.000" }))).toBe(false);
-  });
-
-  it("falls back to the listing date when there is no start time", () => {
-    expect(startsBeforeMidnight(ev({ startTime: "" }))).toBe(false);
-  });
-});
+/** Nine events, head counts 900 down to 100 — three clean thirds. */
+const night = [900, 800, 700, 600, 500, 400, 300, 200, 100].map((n, i) =>
+  ev(String(i), n, i === 4),
+);
 
 describe("applyFilters", () => {
-  const events = [
-    ev({ id: "pick-early", isPick: true }),
-    ev({ id: "free-late", title: "Loft — Free Entry", startTime: "2026-08-10T01:00:00.000" }),
-    ev({ id: "plain" }),
-  ];
-
   it("returns everything when nothing is selected", () => {
-    expect(applyFilters(events, [])).toHaveLength(3);
+    expect(applyFilters(night, [])).toHaveLength(9);
+  });
+
+  it("takes the busiest third", () => {
+    expect(applyFilters(night, ["busy"]).map((e) => e.attending)).toEqual([900, 800, 700]);
+  });
+
+  it("and the quietest third", () => {
+    expect(applyFilters(night, ["lowkey"]).map((e) => e.attending)).toEqual([300, 200, 100]);
+  });
+
+  it("leaves the middle third to neither", () => {
+    const tiered = [...applyFilters(night, ["busy"]), ...applyFilters(night, ["lowkey"])];
+    expect(tiered.map((e) => e.attending)).not.toContain(500);
   });
 
   it("narrows rather than widens when several are selected", () => {
-    expect(applyFilters(events, ["free"]).map((e) => e.id)).toEqual(["free-late"]);
-    expect(applyFilters(events, ["free", "early"])).toHaveLength(0);
+    // The one RA Pick sits at 500, in the middle third — so Pick + Busy is
+    // empty, which is the honest answer rather than a union of the two.
+    expect(applyFilters(night, ["pick"])).toHaveLength(1);
+    expect(applyFilters(night, ["pick", "busy"])).toHaveLength(0);
+  });
+});
+
+describe("tiers are relative to the night, not absolute", () => {
+  // The whole reason a fixed head count was rejected: a Tuesday's biggest room
+  // draws fewer people than a Saturday's quietest, and either chip would be
+  // dead on half the days of the week.
+  const tuesday = [30, 24, 18, 12, 6, 3].map((n, i) => ev(String(i), n));
+
+  it("still finds a busiest third on a quiet night", () => {
+    expect(applyFilters(tuesday, ["busy"]).map((e) => e.attending)).toEqual([30, 24]);
+  });
+
+  it("and a quietest third", () => {
+    expect(applyFilters(tuesday, ["lowkey"]).map((e) => e.attending)).toEqual([6, 3]);
+  });
+});
+
+describe("degenerate nights", () => {
+  it("leaves both crowd chips empty when nothing has a head count", () => {
+    const unknown = [ev("a", 0), ev("b", 0), ev("c", 0, true)];
+    expect(applyFilters(unknown, ["busy"])).toHaveLength(0);
+    expect(applyFilters(unknown, ["lowkey"])).toHaveLength(0);
+    // The editorial signal still works without any numbers.
+    expect(applyFilters(unknown, ["pick"])).toHaveLength(1);
+  });
+
+  it("does not call a lone event both busy and low-key", () => {
+    const single = [ev("a", 40)];
+    const both = [
+      ...applyFilters(single, ["busy"]),
+      ...applyFilters(single, ["lowkey"]),
+    ];
+    // One event is a third of itself either way; what must not happen is the
+    // two chips disagreeing about it while both claiming it.
+    expect(both.length).toBeGreaterThan(0);
+    expect(applyFilters(single, ["busy", "lowkey"]).length).toBeLessThanOrEqual(1);
+  });
+
+  it("ignores events with no head count when ranking", () => {
+    const mixed = [ev("a", 900), ev("b", 0), ev("c", 100)];
+    expect(applyFilters(mixed, ["lowkey"]).map((e) => e.id)).toEqual(["c"]);
   });
 });
 
 describe("filterCounts", () => {
-  const events = [
-    ev({ id: "a", isPick: true, title: "Warehouse — Free Entry" }),
-    ev({ id: "b", isPick: true, startTime: "2026-08-10T02:00:00.000" }),
-    ev({ id: "c" }),
-  ];
-
   it("counts each chip against the filters already on", () => {
-    // With "pick" active, "early" must report 1 (of the two picks), not 2 (of
-    // the whole day) — otherwise a chip promises more than tapping it delivers.
-    expect(filterCounts(events, ["pick"])).toEqual({ pick: 2, free: 1, early: 1 });
-    expect(filterCounts(events, [])).toEqual({ pick: 2, free: 1, early: 2 });
+    // With Pick active, Busy must report what Pick+Busy leaves — 0 — not what
+    // Busy alone would leave. Otherwise a chip promises more than tapping it
+    // delivers.
+    expect(filterCounts(night, ["pick"])).toEqual({ pick: 1, busy: 0, lowkey: 0 });
+    expect(filterCounts(night, [])).toEqual({ pick: 1, busy: 3, lowkey: 3 });
   });
 });

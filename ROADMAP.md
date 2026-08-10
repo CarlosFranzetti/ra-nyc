@@ -10,14 +10,25 @@ Ordered by what actually costs a user something today.
 
 ### Anchor dates to New York time — P1
 
-`HomePage` seeds from `new Date()`, the visitor's clock. Someone in London
-opening it at 01:00 sees NYC's tomorrow labelled "today" — the app is silently
-wrong for anyone outside the eastern US, and there is no hint that it is.
+**Half done.** The rollover question is answered: `src/lib/night.ts` puts the
+boundary at 3:30am, so a 2am set belongs to the night it started on and the
+strip and the listings agree about it.
 
-Two decisions, not one. First, anchor "today" to `America/New_York`. Second,
-decide when the night rolls over: a 2 a.m. set belongs to the previous evening
-in how people talk about it, but not in how the date strip counts. Pick one and
-make the strip and the listings agree.
+The timezone half is still open and is the part that is actually *wrong* rather
+than merely arguable. `currentNight()` reads the visitor's clock, so someone in
+London opening the app at 01:00 gets NYC's tomorrow — and at 08:00 London,
+which is 03:00 in New York, they get the wrong night entirely. The app is
+silently incorrect for anyone outside the eastern US and gives no hint of it.
+
+The fix is to evaluate the rollover in `America/New_York` rather than in local
+time — `Intl.DateTimeFormat` with a `timeZone` option, not a fixed offset,
+because the offset changes twice a year and hardcoding −5 breaks for eight
+months. Everything downstream already routes through `currentNight()`, so this
+is one function.
+
+Worth deciding at the same time: whether a visitor abroad should be *told*
+they are seeing New York time, or whether that is noise for a listings app
+whose name says NYC.
 
 ### Error boundary — P1
 
@@ -49,6 +60,31 @@ the first wrong artist match worth fixing by hand.
 the only way to invalidate an artist row is to delete it. Four migrations were
 written believing otherwise. Either honour `resolved_at` as a TTL in
 `readCached`, or drop the column so nobody writes another migration against it.
+
+### Listings beyond Resident Advisor — P3, maybe
+
+RA is one promoter's view of the city and misses whole scenes — anything
+ticketed elsewhere, and most of what never gets listed at all. Candidates, in
+rough order of how tractable each looks:
+
+| Source | Shape | Notes |
+| --- | --- | --- |
+| **Dice** | Has a public API surface behind the web app | Closest to RA's model; strong NYC electronic coverage |
+| **Shotgun** | Web app with a JSON backend | Good on the underground end |
+| **Posh** | Web app with a JSON backend | Heavy on the party/loft end RA ignores |
+| **Eventbrite** | Documented public API | Widest net, lowest signal-to-noise — needs hard category filters |
+| **Instagram** | No usable API for this | Realistically out of reach; login-walled and hostile to scraping, and the data is in flyer JPEGs rather than in text |
+
+All of these are *maybes*, and the reason to be cautious is not technical. Two
+sources means two ids for the same party, and a de-duplicated listing needs a
+match on venue + night + lineup that is at least as careful as the DJ matcher —
+which took four rounds to get right on names alone. The failure mode is the
+same night appearing twice with different head counts, which is worse than not
+having the second source.
+
+Sequence if it happens: one source at a time, behind the existing
+`event_cache` shape, with de-duplication proved on a week of real data before
+the second one is added.
 
 ### Smaller things — P3
 

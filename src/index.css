@@ -375,6 +375,18 @@ html {
   }
 }
 
+/* A rail you drag should not also carry a scrollbar. The date strip is the
+   only place this applies: everything else that scrolls is a page, where the
+   bar is orientation rather than clutter. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 4px;
