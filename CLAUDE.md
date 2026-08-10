@@ -35,8 +35,12 @@ Two exceptions, both narrow:
   the count, because the failure mode is not "a bug ships" but "money or a
   secret goes somewhere it should not".
 
-Last review: none since the cadence rule was set. Count at the time of writing:
-**55**, so the next review lands at **60**.
+Last review: **landing 60**, on the theme-ladder / card-rhythm change. It found
+three real defects — a display face that never reached the settings preview
+because the rule was a descendant selector and the preview puts both classes on
+one element; a `.text-glow` left at the old radii while every box-shadow around
+it shrank; and a font weight fetched that nothing can set. All three fixed
+before merge. Next review lands at **65**.
 
 ## Tests
 
