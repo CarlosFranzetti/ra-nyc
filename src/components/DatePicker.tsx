@@ -33,15 +33,29 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
     addDays(start, i),
   );
 
-  // Keep the selected chip on screen when the date changes from somewhere else
-  // — the calendar, a search result. Without this, picking a date three weeks
-  // out silently highlights a chip nobody can see.
+  /**
+   * Park the selected day in the *second* slot, so the night before it stays
+   * visible on its left and everything ahead fills the rest of the rail.
+   *
+   * Centring was the first attempt and it wasted half the strip: a listings app
+   * is read forwards, and putting the current night in the middle means half of
+   * what you can see is already over. One day of history is the amount anyone
+   * actually wants — "what did I miss last night" — and the rest of the width
+   * goes to nights you can still get to.
+   */
   useEffect(() => {
     const rail = railRef.current;
     const chip = rail?.querySelector<HTMLElement>("[data-selected='true']");
     if (!rail || !chip) return;
-    const target = chip.offsetLeft - rail.clientWidth / 2 + chip.clientWidth / 2;
-    rail.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+    const first = (chip.previousElementSibling as HTMLElement | null) ?? chip;
+
+    // `scrollIntoView`, not arithmetic on `offsetLeft` — that is measured from
+    // the nearest *positioned* ancestor rather than from the scroll container,
+    // so it reads from the wrong origin and lands the rail a few pixels past
+    // the chip, shaving its left edge. The browser also honours the rail's
+    // `scroll-pl-2`, which is what leaves a gutter instead of pinning the chip
+    // flush to the screen edge.
+    first.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
   }, [selectedDate]);
 
   // Warm the day before it's tapped. On touch, `touchstart` fires well before
@@ -56,7 +70,7 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
       // `snap-x` so a flick settles on a chip rather than mid-gap, and
       // `overscroll-x-contain` so dragging past the end does not hand the
       // gesture to Safari's back-swipe.
-      className="flex gap-1.5 overflow-x-auto overscroll-x-contain scroll-smooth snap-x px-2 pb-1 no-scrollbar"
+      className="flex gap-1.5 overflow-x-auto overscroll-x-contain scroll-smooth snap-x scroll-pl-2 px-2 pb-1 no-scrollbar"
     >
       {dates.map((date) => {
         const isSelected = isSameDay(date, selectedDate);
@@ -73,7 +87,11 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
             aria-pressed={isSelected}
             aria-label={format(date, "EEEE d MMMM")}
             className={cn(
-              "flex w-[3.25rem] flex-shrink-0 snap-start flex-col items-center rounded-md border py-1.5 transition-all duration-200 active:scale-95",
+              // 2.28rem is 3.25 less thirty percent. Still rem, so it tracks
+              // the text-size preference — the chips get narrower, not
+              // permanently 36px regardless of how big the type inside them is.
+              // Type sizes are untouched; only the box around them moved.
+              "flex w-[2.28rem] flex-shrink-0 snap-start flex-col items-center rounded-md border py-1.5 transition-all duration-200 active:scale-95",
               isSelected
                 // Filled, ringed and slightly raised. On a rail where every
                 // chip looks alike, one of those three alone reads as a hover
