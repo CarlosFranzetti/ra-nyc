@@ -1,4 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" fill="#000"/>
-  <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="12" fill="#fff">RA</text>
+<!-- The mark: the same white block and black RA the header wears, so the tab,
+     the home screen and the app itself are one thing. Kept as text rather than
+     outlined paths because it is Helvetica/Arial bold — present everywhere this
+     renders — and an outlined version could not be edited without a font tool. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="RA">
+  <rect width="64" height="64" rx="13" fill="#08090A"/>
+  <rect x="7" y="17" width="50" height="30" rx="7" fill="#F2F4F5"/>
+  <text x="32" y="33.5" font-family="Helvetica, Arial, sans-serif" font-weight="700"
+        font-size="21" letter-spacing="-0.4" fill="#08090A"
+        text-anchor="middle" dominant-baseline="central">RA</text>
 </svg>
