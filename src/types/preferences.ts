@@ -1,6 +1,6 @@
 export const COLOR_THEMES = ["neon", "vapor", "matrix", "sunset", "mono"] as const;
 export const DENSITIES = ["tight", "default", "airy"] as const;
-export const TYPOGRAPHIES = ["system", "slab", "legible"] as const;
+export const TYPOGRAPHIES = ["system", "legible", "condensed"] as const;
 
 /**
  * Six steps, not three, and the old default is now step 0 — the smallest.
@@ -30,13 +30,16 @@ export interface ThemeSettings {
 /**
  * Swatch colours for the settings UI, mirroring each theme's `--primary`.
  *
+ * Ordered by background lightness — Vapor 4.5% down to Mono 2% — so the row
+ * itself reads as the ladder it is rather than as five unrelated dots.
+ *
  * Hand-copied, so they drift if a theme's primary changes in `index.css` and
  * this does not — the swatch then advertises a colour the app never shows.
  */
 export const THEME_OPTIONS: { value: ColorTheme; label: string; color: string }[] = [
-  { value: "neon", label: "Neon", color: "hsl(186 92% 52%)" },
   { value: "vapor", label: "Vapor", color: "hsl(320 88% 64%)" },
-  { value: "matrix", label: "Matrix", color: "hsl(142 76% 50%)" },
+  { value: "neon", label: "Neon", color: "hsl(186 92% 52%)" },
+  { value: "matrix", label: "Matrix", color: "hsl(142 69% 46%)" },
   { value: "sunset", label: "Sunset", color: "hsl(26 94% 58%)" },
   { value: "mono", label: "Mono", color: "hsl(0 0% 92%)" },
 ];
@@ -69,6 +72,6 @@ export const TYPOGRAPHY_OPTIONS: {
   className: string;
 }[] = [
   { value: "system", label: "System", desc: "Clean & native", className: "type-system" },
-  { value: "slab", label: "Slab", desc: "Typewriter-ish", className: "type-slab" },
   { value: "legible", label: "Legible", desc: "Open & distinct", className: "type-legible" },
+  { value: "condensed", label: "Condensed", desc: "Tall & narrow", className: "type-condensed type-headline" },
 ];

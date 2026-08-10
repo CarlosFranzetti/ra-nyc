@@ -18,11 +18,15 @@ interface FilterChipsProps {
  */
 export function FilterChips({ active, counts, onToggle }: FilterChipsProps) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {FILTER_KEYS.map((key) => {
+    // `flex-1` so the row owns the width and the `ml-auto` on the last chip has
+    // something to push against — without it the chips huddle at the left and
+    // RA Pick sits beside Busy rather than opposite it.
+    <div className="flex flex-1 flex-wrap items-center gap-1.5">
+      {FILTER_KEYS.map((key, i) => {
         const on = active.includes(key);
         const count = counts[key];
         const empty = count === 0 && !on;
+        const last = i === FILTER_KEYS.length - 1;
 
         return (
           <button
@@ -33,6 +37,7 @@ export function FilterChips({ active, counts, onToggle }: FilterChipsProps) {
             aria-pressed={on}
             className={cn(
               "flex-shrink-0 rounded-full border px-2 py-0.5 text-[0.6875rem] leading-tight",
+              last && "ml-auto",
               "transition-colors duration-150",
               on
                 ? "border-primary bg-primary/15 text-primary"

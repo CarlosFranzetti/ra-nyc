@@ -50,12 +50,27 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
           )}
         </div>
 
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-foreground leading-tight line-clamp-2 group-hover:text-primary transition-colors">
+        <div className="flex min-w-0 flex-1 flex-col justify-center">
+          {/* Two lines reserved, always: `min-h` as well as `line-clamp-2`.
+              Clamping alone caps a long title but lets a short one collapse to
+              one line, so a list mixing the two had cards of two heights and
+              the gaps between them looked arbitrary.
+
+              Sizing the *container* to the thumbnail was tried first and does
+              not work: `min-h-24` is density-scaled (96 × 0.86 ≈ 83px at
+              Default) while the text inside it is not, so a two-line title
+              overflows and the cards go uneven again — measured 98 vs 107. The
+              reserved line is the only thing that holds at every density.
+
+              2.5em is exactly two lines at `leading-tight` (1.25 × 2), in em so
+              it keeps matching the text when the text-size preference moves.
+              2.25em was the first guess and left 4px between one- and two-line
+              cards — close enough to read as a bug rather than as a choice. */}
+          <h3 className="type-headline min-h-[2.5em] text-sm font-semibold text-foreground leading-tight line-clamp-2 group-hover:text-primary transition-colors">
             {event.title}
           </h3>
 
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
             {/* Where it is, is the thing you scan for after what it is — so the
                 venue gets its own hue and weight rather than sitting in the
                 same muted grey as the time and the head count. */}
@@ -72,16 +87,20 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
             )}
           </div>
 
+          {/* A size down from the venue line, and closer to it. The lineup and
+              the head count are the two things you read last — they should sit
+              under the venue as a block rather than as two more full-size rows
+              competing with it. */}
           {event.artists.length > 0 && (
-            <p className="mt-1.5 text-xs text-muted-foreground line-clamp-1">
+            <p className="mt-1 text-[0.6875rem] text-muted-foreground line-clamp-1">
               {event.artists.slice(0, 3).map((a) => a.name).join(" · ")}
               {event.artists.length > 3 && ` +${event.artists.length - 3}`}
             </p>
           )}
 
           {event.attending > 0 && (
-            <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
-              <Users className="w-3 h-3" />
+            <div className="mt-0.5 flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
+              <Users className="h-2.5 w-2.5" />
               <span>{event.attending.toLocaleString()} going</span>
             </div>
           )}

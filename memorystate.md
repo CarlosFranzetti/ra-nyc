@@ -36,7 +36,7 @@ seconds on a phone on the subway?"
 | **Database** | Optional Neon: artist links + the search index. See [DATABASE.md](./DATABASE.md) |
 | **Env vars** | None required; `DATABASE_URL` and `DISCOGS_TOKEN` optional |
 | **Tests** | ✅ 139 Vitest units + 109 Playwright assertions (`npm run test:all`) |
-| **Preferences** | 5 themes · 3 densities · 3 type categories · 6 text sizes |
+| **Preferences** | 5 themes (lightest→darkest) · 3 densities · 3 type categories · 6 text sizes |
 | **Analytics** | ✅ Vercel Analytics, no cookies |
 | **Auth** | None, none planned |
 
@@ -1470,6 +1470,12 @@ uniform). **A sixth theme copies the ladder and changes only the hues.**
 
 ### 3.x · Three type categories, not three text faces
 
+> **Superseded.** Slab (Zilla) came out a round later; the set is now
+> System · Legible · Condensed — see *"Six faces, three slots"* further down.
+> What is still live here is *why* Anton failed, which is exactly why Oswald is
+> pinned at one weight.
+
+
 Every previous attempt at the third font slot failed identically. Bebas Neue was
 distinctive and unreadable; Space Grotesk readable and indistinguishable from
 system-ui; Bricolage Grotesque more characterful and still a grotesque; Atkinson
@@ -1593,6 +1599,75 @@ the index holds a day it never needs that day again — four months back costs a
 one-time backfill rather than ongoing requests. `PAST_SAMPLED` gains a fourth
 range so the cold-index fallback still reaches the new edge instead of quietly
 stopping at 80 days.
+
+### 3.x · Themes as a ladder, not a palette
+
+Every theme's background dropped, by a different amount each, so the set now
+runs lightest to darkest and the picker lists it in that order:
+
+| | Background | Was |
+| --- | --- | --- |
+| Vapor | 4.5% | 5% |
+| Neon | 4.25% | 5% |
+| Matrix | 3.75% | 5% |
+| Sunset | 3.5% | 5% |
+| Mono | 2% | 5% |
+
+Everything **above** the background stayed uniform and came down a flat 2%:
+card 8.8%, secondary 12.7%, muted 14.7%, input 16.7%, border 17.6%. That split
+is the point — the background is now the one structural variable, so the themes
+read as a range of darkness rather than as five unrelated greys, while a switch
+still cannot change how heavy the chrome feels.
+
+Matrix also lost its amber. At 48° the venue accent sat far enough from the
+142° primary to read as a *second theme* rather than a second voice; 84° lime is
+still unmistakably not the primary and still in the family. Its green came down
+to `142 69% 46%`, about nine percent off both saturation and lightness.
+
+Glow went from `0.38` to `0.3`, with the blur radii cut with it (10/20 → 7/14,
+15/30 → 11/22). Thinner, not dimmer — the complaint was thickness.
+
+### 3.x · Density, third attempt
+
+`tight 0.7 · default 0.86 · airy 0.974`.
+
+Airy was the complaint and 0.974 is eighteen percent below the 1.188 it was.
+That number **alone** would have put Airy level with the old Default and
+collapsed a three-option axis into two, so Default and Tight came down with it —
+the whole ladder shifted rather than one rung sliding into another. Tight moved
+furthest in relative terms because its own complaint was the gap between a
+card's edge and its contents.
+
+### 3.x · Cards the same height whatever the title does
+
+`EventCard`'s title is `min-h-[2.5em]` **and** `line-clamp-2`. Clamping alone
+caps a long title but lets a short one collapse to one line, so a list mixing
+the two had cards of two heights and the gaps between them looked arbitrary.
+
+2.5em is exactly two lines at `leading-tight` (1.25 × 2). The first attempt used
+2.25em and left a 4px difference — close enough to read as a bug rather than as
+a choice, and only visible by measuring six cards in a row. **em, not rem**, or
+it stops matching the text the moment the text-size preference moves.
+
+The lineup and head-count lines dropped to `0.6875rem` and moved up under the
+venue, so the bottom of a card reads as one block rather than three competing
+rows.
+
+### 3.x · Six faces, three slots, and what finally stuck
+
+`System · Legible · Condensed`.
+
+The pattern behind every failed attempt: Bebas Neue, Space Grotesk, Bricolage
+Grotesque, JetBrains Mono and Zilla Slab are all *text* faces of similar colour
+on the page, so beside system-ui the picker kept offering three shades of one
+idea. Anton broke that and broke readability with it — one weight, and that
+weight is a poster.
+
+Oswald is the same idea as Anton in a family that has weights, which is the
+whole reason it works where Anton did not: **pinned at 500**, and pinned
+regardless of text size. A condensed face gains apparent weight as it grows, so
+a heading that looks right at the smallest step reads as a slab of ink at the
+largest. Headings only; body stays system-ui.
 
 ## 4 · Map of the code
 

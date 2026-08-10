@@ -15,13 +15,19 @@ import type { Event } from "@/types/event";
  * question people actually arrive with: *is this the big one tonight, or the
  * one nobody has found yet?*
  */
-export const FILTER_KEYS = ["pick", "busy", "lowkey"] as const;
+/**
+ * Order is the reading order in the chip row: the two crowd-size filters sit
+ * together on the left because they are one axis with two ends, and RA Pick is
+ * pushed to the right because it is somebody else's opinion rather than a
+ * property of the night.
+ */
+export const FILTER_KEYS = ["lowkey", "busy", "pick"] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
 
 export const FILTER_LABELS: Record<FilterKey, string> = {
-  pick: "RA Pick",
-  busy: "Busy",
   lowkey: "Low-key",
+  busy: "Busy",
+  pick: "RA Pick",
 };
 
 /**

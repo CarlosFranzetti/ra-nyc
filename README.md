@@ -38,8 +38,8 @@ and no navigation to learn.
 Drag the date rail to move between nights, or jump to any date with the
 calendar. Tap an event for the full flyer, blurb and lineup.
 
-Three chips narrow the night without another request: **RA Pick**, **Busy** (the
-night's top third by head count) and **Low-key** (the bottom third). The tiers
+Three chips narrow the night without another request: **Low-key** (the night's
+quietest third by head count), **Busy** (the top third) and **RA Pick**. The tiers
 are relative to that night, because a Tuesday's biggest room draws fewer people
 than a Saturday's quietest.
 
@@ -70,10 +70,10 @@ residencies it mentions decide which of several same-named accounts to trust.
 When nothing corroborates, an empty set list is the answer — a confidently wrong
 one is worse.
 
-**Looks.** Five themes (Neon, Vapor, Matrix, Sunset, Mono), three typefaces, three
-densities and six text sizes. Every theme shares one structural ladder —
-background, card, border and muted-text lightness are identical — so switching
-theme changes hue and nothing else. Spacing tracks type size at partial strength,
+**Looks.** Five themes (Vapor, Neon, Matrix, Sunset, Mono — listed lightest to
+darkest), three typefaces, three densities and six text sizes. Card, border and
+muted-text lightness are identical across every theme, so the only things that
+change are hue and how dark the background goes. Spacing tracks type size at partial strength,
 so the ratio of ink to air stays roughly constant across every combination rather
 than only looking right at the defaults. Venue names carry their own hue per
 theme, so where a night is reads apart from when it is. The theme is picked at
