@@ -11,43 +11,52 @@
    the rules out of the build. Only Neon survived, because `:root` anchored it.
    Plain CSS is never purged.
    ───────────────────────────────────────────────────────────────────────────── */
-/* All five themes share one structure and differ only in hue.
-   ("A · Tuned", chosen over a single neutral charcoal and over a two-hue
-   duotone.) Every theme uses the same ladder: background at 5% lightness,
-   cards at 9%, secondary 13%, muted 15%, input 17%, borders 18%,
-   muted-foreground 58%, foreground ~95%, glow 0.38.
+/* Five themes, one structure, two variables.
 
-   That is the whole fix. What read as incoherent between themes was never the
-   colours — it was that Matrix sat at 3% lightness while Sunset sat at 5%, with
-   borders and muted text drifting by up to eight points as well, so switching
-   theme changed how heavy the app felt and not just what colour it was. Hue is
-   now the only variable, which is what makes four accents look like one family.
+   Everything above the background is shared and fixed: cards 8.8%, secondary
+   12.7%, muted 14.7%, input 16.7%, borders 17.6%, muted-foreground 58%,
+   foreground ~95%, glow 0.3. That uniformity is what stops a theme switch from
+   changing how *heavy* the app feels — the original set had Matrix at 3% and
+   Sunset at 5% with borders drifting eight points, and it read as five apps.
 
-   If you add a sixth theme, copy the ladder and change only the hues. */
+   The one thing that now varies besides hue is the **background**, deliberately,
+   because the themes are meant to be a ladder from lightest to darkest rather
+   than five variations of one grey:
+
+     Vapor   4.5%    lightest
+     Neon    4.25%
+     Matrix  3.75%
+     Sunset  3.5%
+     Mono    2%      almost black
+
+   The picker lists them in exactly that order.
+
+   If you add a sixth theme: pick a background from that ladder, copy every other
+   value verbatim, and change only the hues. */
 
 /* Neon Theme - Electric Cyan */
 :root, .theme-neon {
-  --background: 200 16% 5%;
+  --background: 200 16% 4.25%;
   --foreground: 190 14% 95%;
-  --card: 200 14% 9%;
+  --card: 200 14% 8.8%;
   --card-foreground: 190 14% 95%;
-  --popover: 200 14% 9%;
+  --popover: 200 14% 8.8%;
   --popover-foreground: 190 14% 95%;
   --primary: 186 92% 52%;
-  --primary-foreground: 200 16% 5%;
-  --secondary: 200 14% 13%;
+  --primary-foreground: 200 16% 4.25%;
+  --secondary: 200 14% 12.7%;
   --secondary-foreground: 190 14% 95%;
-  --muted: 200 14% 15%;
+  --muted: 200 14% 14.7%;
   --muted-foreground: 195 12% 58%;
-  --accent: 186 34% 13%;
+  --accent: 186 34% 12.7%;
   --accent-foreground: 186 92% 72%;
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 195 16% 18%;
-  --input: 200 14% 17%;
+  --border: 195 16% 17.6%;
+  --input: 200 14% 16.7%;
   --ring: 186 92% 52%;
   --glow-color: 186 92% 52%;
-  --glow-intensity: 0.38;
+  --glow-intensity: 0.3;
   /* Cyan primary, so the venue takes the other half of a neon sign. */
   --venue: 310 82% 70%;
   --radius: 0.5rem;
@@ -64,81 +73,84 @@
 
 /* Vapor Theme - Pink/Magenta Vaporwave */
 .theme-vapor {
-  --background: 278 16% 5%;
+  --background: 278 16% 4.5%;
   --foreground: 300 12% 95%;
-  --card: 278 14% 9%;
+  --card: 278 14% 8.8%;
   --card-foreground: 300 12% 95%;
-  --popover: 278 14% 9%;
+  --popover: 278 14% 8.8%;
   --popover-foreground: 300 12% 95%;
   --primary: 320 88% 64%;
-  --primary-foreground: 278 16% 5%;
-  --secondary: 278 14% 13%;
+  --primary-foreground: 278 16% 4.5%;
+  --secondary: 278 14% 12.7%;
   --secondary-foreground: 300 12% 95%;
-  --muted: 278 14% 15%;
+  --muted: 278 14% 14.7%;
   --muted-foreground: 305 12% 58%;
-  --accent: 320 34% 13%;
+  --accent: 320 34% 12.7%;
   --accent-foreground: 320 88% 74%;
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 305 16% 18%;
-  --input: 278 14% 17%;
+  --border: 305 16% 17.6%;
+  --input: 278 14% 16.7%;
   --ring: 320 88% 64%;
   --glow-color: 320 88% 64%;
-  --glow-intensity: 0.38;
+  --glow-intensity: 0.3;
   /* The aqua half of the vaporwave pair. */
   --venue: 188 86% 66%;
 }
 
 /* Matrix Theme - Terminal Green */
 .theme-matrix {
-  --background: 140 14% 5%;
+  --background: 140 14% 3.75%;
   --foreground: 140 12% 94%;
-  --card: 140 12% 9%;
+  --card: 140 12% 8.8%;
   --card-foreground: 140 12% 94%;
-  --popover: 140 12% 9%;
+  --popover: 140 12% 8.8%;
   --popover-foreground: 140 12% 94%;
-  --primary: 142 76% 50%;
-  --primary-foreground: 140 14% 5%;
-  --secondary: 140 12% 13%;
+  --primary: 142 69% 46%;
+  --primary-foreground: 140 14% 3.75%;
+  --secondary: 140 12% 12.7%;
   --secondary-foreground: 140 12% 94%;
-  --muted: 140 12% 15%;
+  --muted: 140 12% 14.7%;
   --muted-foreground: 140 10% 58%;
-  --accent: 142 34% 13%;
-  --accent-foreground: 142 76% 72%;
+  --accent: 142 34% 12.7%;
+  --accent-foreground: 142 69% 70%;
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 140 14% 18%;
-  --input: 140 12% 17%;
-  --ring: 142 76% 50%;
-  --glow-color: 142 76% 50%;
-  --glow-intensity: 0.38;
-  /* Amber: the other phosphor a terminal ever came in. */
-  --venue: 48 92% 60%;
+  --border: 140 14% 17.6%;
+  --input: 140 12% 16.7%;
+  --ring: 142 69% 46%;
+  --glow-color: 142 69% 46%;
+  --glow-intensity: 0.3;
+  /* Lime rather than the old amber. Amber is the other phosphor a terminal
+     came in, which is why it was here, but at 48° it sat far enough from the
+     142° primary to read as a second theme rather than a second voice. 84° is
+     still unmistakably not the primary and still in the same family. */
+  --venue: 84 68% 58%;
 }
 
 /* Sunset Theme - Orange Neon */
 .theme-sunset {
-  --background: 18 16% 5%;
+  --background: 18 16% 3.5%;
   --foreground: 30 16% 95%;
-  --card: 18 14% 9%;
+  --card: 18 14% 8.8%;
   --card-foreground: 30 16% 95%;
-  --popover: 18 14% 9%;
+  --popover: 18 14% 8.8%;
   --popover-foreground: 30 16% 95%;
   --primary: 26 94% 58%;
-  --primary-foreground: 18 16% 5%;
-  --secondary: 18 14% 13%;
+  --primary-foreground: 18 16% 3.5%;
+  --secondary: 18 14% 12.7%;
   --secondary-foreground: 30 16% 95%;
-  --muted: 18 14% 15%;
+  --muted: 18 14% 14.7%;
   --muted-foreground: 25 14% 58%;
-  --accent: 26 34% 13%;
+  --accent: 26 34% 12.7%;
   --accent-foreground: 26 94% 72%;
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 25 16% 18%;
-  --input: 18 14% 17%;
+  --border: 25 16% 17.6%;
+  --input: 18 14% 16.7%;
   --ring: 26 94% 58%;
   --glow-color: 26 94% 58%;
-  --glow-intensity: 0.38;
+  --glow-intensity: 0.3;
   /* The violet sky above the orange, and the one hue in this theme
      that is not a neighbour of its primary. */
   --venue: 286 78% 72%;
@@ -151,87 +163,96 @@
    inherited from :root rather than redefined precisely so it stays the single
    piece of signal that survives here. */
 .theme-mono {
-  --background: 0 0% 5%;
+  --background: 0 0% 2%;
   --foreground: 0 0% 96%;
-  --card: 0 0% 9%;
+  --card: 0 0% 8.8%;
   --card-foreground: 0 0% 96%;
-  --popover: 0 0% 9%;
+  --popover: 0 0% 8.8%;
   --popover-foreground: 0 0% 96%;
   --primary: 0 0% 92%;
-  --primary-foreground: 0 0% 5%;
-  --secondary: 0 0% 13%;
+  --primary-foreground: 0 0% 2%;
+  --secondary: 0 0% 12.7%;
   --secondary-foreground: 0 0% 96%;
-  --muted: 0 0% 15%;
+  --muted: 0 0% 14.7%;
   --muted-foreground: 0 0% 58%;
-  --accent: 0 0% 13%;
+  --accent: 0 0% 12.7%;
   --accent-foreground: 0 0% 92%;
   --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 18%;
-  --input: 0 0% 17%;
+  --border: 0 0% 17.6%;
+  --input: 0 0% 16.7%;
   --ring: 0 0% 92%;
   --glow-color: 0 0% 92%;
-  --glow-intensity: 0.38;
+  --glow-intensity: 0.3;
   /* Venue names keep their hierarchy through lightness rather than a
      second hue — the one job colour does everywhere else. */
   --venue: 0 0% 66%;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Typography variants.
+   Typography variants: a neutral sans, an open humanist, a condensed display.
 
-   Three categories rather than three text faces. Every previous set failed the
-   same way: JetBrains Mono, Atkinson Hyperlegible, Space Grotesk and Bricolage
-   Grotesque are all moderate, evenly-coloured faces, so beside system-ui the
-   picker offered three shades of one idea and the complaint was always "the
-   third one still looks like the first". A neutral sans, a compressed poster
-   face and a slab cannot be confused with each other at any size.
+   Six faces have been through these three slots. The pattern in every failure
+   was the same — Bebas Neue, Space Grotesk, Bricolage Grotesque, JetBrains Mono
+   and Zilla Slab are all *text* faces of similar colour on the page, so beside
+   system-ui the picker kept offering three shades of one idea. Anton broke that
+   and broke readability with it: one weight, and that weight is a poster.
+
+   These three differ in proportion, not just in shape, which is the thing the
+   eye actually notices at a glance.
    ───────────────────────────────────────────────────────────────────────────── */
 .type-system {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* Slab — typewriter lineage, without the typewriter's width.
-
-   The obvious pick for "typewriter" is Courier, and it is the wrong one: a
-   monospace face gives an i the same width as an m, so a listing set in it runs
-   about a third longer and two-line titles become three. Zilla Slab keeps the
-   blunt rectangular serifs that read as typewriter and drops the fixed pitch,
-   so it is narrower than the system sans rather than wider. */
-.type-slab {
-  font-family: 'Zilla Slab', Rockwell, 'Roboto Slab', Georgia, serif;
-}
-
 /* Legible — Atkinson Hyperlegible.
 
-   This slot has been through five faces. Bebas Neue was distinctive and
-   unreadable. Space Grotesk was readable and indistinguishable from system-ui.
-   Bricolage Grotesque was more characterful and still a grotesque. Anton went
-   the whole other way and was a poster face on a phone at 2am — and could not
-   be toned down, because it ships exactly one weight, so "a bit less bold" was
-   not a thing it could do.
-
-   Atkinson is the one that keeps working. The Braille Institute commissioned it
-   for low-vision readers, so its design goal is that letters cannot be mistaken
-   for each other — the tail on the l, the slab on the i, an unmistakable G, a
-   genuinely double-storey a. That also makes it look nothing like Helvetica at
-   a glance, which is the other half of what this slot is for. */
+   The Braille Institute commissioned it for low-vision readers, so its design
+   goal is that letters cannot be mistaken for each other: the tail on the l,
+   the slab on the i, an unmistakable G, a genuinely double-storey a. Those same
+   decisions make it look nothing like Helvetica at a glance. */
 .type-legible {
   font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
   letter-spacing: 0.005em;
 }
 
+/* Condensed — Oswald, on headings only.
+
+   Impact is what this slot is reaching for and Impact cannot be reached for
+   directly: it ships one weight, so "a bit less bold" is not a thing it can do,
+   which is exactly why Anton came out again after a single round. Oswald is the
+   same idea — tall, narrow, poster lineage — in a family with real weights.
+
+   Pinned at 500 rather than 600 or 700, and pinned regardless of the text-size
+   preference. A condensed face gains apparent weight as it grows, so a heading
+   that looks right at the smallest step reads as a slab of ink at the largest;
+   fixing the weight is what keeps the largest size usable. */
+.type-condensed {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.type-condensed h1,
+.type-condensed h2,
+.type-condensed h3,
+.type-condensed .type-headline,
+/* Compound, not just descendant: the settings preview puts `type-condensed`
+   and `type-headline` on the *same* span, and a descendant selector cannot
+   match an element against itself — so the picker's own "Condensed" label
+   rendered in system-ui, which is the one place it has to not. */
+.type-condensed.type-headline {
+  font-family: 'Oswald', 'Haettenschweiler', 'Arial Narrow', sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  line-height: 1.2;
+}
+
 /* 600, not 700. Semibold is enough to separate a title from the venue line
-   under it; at 700 both of these faces set headings dark enough that a list of
-   them reads as a stack of bars rather than as titles. */
-.type-slab h1,
-.type-slab h2,
-.type-slab h3,
-.type-slab .type-headline,
+   under it; at full bold a column of titles reads as a stack of bars. */
 .type-legible h1,
 .type-legible h2,
 .type-legible h3,
-.type-legible .type-headline {
+.type-legible .type-headline,
+.type-legible.type-headline {
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -309,25 +330,29 @@
    The steps themselves are geometric rather than the ad-hoc −8%/+12% they were,
    so a step down looks like the same size of change as a step up. */
 :root {
-  --density: 0.988;
+  --density: 0.86;
   --text-scale: 1;
   --space: calc(var(--density) * (1 + (var(--text-scale) - 1) * 0.6));
 }
 
-/* Every density is five percent tighter than it was. The ratios between the
-   three are untouched, so "Airy" is still exactly as much airier than
-   "Default" as it was — the whole ladder just moved down together, which is
-   what keeps the relationship between the three options meaningful. */
+/* The ladder came down again, and this time not by a uniform percentage.
+   "Airy" was the complaint — it is now 0.974, eighteen percent below the 1.188
+   it was. That number alone would have put it level with the old Default and
+   collapsed the axis into two options, so Default and Tight came down with it:
+   the whole ladder shifted rather than one rung sliding into another.
+
+   Tight moved furthest in relative terms, because its own complaint was the gap
+   between a card's edge and its contents. */
 .density-tight {
-  --density: 0.827;
+  --density: 0.7;
 }
 
 .density-default {
-  --density: 0.988;
+  --density: 0.86;
 }
 
 .density-airy {
-  --density: 1.188;
+  --density: 0.974;
 }
 
 /* Six steps, all upward, geometric at ~6% each so every tick feels like the
@@ -432,18 +457,18 @@ html {
 
 /* Glow effects */
 .glow-primary-sm {
-  box-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity)),
-              0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.4));
+  box-shadow: 0 0 7px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 14px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.4));
 }
 
 .glow-primary-hover:hover {
-  box-shadow: 0 0 15px hsl(var(--glow-color) / var(--glow-intensity)),
-              0 0 30px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+  box-shadow: 0 0 11px hsl(var(--glow-color) / var(--glow-intensity)),
+              0 0 22px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
 }
 
 .text-glow {
-  text-shadow: 0 0 10px hsl(var(--glow-color) / var(--glow-intensity)),
-               0 0 20px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
+  text-shadow: 0 0 7px hsl(var(--glow-color) / var(--glow-intensity)),
+               0 0 14px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.5));
 }
 
 /* Animation keyframes */

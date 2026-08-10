@@ -126,17 +126,22 @@ export default function HomePage() {
             the top of the screen reads as one block: who you are, then what
             you are looking at, then which day. Centred because it is a caption
             for the rail below it rather than a label on the left. */}
-        <div className="border-b border-border/40 py-1.5">
-          <p className="shell text-center text-xs text-muted-foreground">
-            {hasEvents && (
-              <>
-                {visibleEvents.length} event{visibleEvents.length !== 1 ? "s" : ""}
-                <span className="mx-1 opacity-40">·</span>
-              </>
-            )}
+        <div className="border-b border-border/40 py-2">
+          <p className="shell flex items-center justify-center gap-2.5 text-xs">
+            {/* The date leads, because it is what you are looking at; the count
+                answers a question you only ask once you know the night. A rule
+                between them rather than a middot — two facts, not a phrase. */}
             <span className="font-semibold text-foreground">
               {format(selectedDate, "EEE, MMM d")}
             </span>
+            {hasEvents && (
+              <>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <span className="text-muted-foreground">
+                  {visibleEvents.length} event{visibleEvents.length !== 1 ? "s" : ""}
+                </span>
+              </>
+            )}
           </p>
         </div>
 

@@ -50,17 +50,17 @@
     <link rel="dns-prefetch" href="https://player-widget.mixcloud.com" />
     <link rel="dns-prefetch" href="https://archive.org" />
 
-    <!-- Fonts for the Slab and Legible typography settings. Link tags rather
-         than a CSS @import, which would be render-blocking.
+    <!-- Fonts for the Legible and Condensed typography settings. Link tags
+         rather than a CSS @import, which would be render-blocking.
 
-         Atkinson ships 400 and 700 only, so headings set at 600 are synthesised
-         from 400 by the browser rather than downloaded — which is the intended
-         weight here and one fewer file either way. -->
+         Oswald is fetched at 500 and nothing else. Headings are pinned there
+         and no rule asks for another weight, so any extra is a file downloaded
+         for a style the app can never set. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Zilla+Slab:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Oswald:wght@500&display=swap"
       media="print"
       onload="this.media='all'"
     />

@@ -93,7 +93,7 @@ for (let attempt = 0; ; attempt += 1) {
 const browser = await chromium.launch({ executablePath: findChromium() });
 
 /** Loads the app at a viewport with preferences pre-seeded, and measures it. */
-async function measure({ width, height, density = "default", textSize = "0", typography = "slab" }) {
+async function measure({ width, height, density = "default", textSize = "0", typography = "legible" }) {
   const context = await browser.newContext({ viewport: { width, height } });
   const page = await context.newPage();
   await page.route("**/api/events*", (route) =>
@@ -182,20 +182,26 @@ check("desktop type is larger than phone type",
   `${phone.rootFontSize}px vs ${desktop.rootFontSize}px`);
 
 // ── typography preference actually applies
-check("the slab preference selects a distinct family",
-  phone.titleFont === "Zilla Slab", phone.titleFont);
+check("the legible preference selects a distinct family",
+  phone.titleFont === "Atkinson Hyperlegible", phone.titleFont);
 const systemType = await measure({ width: 390, height: 844, typography: "system" });
-check("and the system preference does not", systemType.titleFont !== "Zilla Slab",
+check("and the system preference does not", systemType.titleFont !== "Atkinson Hyperlegible",
   systemType.titleFont);
 
-const legibleType = await measure({ width: 390, height: 844, typography: "legible" });
-check("the legible preference selects a third, different family",
-  legibleType.titleFont === "Atkinson Hyperlegible", legibleType.titleFont);
-// The reason this slot changed faces again: 700 set a column of titles dark
-// enough to read as bars rather than as text.
+// Condensed is a heading-only pairing, so the family has to be asserted on a
+// heading and the body checked separately — that split is the whole option.
+const condensed = await measure({ width: 390, height: 844, typography: "condensed" });
+check("the condensed preference reaches headings", condensed.titleFont === "Oswald",
+  condensed.titleFont);
+check("and leaves body text to the system sans",
+  condensed.bodyFont !== "Oswald", condensed.bodyFont);
+
+// Anton came out of this slot because it ships one weight and that weight is a
+// poster. Oswald is pinned below its own bold so the largest text size stays
+// readable rather than turning a column of titles into bars.
 check("neither display face sets headings at full bold",
-  phone.titleWeight === "600" && legibleType.titleWeight === "600",
-  `slab ${phone.titleWeight}, legible ${legibleType.titleWeight}`);
+  phone.titleWeight === "600" && condensed.titleWeight === "500",
+  `legible ${phone.titleWeight}, condensed ${condensed.titleWeight}`);
 
 // ── the whole point of coupling spacing to text size
 // The ladder is six rungs, all upward, so the bottom of it *is* the default —
