@@ -32,9 +32,7 @@ no connection strings, no keys.
 
 **Send me the JSON and I'll tell you exactly what's left.**
 
-### 1.2 Run the two migrations — phone, via Neon's console
-
-Both are outstanding and everything database-backed is dark until they run.
+### 1.2 Set up the database — one paste, phone
 
 **If §1.1 said `"configured": false`, there is no database yet — do this first.**
 Vercel → **ra-nyc** → **Storage** → *Create* / *Connect Database* → **Neon**
@@ -43,63 +41,41 @@ Vercel → **ra-nyc** → **Storage** → *Create* / *Connect Database* → **Ne
 rather than signing up at Neon separately and pasting a connection string on a
 phone keyboard. Then come back here.
 
-On a brand-new database `artist_links` does not exist either, so run
-`migrations/0001` through `0005` in order first — `0001` creates the table and
-`0002`/`0003` add columns the resolver reads. (`0004`–`0006` are only `update`
-and `delete` statements, so on an empty table they are no-ops you can skip; they
-cost nothing to run anyway.) `0006` failing with *relation does not exist* is
-harmless and means exactly that.
+**Then run [`migrations/0000_bootstrap.sql`](./migrations/0000_bootstrap.sql).**
+It is every migration's end state in one block. Vercel → **Storage** → your
+database → **Query** (this saves a Neon login; [console.neon.tech](https://console.neon.tech)
+→ *SQL Editor* works too). Paste the whole file, Run.
 
-**From a phone:** log in to [console.neon.tech](https://console.neon.tech),
-open the project, choose **SQL Editor**, paste and run. It is a normal web app
-and works fine in mobile Safari or Chrome. Vercel also exposes the same editor
-under Storage → your database → *Query*, which saves a login.
+Getting it onto the clipboard from a phone, in order of least friction:
 
-**`0006` — re-resolve every artist.** This is the one with immediate visible
-payoff. Migrations 0002–0005 each *believed* they were invalidating the cache
-and none of them did: they emptied every cached artist's set list and the
-resolver has been serving those empty rows as cache hits ever since. Deleting is
-the only invalidation this schema supports.
+1. **github.com** → `ra-nyc` → `migrations` → `0000_bootstrap.sql` → the **Raw**
+   button → long-press → *Select All* → *Copy*. Raw matters: the normal file
+   view is a table of line numbers, and copying it drags the numbers along.
+2. Or `raw.githubusercontent.com/CarlosFranzetti/ra-nyc/main/migrations/0000_bootstrap.sql`
+   straight into the address bar, which is the same page without the taps.
+
+Every statement in it is idempotent — `create table if not exists`, `add column
+if not exists`, `create index if not exists` — so running it twice does nothing
+the second time, and running it against an already-migrated database changes
+nothing at all. **One statement is not a no-op:**
 
 ```sql
 delete from artist_links where link_source <> 'manual';
 ```
 
-**`0007` — create the search index.** Without this the index is a table that
-does not exist, and search silently keeps its old ~3-day behaviour.
+That is migration `0006`, and deleting is the point. Migrations `0002`–`0005`
+each *believed* they were invalidating the cache and none of them did: they
+emptied every cached artist's set list and reset `resolved_at`, but nothing in
+the read path looks at `resolved_at`, so the resolver has been serving those
+empty rows as cache **hits** ever since. Deleting is the only invalidation this
+schema supports. Hand-corrected rows are left alone. On a new database it
+deletes nothing.
 
-```sql
-create table if not exists event_cache (
-  ra_event_id text primary key,
-  area_id     integer not null,
-  event_date  date not null,
-  title       text not null,
-  venue_name  text not null,
-  venue_area  text,
-  artists     jsonb not null default '[]'::jsonb,
-  url         text,
-  image_url   text,
-  attending   integer not null default 0,
-  is_pick     boolean not null default false,
-  pick_blurb  text,
-  start_time  text,
-  end_time    text,
-  search_key  text not null,
-  seen_at     timestamptz not null default now()
-);
-
-create index if not exists event_cache_window_idx
-  on event_cache (area_id, event_date desc);
-
-create index if not exists event_cache_search_idx
-  on event_cache (area_id, search_key);
-```
-
-Both are also in `migrations/`, if you'd rather run them with `psql` later:
+The numbered files are still there as the history of how the schema got here,
+and `psql` still works if you are ever at a laptop:
 
 ```bash
-psql "$DATABASE_URL" -f migrations/0006_stricter_matching.sql
-psql "$DATABASE_URL" -f migrations/0007_event_cache.sql
+psql "$DATABASE_URL" -f migrations/0000_bootstrap.sql
 ```
 
 ### 1.3 Set `CRON_SECRET` — phone, via Vercel
