@@ -4,12 +4,28 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm ci",
+  "_comment_functions": "Listed one by one rather than as an api/*.ts glob. Vercel rejects a pattern whose functions another pattern has already claimed — adding api/backfill.ts alongside api/*.ts failed the deploy outright with 'doesn't match any Serverless Functions'. Backfill needs 60s because it fills the search index 60 days at a time; everything else is a request a person is waiting on and should never take 15.",
   "functions": {
-    "api/*.ts": {
+    "api/artist.ts": {
       "maxDuration": 15
     },
     "api/backfill.ts": {
       "maxDuration": 60
+    },
+    "api/events.ts": {
+      "maxDuration": 15
+    },
+    "api/health.ts": {
+      "maxDuration": 15
+    },
+    "api/image.ts": {
+      "maxDuration": 15
+    },
+    "api/search.ts": {
+      "maxDuration": 15
+    },
+    "api/venue.ts": {
+      "maxDuration": 15
     }
   },
   "rewrites": [
