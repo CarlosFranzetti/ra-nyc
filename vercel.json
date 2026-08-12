@@ -7,6 +7,9 @@
   "functions": {
     "api/*.ts": {
       "maxDuration": 15
+    },
+    "api/backfill.ts": {
+      "maxDuration": 60
     }
   },
   "rewrites": [

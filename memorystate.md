@@ -1758,6 +1758,28 @@ separate browsing context this worker has no scope over. There is no way to make
 that traffic replayable without either heroics or a false claim, so the file
 says so.
 
+### 3.x · The backfill was the bottleneck, not the window
+
+Widening search to five months back is arithmetic; making those days *actually
+searchable* is the cron. It ran 14 days a night against a 181-day window, so a
+cold index took **thirteen nights** to become useful — and for all thirteen,
+search answers "nothing found" for anything older than a week, which is
+indistinguishable from a broken search.
+
+Now 60 days a run, `CONCURRENCY` 6, `TIME_BUDGET_MS` 50s under a `maxDuration`
+raised to 60s for this route alone. Three nights.
+
+The earlier comment argued against raising `maxDuration` because a background job
+can simply take another pass tomorrow. That is true and it was still the wrong
+call: "tomorrow" times thirteen is the entire problem, and this endpoint is
+bearer-gated and runs once a day, so a longer ceiling costs nothing anyone else
+shares.
+
+Its window also only ran backwards, `-150 … 0`. Future days do get indexed by
+anyone browsing them, but "somebody browsed it" is not coverage — a quiet
+Wednesday three weeks out is precisely the day nobody opens and search then
+cannot answer for.
+
 ## 4 · Map of the code
 
 ```

@@ -28,19 +28,36 @@ import { fetchRAEvents, NYC_AREA_ID, SEARCH_BEHIND_DAYS } from "./_lib/ra.js";
  * than one that stops working.
  */
 
-const DEFAULT_DAYS = 14;
-const MAX_DAYS = 60;
+/**
+ * Days per run.
+ *
+ * Was 14, which is fine arithmetic and a bad experience: the window is 181 days
+ * (150 back, 30 ahead), so a cold index took a fortnight of nightly runs to
+ * become useful, and for that fortnight search answers "nothing found" for
+ * anything older than a week. Filling it in three nights instead is the
+ * difference between a feature that works and one you have to be told to wait
+ * for.
+ *
+ * The real limit is the time budget below, not this number — a run stops when
+ * the clock says so and reports what it managed.
+ */
+const DEFAULT_DAYS = 60;
+const MAX_DAYS = 90;
 
 /** Concurrent RA requests. Deliberately gentle — this is a background job. */
-const CONCURRENCY = 4;
+const CONCURRENCY = 6;
 
 /**
- * Leaves headroom under the 15s `maxDuration` in vercel.json rather than being
- * killed mid-run. Deliberately not raised with a per-route override: an
- * overlapping `functions` glob is a deploy-time risk for a background job that
- * can simply take another pass tomorrow.
+ * Leaves headroom under the `maxDuration` in vercel.json rather than being
+ * killed mid-run.
+ *
+ * That duration went from 15s to 60s specifically for this job. The earlier
+ * note here argued against it on the grounds that a background job can simply
+ * take another pass tomorrow — true, but "tomorrow" times thirteen is how long
+ * a cold index took to become searchable, and the endpoint is bearer-gated and
+ * runs once a day, so the longer ceiling costs nothing anyone shares.
  */
-const TIME_BUDGET_MS = 11_000;
+const TIME_BUDGET_MS = 50_000;
 const UPSTREAM_TIMEOUT_MS = 8_000;
 
 export interface BackfillResponse {
@@ -117,7 +134,11 @@ export default async function handler(
     const gaps = await missingDays({
       areaId: NYC_AREA_ID,
       from: shift(-SEARCH_BEHIND_DAYS),
-      to: shift(0),
+      // Ahead as well as behind. Future days do get indexed by anyone browsing
+      // them, but "anyone browsed it" is not coverage — a quiet Wednesday three
+      // weeks out is exactly the day nobody opens and search then cannot answer
+      // for it.
+      to: shift(SEARCH_AHEAD_DAYS),
     });
 
     // `missingDays` returns newest first, so slicing takes the recent past.

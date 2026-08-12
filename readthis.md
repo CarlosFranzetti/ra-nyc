@@ -1,166 +1,134 @@
 # readthis.md
 
-Everything outstanding that needs a human, plus the last two exchanges kept
-verbatim for context.
+Everything outstanding that needs a human.
 
-**Short version: you can do all of it from your phone.** The only thing that
-genuinely wants a laptop is the backfill trigger, and even that has a phone
-route. Details in §1.
+**All of it is doable from a phone**, including the backfill trigger. §1 is the
+whole thing as a numbered checklist; start at the top and stop when `/api/health`
+says you are done.
 
 ---
 
-## 1 · What still needs doing
+## 1 · The whole thing, from a phone, in order
 
-### 1.1 Find out whether the database exists at all — 10 seconds, phone
+Six months of listings that work offline — five back, one ahead — needs three
+things switched on. All three are ordinary web pages. **Nothing here needs a
+laptop.** Total hands-on time is about ten minutes; the rest is the index
+filling itself overnight.
 
-Open this in any browser:
+---
 
-```
-https://ra-nyc.vercel.app/api/health
-```
+### Step 1 · Find out what is already done — 10 seconds
 
-It reports whether each dependency is configured, whether Neon is reachable, and
-which migrations have actually run. It never reports what anything is set *to* —
-no connection strings, no keys.
+Open **`ra-nyc.vercel.app/api/health`**.
 
-| What you see | What it means |
+Look at the `database` block and find your row:
+
+| What it says | What to do |
 | --- | --- |
-| `"configured": false` | No `DATABASE_URL`. **No database has ever been connected**, and nothing database-backed has ever worked — including artist caching, long before any of this session's work. |
-| `"configured": true, "reachable": false` | The URL is set but Neon refused. Usually a free-tier database suspended for inactivity; it wakes on the next query. |
-| `"tables": { "event_cache": false }` | Migration `0007` has not been applied. Search is still capped at ~3 days ahead. |
-| `"tables": { "artist_links": false }` | The artist cache table is missing too — meaning no migration has ever run. |
+| `"configured": false` | No database at all. **Start at Step 2.** |
+| `"configured": true`, `"event_cache": false` | Database exists, tables don't. **Skip to Step 3.** |
+| both `true` | Schema is done. **Skip to Step 4.** |
 
-**Send me the JSON and I'll tell you exactly what's left.**
+Send me the JSON if you'd rather not read it — it never contains a
+connection string or a key, only whether things are set.
 
-### 1.2 Set up the database — one paste, phone
+---
 
-**If §1.1 said `"configured": false`, there is no database yet — do this first.**
-Vercel → **ra-nyc** → **Storage** → *Create* / *Connect Database* → **Neon**
-(Serverless Postgres) → free plan → Connect. The integration sets
-`DATABASE_URL` for you and redeploys, which is the whole reason to go this way
-rather than signing up at Neon separately and pasting a connection string on a
-phone keyboard. Then come back here.
+### Step 2 · Create the database — only if Step 1 said `configured: false`
 
-**Then run [`migrations/0000_bootstrap.sql`](./migrations/0000_bootstrap.sql).**
-It is every migration's end state in one block. Vercel → **Storage** → your
-database → **Query** (this saves a Neon login; [console.neon.tech](https://console.neon.tech)
-→ *SQL Editor* works too). Paste the whole file, Run.
+1. **vercel.com** → sign in → project **ra-nyc**
+2. **Storage** tab → **Create Database** → **Neon** (Serverless Postgres)
+3. Free plan → **Connect**
 
-Getting it onto the clipboard from a phone, in order of least friction:
+Vercel sets `DATABASE_URL` and redeploys by itself. Do *not* sign up at Neon
+separately — you would end up typing a connection string on a phone keyboard.
 
-1. **github.com** → `ra-nyc` → `migrations` → `0000_bootstrap.sql` → the **Raw**
-   button → long-press → *Select All* → *Copy*. Raw matters: the normal file
-   view is a table of line numbers, and copying it drags the numbers along.
-2. Or `raw.githubusercontent.com/CarlosFranzetti/ra-nyc/main/migrations/0000_bootstrap.sql`
-   straight into the address bar, which is the same page without the taps.
+---
 
-Every statement in it is idempotent — `create table if not exists`, `add column
-if not exists`, `create index if not exists` — so running it twice does nothing
-the second time, and running it against an already-migrated database changes
-nothing at all. **One statement is not a no-op:**
+### Step 3 · Create the tables — one paste
 
-```sql
-delete from artist_links where link_source <> 'manual';
+**vercel.com → ra-nyc → Storage → your database → Query**
+
+Make sure the **Read-only** toggle is off. Then paste
+[`migrations/0000_bootstrap.sql`](./migrations/0000_bootstrap.sql) and hit
+**Run**. Phone-friendly link to copy from:
+
+```
+raw.githubusercontent.com/CarlosFranzetti/ra-nyc/main/migrations/0000_bootstrap.sql
 ```
 
-That is migration `0006`, and deleting is the point. Migrations `0002`–`0005`
-each *believed* they were invalidating the cache and none of them did: they
-emptied every cached artist's set list and reset `resolved_at`, but nothing in
-the read path looks at `resolved_at`, so the resolver has been serving those
-empty rows as cache **hits** ever since. Deleting is the only invalidation this
-schema supports. Hand-corrected rows are left alone. On a new database it
-deletes nothing.
+Use the **Raw** view if you go via github.com — the normal file view is a table
+with line numbers and copying it drags the numbers into your SQL.
 
-The numbered files are still there as the history of how the schema got here,
-and `psql` still works if you are ever at a laptop:
+**If it says `cannot insert multiple commands into a prepared statement`,** that
+box runs one statement per Run. Wrap the whole file in a `DO $$ begin … end $$;`
+block, or paste the statements one at a time. Every one of them is safe to
+re-run except the single `delete`, which is meant to remove rows.
 
-```bash
-psql "$DATABASE_URL" -f migrations/0000_bootstrap.sql
+Reload `/api/health` — both tables should now read `true`.
+
+---
+
+### Step 4 · Set `CRON_SECRET` — this is the one that fills the index
+
+Without it the nightly job **503s every morning** and the index never grows
+beyond the days you personally browsed. This is the step that makes the six
+months real.
+
+1. **vercel.com → ra-nyc → Settings → Environment Variables**
+2. **Key** `CRON_SECRET` · **Value** any long random string — ask your password
+   manager for 32 characters. Nobody ever types this again.
+3. Leave all three environments ticked → **Save**
+4. **Deployments → newest → ⋯ → Redeploy.** ← *Do not skip.* Changing an
+   environment variable does not redeploy on its own. This exact trap already
+   cost a round with `SOUNDCLOUD_CLIENT_ID`.
+
+---
+
+### Step 5 · Wait three mornings, then check
+
+The job runs at **09:00 UTC** (about 4–5am New York) and now covers **60 days
+per run**, so a 181-day window fills in **three nights**. It used to be 14 days
+a night — thirteen nights — which is why this was worth changing.
+
+Nothing visible happens when it works. The two ways to confirm:
+
+- **vercel.com → ra-nyc → Cron Jobs** — `/api/backfill` returns `200`, not `503`.
+- **`/api/health`** — `search.indexed` climbs toward `search.window` (181).
+
+Once `indexed` is near 181, search answers for the whole six months, and the
+service worker keeps that text readable with no signal at all.
+
+---
+
+### Step 6 · Optional — don't want to wait three nights?
+
+The job takes an `Authorization` header, which a browser address bar cannot
+send. From a phone, **iOS Shortcuts**:
+
+*New Shortcut → Get Contents of URL → Method `GET` → Headers: add
+`Authorization` = `Bearer <your CRON_SECRET>` → URL:*
+
+```
+https://ra-nyc.vercel.app/api/backfill?days=90
 ```
 
-### 1.3 Set `CRON_SECRET` — phone, via Vercel
+Run it three or four times, a minute apart. Watch the `remaining` field in the
+response come down to `0`.
 
-`/api/backfill` refuses to run without it, so the nightly cron 503s every
-morning at 09:00 UTC until this is set.
+---
 
-1. [vercel.com](https://vercel.com) → **ra-nyc** → Settings → Environment
-   Variables.
-2. **Key** `CRON_SECRET`, **Value** any long random string — it is a shared
-   secret, not a password anyone types, so length beats memorability. On iOS,
-   asking a password manager for a 32-character password is the easiest way to
-   get one on a phone.
-3. Leave all three environments ticked (Production, Preview, Development) and
-   save. You never need to see this value again — nothing displays it, and
-   `/api/health` deliberately reports only *whether* things are set.
-4. **Redeploy.** Changing an environment variable does *not* redeploy on its
-   own — this is the exact trap that cost a round with `SOUNDCLOUD_CLIENT_ID`.
-   Deployments → latest → ⋯ → Redeploy. Leave *Use existing Build Cache* on;
-   it only needs to pick up the new environment.
+### Also outstanding, unrelated to the index
 
-Nothing visible changes when this works. The check is that the cron stops
-failing: Vercel → ra-nyc → **Cron Jobs**, where `/api/backfill` should report a
-`200` rather than a `503` after the next 09:00 UTC run.
+**Delete the merged branches.** github.com → ra-nyc → **Branches** → *All
+branches* → bin icon. Everything named `claude/…` is merged. Then tick
+**Settings → General → Automatically delete head branches** so it stops
+happening.
 
-### 1.4 ~~Fill in the donate links~~ — done
-
-Both are live: `cash.app/$hypedrum` and `paypal.me/losfiesta`, at the bottom of
-Customize. They are plain links — the QR that briefly lived here was solving a
-problem nobody had, since you cannot scan a code with the camera behind it.
-
-To change a handle, edit [`src/lib/donate.ts`](./src/lib/donate.ts) — and the
-matching line in `tests/donate.e2e.mjs`, which deliberately keeps its own copy
-so a typo has to be made twice to ship.
-
-Removing an entry from the array hides that link; an empty array hides the row.
-
-### 1.5 Delete merged branches — phone, via GitHub
-
-All eleven are fully merged into `main` (verified with `git merge-base
---is-ancestor`, not by name), so nothing is lost by deleting them.
-
-**I cannot do this from a session.** Two routes, both blocked, both at the
-proxy rather than at permissions:
-
-- `git push origin --delete` → `HTTP 403` on `git-receive-pack`.
-- `DELETE /repos/.../git/refs/heads/...` → `403 {"message": "Write access to
-  this GitHub API path is not permitted through this proxy."}`
-
-github.com → ra-nyc → **Branches** → *All branches* → bin icon on each. Ten
-left, all verified merged:
-
-- `claude/lovable-vercel-migration-hyp0a1` ← deleting this one finally retires
-  the Lovable name from the repo
-- `claude/matching-context-and-desktop-layout`
-- `claude/venue-map-and-rides`
-- `claude/search-index`
-- `claude/offline-and-fallback`
-- `claude/party-preview`
-- `claude/polish-and-readthis`
-- `claude/filter-chips-and-mono`
-- `claude/readthis-runbook`
-- `claude/type-size-and-spacing`
-
-**Then stop this happening again:** Settings → General → *Pull Requests* →
-tick **Automatically delete head branches**. Every future merge cleans up after
-itself and this section stops needing to exist.
-
-### 1.6 Optional: kick the backfill along — phone, awkwardly
-
-The daily cron fills the window on its own once §1.3 is done, so this is only
-if you want it covered *today*. It needs an `Authorization` header, which a
-browser address bar cannot send. From a phone:
-
-- **iOS Shortcuts** → new shortcut → *Get Contents of URL* → method GET,
-  header `Authorization` = `Bearer <your CRON_SECRET>`, URL
-  `https://ra-nyc.vercel.app/api/backfill?days=20`. Run it a few times until
-  the `remaining` field reaches 0.
-- Or just wait — the cron does 14 days a night.
-
-The window is now **four months back and one ahead**, which is 151 days, so a
-cold index takes about eleven nights to fill on its own. That is fine and needs
-no action: search reads whatever the index already holds and falls back to live
-sampling for the rest, so coverage improves each morning rather than arriving
-all at once.
+I cannot do this from a session: `git push --delete` returns 403 on
+`git-receive-pack`, and the REST `DELETE` returns 403 with *"Write access to
+this GitHub API path is not permitted through this proxy."* Both are proxy
+policy, not permissions.
 
 ---
 
