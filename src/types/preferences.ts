@@ -54,12 +54,18 @@ export const DENSITY_OPTIONS: { value: LayoutDensity; label: string; desc: strin
  * Three faces that cannot be mistaken for each other at a glance, ordered from
  * least to most departure from the system default.
  *
- * Anton sat in the third slot for one round and came out again: a genuine
- * poster face is too much weight for a screen you read at 2am, and "less bold"
- * is not available from a typeface that ships exactly one weight. Atkinson
- * Hyperlegible is the version of "obviously not system-ui" that survives being
- * read — the Braille Institute designed it so letters cannot be confused with
- * each other — and it had already earned its place here before the detour.
+ * Anton sat in the third (Condensed) slot for one round and came out again: a
+ * genuine poster face is too much weight for a screen you read at 2am, and
+ * "less bold" is not available from a typeface that ships exactly one weight.
+ *
+ * The middle (Legible) slot had its own near-miss: Atkinson Hyperlegible is
+ * genuinely designed so letters can't be confused with each other, but next to
+ * system-ui at listing sizes it read as "the same font, slightly rounder" —
+ * distinct on close reading, not at a glance. IBM Plex Sans replaced it: built
+ * for the same job — dense UI text, not headlines — but with an a and an l
+ * that read as a different typeface immediately rather than on inspection.
+ * Full reasoning, including why Space Grotesk was deliberately skipped rather
+ * than retried, is in index.css next to `.type-legible`.
  *
  * Each preview renders in its own face, which is the only honest way to show a
  * font picker.

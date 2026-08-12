@@ -76,6 +76,11 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
   const upcoming = data?.upcoming ?? [];
   const past = data?.past ?? [];
   const nothing = enabled && !busy && !error && upcoming.length === 0 && past.length === 0;
+  // "Thin" rather than "empty": a search over a window the index only half
+  // holds is a partial answer whether or not it found something.
+  const thin = Boolean(
+    data?.coverage && data.coverage.indexed < data.coverage.window * 0.9,
+  );
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -151,8 +156,20 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
             <div className="px-1 pt-6 text-center">
               <p className="text-sm text-foreground">No events found</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Nothing matching “{query.trim()}” in the last four months or the next one.
+                Nothing matching “{query.trim()}” in the last five months or the next one.
               </p>
+              {/* The difference between "this DJ has no gigs" and "we have not
+                  looked at those days yet" is the whole answer, and only one of
+                  them is about the DJ. A cold index looks exactly like an empty
+                  result from the outside, which is how a working search gets
+                  reported as broken. */}
+              {thin && (
+                <p className="mt-2 text-[0.6875rem] leading-snug text-muted-foreground/70">
+                  The saved index currently holds {data!.coverage!.indexed} of{" "}
+                  {data!.coverage!.window} days, so older nights may not be
+                  searchable yet. It fills as the app is used.
+                </p>
+              )}
             </div>
           )}
 
@@ -164,7 +181,7 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
               "this may be incomplete" teaches people to ignore it. */}
           {data?.truncated && (upcoming.length > 0 || past.length > 0) && (
             <p className="px-1 pb-2 text-center text-[0.6875rem] text-muted-foreground/60">
-              Searching the next month and the last four.
+              Searching the next month and the last five.
             </p>
           )}
         </div>

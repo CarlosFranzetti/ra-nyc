@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Users, MapPin, Clock } from "lucide-react";
 import { EventThumb } from "@/components/EventThumb";
+import { usePrefetchEventImage } from "@/hooks/useEvents";
 import { formatEventDay } from "@/lib/formatEventDay";
 import { formatTime } from "@/lib/formatTime";
 import type { Event } from "@/types/event";
@@ -25,8 +26,18 @@ interface EventCardProps {
  * inline handler would defeat it silently.
  */
 function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
+  const warmImage = usePrefetchEventImage();
+
   return (
-    <button onClick={() => onSelect(event)} className="block w-full text-left group">
+    <button
+      onClick={() => onSelect(event)}
+      // Same trigger as the date rail's data prefetch (`DatePicker`) and the
+      // lineup's artist prefetch — warm the flyer the detail sheet is about to
+      // show eagerly, before the tap that opens it lands.
+      onMouseEnter={() => warmImage(event.imageUrl)}
+      onTouchStart={() => warmImage(event.imageUrl)}
+      className="block w-full text-left group"
+    >
       {/* items-center is what puts equal air above and below the thumbnail.
           The column beside it is almost never exactly 96px tall — a one-line
           title with no head count is short, a two-line title with a full

@@ -95,10 +95,13 @@ that supports it.
 </p>
 
 **Search.** The magnifier next to the calendar searches NYC listings by DJ,
-party, promoter or venue — a month ahead and four months back, upcoming first,
+party, promoter or venue — a month ahead and five months back, upcoming first,
 then past. Matching is accent- and leet-insensitive and tolerates a typo, so
-`bjork` finds Björk and `holo` finds h0l0. Picking a result jumps the listings to
-that night and opens it.
+`bjork` finds Björk and `holo` finds h0l0, and a typo lands in either word of a
+two-word name. Vibe words widen too — `after` reaches afterhours and sunrise
+sets, `queer` reaches the parties whose name is the signal — because RA exposes
+no genre field and a vocabulary is the only honest way to bridge that. Picking a
+result jumps the listings to that night and opens it.
 
 RA caps a page at 100 listings and New York produces about that many a day, so
 searching live reaches roughly three days no matter how it is paged. Instead,

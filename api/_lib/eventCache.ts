@@ -24,6 +24,7 @@
 
 import { getSql } from "./db.js";
 import { searchKey } from "./normalize.js";
+import { expandTerm } from "./vocab.js";
 import type { RAEvent } from "./ra.js";
 
 /**
@@ -205,8 +206,18 @@ export async function searchCachedEvents(options: {
   const sql = getSql();
   if (!sql) return EMPTY;
 
-  const key = searchKey(options.term);
-  if (!key) return EMPTY;
+  // Every key the vocabulary offers, ORed. An ordinary term expands to itself
+  // alone and the predicate collapses to the single `like` it always was; a
+  // vibe word like "after" becomes the handful of words promoters use for it.
+  const keys = expandTerm(options.term);
+  if (keys.length === 0) return EMPTY;
+
+  // Built rather than interpolated: the number of keys is data-dependent, so
+  // the placeholders have to be too. The values still go through the driver —
+  // nothing from the query string is ever concatenated into SQL.
+  const predicate = keys
+    .map((_, i) => `search_key like '%' || $${i + 5} || '%'`)
+    .join(" or ");
 
   try {
     const rows = (await sql.query(
@@ -215,10 +226,10 @@ export async function searchCachedEvents(options: {
          from event_cache
         where area_id = $1
           and event_date between $2::date and $3::date
-          and search_key like '%' || $4 || '%'
+          and (${predicate})
         order by event_date desc
-        limit $5`,
-      [options.areaId, options.from, options.to, key, options.limit],
+        limit $4`,
+      [options.areaId, options.from, options.to, options.limit, ...keys],
     )) as unknown as CacheRow[];
 
     return { events: rows.map(toEvent), daysCovered: await coverage(options) };
