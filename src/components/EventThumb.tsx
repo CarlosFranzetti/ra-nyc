@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { proxiedImageUrl } from "@/lib/images";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +31,26 @@ export function EventThumb({
   eager = false,
 }: EventThumbProps) {
   const [stage, setStage] = useState<Stage>("direct");
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // `eager` (used by the detail sheet's single hero flyer) already renders
+  // `loading="eager"` below. Everything else — the list, one card per event —
+  // starts `lazy`, so a long night doesn't queue fifty image fetches ahead of
+  // the text that actually answers "what's on". But the handful of cards that
+  // are on screen the moment the list paints deserve the same eager treatment,
+  // and there's no index to hand them one: `HomePage` owns the list and this
+  // component doesn't reach into it. So it asks the DOM instead — synchronously,
+  // before paint, so the browser's own lazy-load scheduler never gets a head
+  // start on a card that was visible from the first frame.
+  useLayoutEffect(() => {
+    if (eager) return;
+    const img = imgRef.current;
+    if (!img) return;
+    if (img.getBoundingClientRect().top < window.innerHeight) {
+      img.loading = "eager";
+      img.fetchPriority = "high";
+    }
+  }, [eager, stage]);
 
   if (!imageUrl || stage === "failed") {
     return (
@@ -52,10 +72,12 @@ export function EventThumb({
       // Remounting on stage change is deliberate: without a changing key the
       // browser may not re-request after an error.
       key={stage}
+      ref={imgRef}
       src={stage === "direct" ? imageUrl : proxiedImageUrl(imageUrl)}
       alt={alt}
       className={cn("w-full h-full object-cover", className)}
       loading={eager ? "eager" : "lazy"}
+      fetchPriority={eager ? "high" : "auto"}
       decoding="async"
       // Some CDNs reject a cross-origin Referer but allow none at all; this
       // alone often makes the direct load succeed.

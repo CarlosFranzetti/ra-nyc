@@ -234,6 +234,44 @@ describe("searchRAEvents", () => {
     expect(upcoming.length).toBeGreaterThan(0);
   });
 
+  // The bug this guards: the widened in-memory pass used to be gated on
+  // "nothing matched yet", so a term that found one irrelevant hit never got
+  // it — while a *misspelt* term, finding nothing, did. The exact spelling was
+  // strictly weaker than the typo, which is how "search cannot find my friend
+  // but finds him if I spell it wrong" happens.
+  it("does not let a typo out-search the correct spelling", async () => {
+    const gig = listing({ id: "sergio-1", title: "Sergio b2b Reade Truth", date: day(-6) });
+    // A decoy the correct spelling also matches, so the old gate would clear.
+    const decoy = listing({ id: "decoy", title: "Sergio Mendes tribute", date: day(2) });
+    stubRA([...corpus, gig, decoy]);
+
+    const right = await searchRAEvents({ term: "sergio" });
+    const wrong = await searchRAEvents({ term: "sergioo" });
+
+    const ids = (r: { upcoming: RAEvent[]; past: RAEvent[] }) =>
+      new Set([...r.upcoming, ...r.past].map((e) => e.id));
+
+    expect(ids(right)).toContain("sergio-1");
+    // Whatever the typo can reach, the correct spelling must reach too.
+    for (const id of ids(wrong)) expect(ids(right)).toContain(id);
+  });
+
+  it("fetches the last ten days one at a time, not as a sample", async () => {
+    // Ten percent of a ten-day range is what "I played last Friday and search
+    // cannot find me" looks like from the outside.
+    const ranges: { from: string; to: string }[] = [];
+    stubRA(corpus, { onRequest: (r) => ranges.push(r) });
+    await searchRAEvents({ term: "lakuti" });
+
+    for (let d = 1; d <= 10; d += 1) {
+      const single = day(-d);
+      expect(
+        ranges.some((r) => r.from === single && r.to === single),
+        `day -${d} fetched exactly`,
+      ).toBe(true);
+    }
+  });
+
   it("looks a month ahead and four months back", async () => {
     const ranges: { from: string; to: string }[] = [];
     stubRA(corpus, { onRequest: (r) => ranges.push(r) });

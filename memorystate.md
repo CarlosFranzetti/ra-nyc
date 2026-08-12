@@ -1669,6 +1669,95 @@ regardless of text size. A condensed face gains apparent weight as it grows, so
 a heading that looks right at the smallest step reads as a slab of ink at the
 largest. Headings only; body stays system-ui.
 
+### 3.x · The search bug where a typo beat the correct spelling
+
+Reported as "my friend played last week, `sergio` finds nothing, `aergio` finds
+him". That is not a wrong-fuzziness problem — it is the exact-spelling path
+being **strictly weaker** than the typo path, and the cause was one line:
+
+```ts
+if (hits.length === 0) { /* widen */ }
+```
+
+The two paths search different corpora. SQL `like` sees the whole table but
+returns a capped, date-ordered slice and cannot do edit distance. The in-memory
+scan sees a bounded slice but applies all three passes. A typo produced zero
+hits and therefore *earned* the wider pass; a correct spelling that found one
+irrelevant event cleared the gate and never widened at all.
+
+The widened scan now runs on every search. It costs one bounded query.
+
+**Second cause, same symptom:** `search_key` is a snapshot computed when a row
+is written. RA announces parties before lineups, so an event indexed early
+carries a key with no DJ names in it while its `artists` column is correct. SQL
+misses it; the in-memory pass, which reads the live fields, does not. Another
+reason the widened pass cannot be conditional.
+
+**Third cause, unrelated to the gate:** `PAST_SAMPLED`'s nearest range `[14, 4]`
+was a ten-day span fetched as *one* 100-row page, and NYC produces ~100 rows a
+day — a ten-percent sample of exactly the days people ask about. `PAST_DAYS_EXACT`
+is now 10 (a day per request), and the sampled ranges are weighted 3/2/1/1 pages
+nearest-first.
+
+**Fuzzy is now word-by-word on both sides.** It always split the haystack; it
+never split the query, so "reade truthh" folded to one eleven-character key
+within one edit of nothing. A typo in a two-word DJ name — the common shape in
+this scene — could not be found at all.
+
+**Testing this needed a stubbed database.** The first regression test was
+written against the normal harness, passed against the *unfixed* code, and
+proved nothing: with no `DATABASE_URL` both index functions return empty, so the
+gate was unreachable. `tests/unit/searchIndex.test.ts` mocks `eventCache` and
+was verified to fail against the old gate before being kept.
+
+### 3.x · A vocabulary for vibe words
+
+RA exposes **no genre field** — the searchable text is title, venue and lineup.
+`api/_lib/vocab.ts` expands a query into what promoters actually call those
+nights: `after` → afterhours/sunrise/morning, `queer` → the words parties use
+instead, `techno` → tekno/industrial/hardgroove.
+
+Query side only, never the haystack, so adding a word can widen results but can
+never change what an existing exact search returns. It is a vocabulary, not a
+classifier — wrong sometimes in both directions, which is fine for a search box
+you are scanning and would not be fine for a filter chip claiming a fact.
+
+**Not a curated list of parties.** The moment it starts naming who counts as
+queer techno it is an editorial position maintained by hand and wrong within a
+season.
+
+### 3.x · Flyers, and what offline can honestly promise
+
+Four caches now: `ra-shell-v1`, `ra-assets-v1`, `ra-data-v1`, `ra-img-v1`.
+
+**Images.** Cache-first, capped at 300 entries — sized off the priority window
+(three weeks back, one week ahead, ~10 flyers a night). Eviction is genuinely
+LRU: a hit is deleted and re-put so it moves to the back of insertion order,
+which keeps the priority window resident *by virtue of being what people
+reopen* rather than by per-entry date bookkeeping in the worker.
+
+`images.ra.co` is the one deliberate exception to "leave other origins alone",
+cached as an opaque response; `/api/image` is checked for a real 2xx.
+
+**Perceived speed** is three separate things, and only one of them is the
+worker. First-viewport thumbs upgrade themselves from `lazy` to `eager` +
+`fetchpriority=high` in a synchronous layout effect, before the browser's own
+lazy-load scheduler acts. `usePrefetchEventImage` warms a flyer on
+hover/touchstart, mirroring what `usePrefetchEvents` already does for data —
+touchstart fires well before the click, so the image is usually in flight
+before the sheet opens. Text is never blocked on any of it.
+
+**Data.** `MAX_DATA_ENTRIES` 60 → 200, covering the 150-back/30-ahead window. A
+cache miss while offline now returns a well-formed `{ events: [], count: 0,
+stale: true }` rather than a 503, so it lands in the empty state and the
+"Saved listings" banner the app already has instead of the red error screen.
+
+**What offline cannot do, stated rather than faked:** keep a playing SoundCloud
+set alive. Playback runs inside the provider's own cross-origin iframe — a
+separate browsing context this worker has no scope over. There is no way to make
+that traffic replayable without either heroics or a false claim, so the file
+says so.
+
 ## 4 · Map of the code
 
 ```

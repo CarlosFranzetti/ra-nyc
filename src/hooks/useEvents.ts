@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, format } from "date-fns";
+import { proxiedImageUrl } from "@/lib/images";
 import type { EventsResponse } from "@/types/event";
 
 const STALE_TIME = 5 * 60 * 1000;
@@ -64,4 +65,42 @@ export function usePrefetchEvents() {
       staleTime: STALE_TIME,
     });
   };
+}
+
+/**
+ * Warmed once per session per URL — a card can fire `onMouseEnter` and
+ * `onTouchStart` for the same event, and a slow drag across the list can
+ * re-enter it more than once. Module-level, not per-hook-instance: the point
+ * is one request per flyer regardless of how many cards or renders ask for it.
+ */
+const warmedImages = new Set<string>();
+
+/**
+ * Warm a flyer on hover / touchstart, same trigger as `usePrefetchEvents`
+ * above and `usePrefetchArtist` — by the time the tap that opens the detail
+ * sheet lands, the image it's about to show eagerly has nothing left to wait
+ * for.
+ *
+ * Plain `Image()` loads rather than `fetch()`: they're the exact requests
+ * `EventThumb` itself makes (same URLs, same `referrerPolicy`), so the service
+ * worker's `ra-img-v1` cache — or failing that, the browser's own HTTP cache —
+ * has already done the work by the time the real `<img>` mounts. Mirrors
+ * `EventThumb`'s own direct-then-proxied order: hotlink protection that blocks
+ * the direct load blocks it here too, so warming only the direct URL would
+ * warm the one request that was never going to succeed and leave the fallback
+ * — the one the sheet will actually end up showing — to happen live instead.
+ */
+export function usePrefetchEventImage() {
+  return useCallback((imageUrl: string | null | undefined) => {
+    if (!imageUrl || warmedImages.has(imageUrl)) return;
+    warmedImages.add(imageUrl);
+    const direct = new Image();
+    direct.referrerPolicy = "no-referrer";
+    direct.onerror = () => {
+      const proxied = new Image();
+      proxied.referrerPolicy = "no-referrer";
+      proxied.src = proxiedImageUrl(imageUrl);
+    };
+    direct.src = imageUrl;
+  }, []);
 }

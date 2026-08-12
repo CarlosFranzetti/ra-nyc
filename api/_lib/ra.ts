@@ -16,6 +16,7 @@ import {
   searchCachedEvents,
 } from "./eventCache.js";
 import { normalizeName, searchKey, withinEditDistance } from "./normalize.js";
+import { expandTerm } from "./vocab.js";
 
 export const RA_GRAPHQL_URL = "https://ra.co/graphql";
 
@@ -309,7 +310,7 @@ export function isValidDate(value: string): boolean {
  * Asymmetric, because the two directions answer different questions. Ahead, the
  * question is "is X playing soon" — a month is as far as anyone plans a night
  * out, and RA itself thins out beyond it. Behind, it is "when were they last
- * on", and that keeps being interesting far longer: four months covers a
+ * on", and that keeps being interesting far longer: five months covers a
  * quarterly residency, a season of a party, and a touring artist's last pass
  * through, none of which fit in two.
  *
@@ -319,7 +320,7 @@ export function isValidDate(value: string): boolean {
  * requests.
  */
 export const SEARCH_AHEAD_DAYS = 30;
-export const SEARCH_BEHIND_DAYS = 120;
+export const SEARCH_BEHIND_DAYS = 150;
 
 /** Requests per direction. Each is one call to RA; the edge cache absorbs repeats. */
 const SEARCH_PAGES = 3;
@@ -338,8 +339,16 @@ const SEARCH_PAGE_SIZE = 100;
  * A day per request is exact rather than estimated, and it covers the window
  * people actually ask about. Beyond it, coverage degrades to sampling — which
  * is what `truncated` exists to admit.
+ *
+ * Ten days, not four. Four was chosen when the sampled range behind it was
+ * assumed good enough, and it is not: `[14, 4]` is a ten-day span fetched as a
+ * single 100-row page, and NYC produces about a hundred rows a *day*, so that
+ * range was roughly a ten-percent sample. "I played last Friday and search
+ * cannot find me" is exactly what a ten-percent sample looks like from the
+ * outside. Ten exact days covers "last week" — the thing people actually ask —
+ * and pushes sampling out to where it is honestly a sample.
  */
-const PAST_DAYS_EXACT = 4;
+const PAST_DAYS_EXACT = 10;
 
 /**
  * Sampled ranges beyond the day-by-day window, as [from, to] days before today.
@@ -354,11 +363,21 @@ const PAST_DAYS_EXACT = 4;
  * or no database at all, degrades to.
  */
 const PAST_SAMPLED: readonly (readonly [number, number])[] = [
-  [14, PAST_DAYS_EXACT],
-  [40, 14],
-  [80, 40],
+  [21, PAST_DAYS_EXACT],
+  [45, 21],
+  [80, 45],
   [SEARCH_BEHIND_DAYS, 80],
 ];
+
+/**
+ * How many pages each sampled range gets, nearest first.
+ *
+ * The ranges are not equally interesting. Three weeks ago is a question people
+ * ask; four months ago is one they almost never do, and the index is what
+ * answers it properly anyway. Weighting the pages here buys depth where it is
+ * read without paying for it across the whole window.
+ */
+const SAMPLED_PAGES: readonly number[] = [3, 2, 1, 1];
 
 /** Most results anyone scrolls; also bounds the response size. */
 export const SEARCH_LIMIT = 60;
@@ -410,20 +429,44 @@ function matchesTerm(event: RAEvent, term: string): boolean {
 
   if (fields.some((value) => normalizeName(value).includes(exact))) return true;
 
-  const folded = searchKey(term);
-  if (folded && fields.some((value) => searchKey(value).includes(folded))) return true;
+  // Every key the vocabulary offers, the term's own first. An unknown word
+  // expands to itself alone, so this is the same single test it always was for
+  // the common case — a DJ or a venue.
+  const keys = expandTerm(term);
+  if (keys.some((key) => fields.some((value) => searchKey(value).includes(key)))) {
+    return true;
+  }
 
-  if (folded.length < FUZZY_MIN_LENGTH) return false;
-  // Word by word: comparing against a whole title would let its length alone
-  // blow past the distance budget.
-  return fields.some((value) =>
-    value
-      .split(/[\s,&·]+/)
-      .some((word) => {
-        const key = searchKey(word);
-        return key.length >= FUZZY_MIN_LENGTH && withinEditDistance(key, folded, 1);
-      }),
-  );
+  const folded = keys[0] ?? "";
+
+  // Word by word on *both* sides.
+  //
+  // The haystack has to be split, or a title's length alone blows past the
+  // distance budget. The query has to be split for a subtler reason: "reade
+  // truthh" folds to one eleven-character key, which is within one edit of
+  // nothing, so a typo in a two-word name — the overwhelmingly common shape of
+  // a DJ name in this scene — could never be found at all. Splitting both and
+  // requiring *every* query word to land somewhere fixes that without letting
+  // a single matching word drag in half the city.
+  const words = (value: string) =>
+    value.split(/[\s,&·/]+/).map(searchKey).filter((key) => key.length >= FUZZY_MIN_LENGTH);
+
+  const fieldWords = fields.flatMap(words);
+  if (fieldWords.length === 0) return false;
+
+  const near = (needle: string) =>
+    fieldWords.some((word) => withinEditDistance(word, needle, 1));
+
+  const termWords = words(term);
+
+  // A single-word query, or one whose words are all too short to risk an edit
+  // (`dj`, `b2b`), falls back to comparing the whole folded term — which is
+  // exactly what this did before it learned about multi-word queries.
+  if (termWords.length === 0) {
+    return folded.length >= FUZZY_MIN_LENGTH && near(folded);
+  }
+
+  return termWords.every(near);
 }
 
 /** Runs a set of range/page requests in parallel and flattens the results. */
@@ -518,11 +561,13 @@ export async function searchRAEvents(options: {
           const day = shiftDate(-(i + 1));
           return { from: day, to: day, page: 1 };
         }),
-        ...PAST_SAMPLED.map(([from, to]) => ({
-          from: shiftDate(-from),
-          to: shiftDate(-to),
-          page: 1,
-        })),
+        ...PAST_SAMPLED.flatMap(([from, to], i) =>
+          Array.from({ length: SAMPLED_PAGES[i] ?? 1 }, (_, page) => ({
+            from: shiftDate(-from),
+            to: shiftDate(-to),
+            page: page + 1,
+          })),
+        ),
       ],
       areaId,
       options.signal,
@@ -551,15 +596,26 @@ export async function searchRAEvents(options: {
   // windows have not been filtered at all. Running the matcher over the union
   // is both correct and idempotent, and it is the only way the third pass —
   // edit distance — reaches indexed rows.
-  let hits = dedupeById([...matching(live), ...cached.events]);
+  // The widened in-memory scan runs **always**, not only when nothing matched.
+  //
+  // It used to be gated on `hits.length === 0`, and that gate was a real bug
+  // with a genuinely confusing symptom: a *misspelt* term found gigs that the
+  // correct spelling did not. The reason is that the two paths search different
+  // corpora. SQL `like` sees the whole table but returns a capped, date-ordered
+  // slice; the in-memory scan sees a bounded slice but applies all three passes
+  // including edit distance. A typo produced zero hits and therefore got the
+  // second, wider pass — while the correct spelling found one irrelevant hit
+  // from a live window, cleared the gate, and never widened at all.
+  //
+  // So the exact-spelling path was strictly *weaker* than the typo path. That
+  // is worth one extra bounded query on every search.
+  const scanned = await recentCachedEvents({ areaId, from: windowFrom, to: windowTo });
 
-  // Nothing matched either way. A term that only matches by typo cannot be
-  // found by a SQL substring, so fall back to scanning a bounded slice of the
-  // index in memory. Rare enough to be worth the extra query when it happens.
-  if (hits.length === 0) {
-    const scanned = await recentCachedEvents({ areaId, from: windowFrom, to: windowTo });
-    hits = matching(scanned);
-  }
+  const hits = dedupeById([
+    ...matching(live),
+    ...cached.events,
+    ...matching(scanned),
+  ]);
 
   const day = (event: RAEvent) => event.date.slice(0, 10);
 

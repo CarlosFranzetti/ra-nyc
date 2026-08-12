@@ -5,7 +5,7 @@ they hold across sessions unless the owner changes them here.
 
 ## Code review cadence
 
-**Run the Sonnet code review only every 5th landing on `main`. Never on the
+**Run the Sonnet code review only every 7th landing on `main`. Never on the
 others.**
 
 The review is a model call over the diff and it is the only genuinely expensive
@@ -20,10 +20,10 @@ git rev-list --count --first-parent origin/main
 ```
 
 First-parent, deliberately — it counts one per merge rather than one per commit,
-so "5 commits" means five things *landing*, which is what the rule is about. A
+so "7 commits" means seven things *landing*, which is what the rule is about. A
 merge with eight commits behind it is one landing.
 
-Review when that count is a multiple of 5. Otherwise skip it silently: do not
+Review when that count is a multiple of 7. Otherwise skip it silently: do not
 announce that a review was skipped, and do not offer to run one anyway.
 
 Two exceptions, both narrow:
@@ -40,7 +40,8 @@ three real defects — a display face that never reached the settings preview
 because the rule was a descendant selector and the preview puts both classes on
 one element; a `.text-glow` left at the old radii while every box-shadow around
 it shrank; and a font weight fetched that nothing can set. All three fixed
-before merge. Next review lands at **65**.
+before merge. The cadence then widened from 5 to 7 to conserve tokens, so the
+next review lands at the next multiple of seven.
 
 ## Tests
 

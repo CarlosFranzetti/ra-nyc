@@ -183,9 +183,9 @@ check("desktop type is larger than phone type",
 
 // ── typography preference actually applies
 check("the legible preference selects a distinct family",
-  phone.titleFont === "Atkinson Hyperlegible", phone.titleFont);
+  phone.titleFont === "IBM Plex Sans", phone.titleFont);
 const systemType = await measure({ width: 390, height: 844, typography: "system" });
-check("and the system preference does not", systemType.titleFont !== "Atkinson Hyperlegible",
+check("and the system preference does not", systemType.titleFont !== "IBM Plex Sans",
   systemType.titleFont);
 
 // Condensed is a heading-only pairing, so the family has to be asserted on a

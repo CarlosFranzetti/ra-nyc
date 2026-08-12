@@ -53,6 +53,13 @@
     <!-- Fonts for the Legible and Condensed typography settings. Link tags
          rather than a CSS @import, which would be render-blocking.
 
+         IBM Plex Sans is fetched at 400 and 600 and nothing else — 400 for
+         body copy, 600 because .type-legible's heading rule asks for it and
+         Plex actually ships a real SemiBold, unlike Atkinson before it, which
+         only shipped Regular and Bold and had the browser fake 600 by
+         snapping to the nearer of the two. See index.css for why the face
+         changed at all.
+
          Oswald is fetched at 500 and nothing else. Headings are pinned there
          and no rule asks for another weight, so any extra is a file downloaded
          for a style the app can never set. -->
@@ -60,7 +67,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Oswald:wght@500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=Oswald:wght@500&display=swap"
       media="print"
       onload="this.media='all'"
     />

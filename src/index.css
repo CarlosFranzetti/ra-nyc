@@ -192,11 +192,15 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    Typography variants: a neutral sans, an open humanist, a condensed display.
 
-   Six faces have been through these three slots. The pattern in every failure
-   was the same — Bebas Neue, Space Grotesk, Bricolage Grotesque, JetBrains Mono
-   and Zilla Slab are all *text* faces of similar colour on the page, so beside
-   system-ui the picker kept offering three shades of one idea. Anton broke that
-   and broke readability with it: one weight, and that weight is a poster.
+   Seven faces have now been through these three slots. The pattern in every
+   Condensed-slot failure was the same — Bebas Neue, Space Grotesk, Bricolage
+   Grotesque, JetBrains Mono and Zilla Slab are all *text* faces of similar
+   colour on the page, so beside system-ui the picker kept offering three
+   shades of one idea. Anton broke that and broke readability with it: one
+   weight, and that weight is a poster. The Legible slot had its own version of
+   the same failure — Atkinson Hyperlegible read as "system-ui, but rounder" —
+   fixed the same way, by moving to a face with different proportions rather
+   than a different flavour of the same proportions. See .type-legible below.
 
    These three differ in proportion, not just in shape, which is the thing the
    eye actually notices at a glance.
@@ -205,15 +209,36 @@
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* Legible — Atkinson Hyperlegible.
+/* Legible — IBM Plex Sans.
 
-   The Braille Institute commissioned it for low-vision readers, so its design
-   goal is that letters cannot be mistaken for each other: the tail on the l,
-   the slab on the i, an unmistakable G, a genuinely double-storey a. Those same
-   decisions make it look nothing like Helvetica at a glance. */
+   Atkinson Hyperlegible solved readability but not distinctiveness: at
+   listing sizes, next to system-ui, it read as "the same font, slightly
+   rounder" — which is the exact complaint this slot exists to answer, just
+   one font later. Atkinson's letterform differences (the tailed l, the
+   slabbed i) are real but subtle enough to need close reading to notice; at
+   a glance, on a phone, they didn't register.
+
+   IBM Plex Sans was drawn for the same brief Atkinson was — dense text in a
+   software interface, not headlines — so it keeps the readability, but its
+   letterforms depart further: a long, open double-storey a and an l with a
+   right-foot flag, neither of which system-ui or Atkinson has. Those two
+   letters alone are enough to place the font at a glance instead of on
+   inspection.
+
+   Space Grotesk was the obvious next name and was skipped deliberately, not
+   overlooked: it already failed this exact test once, next to system-ui in
+   what is now the Condensed slot — "readable and looked like system-ui" is
+   the verdict on file for it. The pairing that sank it (beside a neutral
+   system sans) is unchanged by which slot it sits in, so trying it again
+   here would just re-spend a round finding that out a second time.
+
+   No extra letter-spacing, unlike Atkinson: Atkinson's tracking was nudged
+   open because its default spacing read slightly tight at small sizes.
+   Plex's default metrics were already tuned for exactly this length of line,
+   and adding to them would be undoing IBM's own testing rather than fixing
+   anything. */
 .type-legible {
-  font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
-  letter-spacing: 0.005em;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
 }
 
 /* Condensed — Oswald, on headings only.
@@ -247,7 +272,12 @@
 }
 
 /* 600, not 700. Semibold is enough to separate a title from the venue line
-   under it; at full bold a column of titles reads as a stack of bars. */
+   under it; at full bold a column of titles reads as a stack of bars. This is
+   a real SemiBold now rather than a browser-faked one: Atkinson didn't ship a
+   600, so the browser matched this rule to its Bold instead — no one ever
+   noticed because the effect (a heavier heading than body text) is what the
+   comment describes either way. IBM Plex Sans ships 600 as its own weight, so
+   the CSS now asks for the same thing it actually gets. */
 .type-legible h1,
 .type-legible h2,
 .type-legible h3,
@@ -335,16 +365,25 @@
   --space: calc(var(--density) * (1 + (var(--text-scale) - 1) * 0.6));
 }
 
-/* The ladder came down again, and this time not by a uniform percentage.
-   "Airy" was the complaint — it is now 0.974, eighteen percent below the 1.188
-   it was. That number alone would have put it level with the old Default and
-   collapsed the axis into two options, so Default and Tight came down with it:
-   the whole ladder shifted rather than one rung sliding into another.
+/* This time the ladder widens instead of shifting. The complaint was that
+   Tight and Airy — the two ends of the axis — read as barely different from
+   each other, not that either read wrong on its own, so Default stays exactly
+   where it was (nobody complains about Default) and the two ends move outward
+   from it instead of the whole ladder sliding.
 
-   Tight moved furthest in relative terms, because its own complaint was the gap
-   between a card's edge and its contents. */
+   They move outward by the same amount, which is the part worth keeping true
+   on the next pass: the previous ladder was lopsided around Default — Tight
+   sat 0.16 below it, Airy only 0.114 above — so "one step tighter" and "one
+   step airier" were not equal and opposite moves, and Airy in particular had
+   little room left to read as different. Equal distance in both directions
+   keeps the axis symmetric and doubles the gap between the two ends, which is
+   the number that was actually too small.
+
+   Airy stops well short of 1.188, which an earlier round already tried and
+   walked back — at that size "airy" read as "sprawling," and this is a
+   widening of the gap between Tight and Airy, not a reopening of that one. */
 .density-tight {
-  --density: 0.7;
+  --density: 0.6;
 }
 
 .density-default {
@@ -352,7 +391,7 @@
 }
 
 .density-airy {
-  --density: 0.974;
+  --density: 1.12;
 }
 
 /* Six steps, all upward, geometric at ~6% each so every tick feels like the
