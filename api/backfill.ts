@@ -56,6 +56,16 @@ const CONCURRENCY = 6;
  * take another pass tomorrow — true, but "tomorrow" times thirteen is how long
  * a cold index took to become searchable, and the endpoint is bearer-gated and
  * runs once a day, so the longer ceiling costs nothing anyone shares.
+ *
+ * Two things about `vercel.json` that this cost a deploy each to learn, and
+ * which belong here because `vercel.json` cannot hold a comment:
+ *
+ * 1. Every function is listed individually rather than as an `api/*.ts` glob.
+ *    A pattern that overlaps an earlier one is not merged or overridden — it is
+ *    a hard error, reported as *"doesn't match any Serverless Functions"*,
+ *    which reads as though the file is missing.
+ * 2. The schema rejects unknown keys outright, so there is no `_comment` to
+ *    hang an explanation on. Hence this paragraph.
  */
 const TIME_BUDGET_MS = 50_000;
 const UPSTREAM_TIMEOUT_MS = 8_000;
