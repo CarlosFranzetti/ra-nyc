@@ -54,9 +54,13 @@ export const DENSITY_OPTIONS: { value: LayoutDensity; label: string; desc: strin
  * Three faces that cannot be mistaken for each other at a glance, ordered from
  * least to most departure from the system default.
  *
- * Anton sat in the third (Condensed) slot for one round and came out again: a
- * genuine poster face is too much weight for a screen you read at 2am, and
- * "less bold" is not available from a typeface that ships exactly one weight.
+ * The third (Condensed) slot has been reaching for the same thing throughout —
+ * Impact, at less than Impact's weight — and missed it twice. Anton missed on
+ * weight: a genuine poster face is too much ink for a screen you read at 2am.
+ * Oswald then held the weight and missed on shape, being Alternate Gothic
+ * rather than a grotesque — narrower, finer, and more elegant than the thing it
+ * was standing in for. Fjalla One has the proportions and stops short of the
+ * weight. Full reasoning in index.css next to `.type-condensed`.
  *
  * The middle (Legible) slot had its own near-miss: Atkinson Hyperlegible is
  * genuinely designed so letters can't be confused with each other, but next to

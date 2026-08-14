@@ -1514,10 +1514,40 @@ The old smaller/default/larger topped out at **+10%** and spent a third of its
 range going below a size nobody had complained about. It is now six geometric
 steps of ~6%, with **step 0 = the old default**, reaching +34%.
 
-It is a stepper (− bar +) rather than six buttons: six cells across a 360px
-drawer would be 50px each of unreadable numbers, and the axis is ordered — "one
-more" is the actual thought, not "pick the fourth". The bar doubles as the
-readout, showing how much room is left in each direction, which a number cannot.
+It was a stepper (− bar +) rather than six buttons, on the reasoning that the
+axis is ordered so "one more" is the actual thought. Half right: "one more" is
+*a* thought, and "that one" is the other, and a stepper only serves the first.
+Getting from the smallest to the largest was five taps, and there was no way to
+point at a rung.
+
+It is now a native `input[type=range]` with the six rungs drawn as ticks under
+it. Drag, tap-anywhere-on-the-track, arrow keys, Home/End and the VoiceOver
+rotor all come with the element; a row of buttons gets none of them without
+being reimplemented badly. The ± buttons went with the stepper rather than
+sitting alongside it — 80px of a 320px drawer doing what a drag already does,
+and the room they returned is what makes the six rungs far enough apart to hit.
+
+Three things about it are load-bearing and none are obvious from the markup:
+
+- **`data-vaul-no-drag` on the wrapper.** The settings panel is a right-hand
+  vaul drawer, and vaul reads a left-to-right pointer drag as *dismiss me* —
+  the same gesture as raising the text size. Without the opt-out, turning the
+  type up closes the panel you turned it up from.
+- **The fill and ticks are inset 10px at each end.** A range thumb's centre
+  travels from half-a-thumb to width-minus-half-a-thumb, never to the edges, so
+  ticks spread across the full width drift out of line with it — worst at the
+  two ends, which are the two positions anyone actually checks.
+- **Every length in the control is px, not rem.** It is the one thing on screen
+  that must not resize with the setting it controls; a slider that grows under
+  your thumb moves the target mid-drag.
+
+All three are asserted in a new `tests/settings.e2e.mjs`. The vaul one was
+checked by deleting the attribute and confirming the suite went red — which
+caught a second bug in the test itself: vaul keeps the panel mounted through
+its exit transition, so an immediate `count()` reported a drawer that was
+already on its way out as still open. The drag assertion failed correctly while
+the dismissal assertion passed, describing a drawer that was gone two checks
+later. It now waits out the animation and reads visibility.
 
 The class prefix moved from `text-` to `text-size-`; `.text-larger` was one
 rename away from colliding with a Tailwind `text-*` utility. Both renamed unions
@@ -1663,11 +1693,42 @@ on the page, so beside system-ui the picker kept offering three shades of one
 idea. Anton broke that and broke readability with it — one weight, and that
 weight is a poster.
 
-Oswald is the same idea as Anton in a family that has weights, which is the
-whole reason it works where Anton did not: **pinned at 500**, and pinned
-regardless of text size. A condensed face gains apparent weight as it grows, so
-a heading that looks right at the smallest step reads as a slab of ink at the
-largest. Headings only; body stays system-ui.
+Oswald was the answer to Anton — the same idea in a family that has weights,
+pinned at 500 regardless of text size — and it lasted one round before the same
+request came back in the same words: *like Impact, but not as bold.*
+
+That repeat is the useful part. Anton missed on **weight**, so the obvious fix
+was a face with a weight axis, and Oswald has one. But Oswald missed on
+**shape**, and no setting of a weight axis fixes a shape. Oswald is drawn from
+Alternate Gothic: narrower than Impact, higher stroke contrast, smaller
+x-height, altogether more refined. Turning it up would have made it heavy
+without making it Impact. A whole round went into a dial that was never
+connected to the complaint.
+
+**Fjalla One** is now in the slot: a grotesque rather than a gothic, flat
+terminals, the big x-height and short extenders that give Impact its density,
+at a medium weight instead of a black one.
+
+It ships exactly one weight — the thing that sank Anton — and that is fine
+here, because the single weight *is* the target rather than something to walk
+back from. `font-weight: 400` is stated rather than inherited for that reason:
+the headline rules elsewhere ask for 600, and asking a family with no bold for
+one gets a synthesised smear rather than a graceful fallback. The layout suite
+now asserts the 400 specifically, so a reappearance of 600 fails loudly instead
+of shipping as a slightly blurry heading.
+
+Impact itself sits in the fallback chain, which it did not before. If the
+webfont never arrives, the nearest thing on Windows or macOS is the face this
+slot was always imitating — better than Arial Narrow, which is condensed
+without being a display face at all.
+
+Headings only; body stays system-ui.
+
+One thing not verified: **Google Fonts is unreachable from the sandbox**, so
+`document.fonts` is empty there and no automated check in this repo proves the
+glyphs render — `getComputedStyle().fontFamily` reports the *declared* stack
+whether or not the file loaded. That was equally true of Oswald and of Plex; it
+is worth knowing that the font assertions are about the CSS, not the pixels.
 
 ### 3.x · The search bug where a typo beat the correct spelling
 
@@ -1779,6 +1840,26 @@ Its window also only ran backwards, `-150 … 0`. Future days do get indexed by
 anyone browsing them, but "somebody browsed it" is not coverage — a quiet
 Wednesday three weeks out is precisely the day nobody opens and search then
 cannot answer for.
+
+### 3.x · The green build that was a 500
+
+That widening shipped broken and nobody noticed for a week. `api/backfill.ts`
+used `SEARCH_AHEAD_DAYS` and never imported it, so every call threw a
+`ReferenceError` before it reached a single day.
+
+Nothing caught it, and the reason is worth writing down: **Vercel builds the
+API with esbuild, which strips types without checking them.** A type error is
+therefore not a build failure — the deploy goes green and the endpoint 500s.
+Meanwhile `npm run test:all` ran eight suites over the *front end* and passed,
+because none of them call this route.
+
+`test:all` now begins with `npm run typecheck`. It is the only check in the
+project that reads the API at all, and it was sitting one script away from the
+one command anyone runs.
+
+The narrower lesson: a passing test suite is evidence about the code the suite
+executes. For serverless routes nothing executes locally, so `tsc` is not a
+style gate there — it is the entire test suite.
 
 ## 4 · Map of the code
 

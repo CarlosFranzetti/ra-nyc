@@ -191,16 +191,18 @@ check("and the system preference does not", systemType.titleFont !== "IBM Plex S
 // Condensed is a heading-only pairing, so the family has to be asserted on a
 // heading and the body checked separately — that split is the whole option.
 const condensed = await measure({ width: 390, height: 844, typography: "condensed" });
-check("the condensed preference reaches headings", condensed.titleFont === "Oswald",
+check("the condensed preference reaches headings", condensed.titleFont === "Fjalla One",
   condensed.titleFont);
 check("and leaves body text to the system sans",
-  condensed.bodyFont !== "Oswald", condensed.bodyFont);
+  condensed.bodyFont !== "Fjalla One", condensed.bodyFont);
 
 // Anton came out of this slot because it ships one weight and that weight is a
-// poster. Oswald is pinned below its own bold so the largest text size stays
-// readable rather than turning a column of titles into bars.
+// poster. Fjalla One also ships one weight, and this is the assertion that the
+// distinction is real: 400, not the 600 the headline rules ask for elsewhere.
+// If that ever reads back as 600 the browser is synthesising a bold from a
+// family that has none, which is the smeared outline this slot exists to avoid.
 check("neither display face sets headings at full bold",
-  phone.titleWeight === "600" && condensed.titleWeight === "500",
+  phone.titleWeight === "600" && condensed.titleWeight === "400",
   `legible ${phone.titleWeight}, condensed ${condensed.titleWeight}`);
 
 // ── the whole point of coupling spacing to text size

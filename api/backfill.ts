@@ -1,6 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { cacheEvents, missingDays } from "./_lib/eventCache.js";
-import { fetchRAEvents, NYC_AREA_ID, SEARCH_BEHIND_DAYS } from "./_lib/ra.js";
+import {
+  fetchRAEvents,
+  NYC_AREA_ID,
+  SEARCH_AHEAD_DAYS,
+  SEARCH_BEHIND_DAYS,
+} from "./_lib/ra.js";
 
 /**
  * Fills the gaps in the search index.
