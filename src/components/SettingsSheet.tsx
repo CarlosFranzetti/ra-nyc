@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Heart, Minus, Plus, Settings } from "lucide-react";
+import { Heart, Settings } from "lucide-react";
 import {
   Drawer,
   DrawerContent,
@@ -43,35 +43,6 @@ function OptionGroup({
         {children}
       </div>
     </div>
-  );
-}
-
-function StepButton({
-  label,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string;
-  disabled: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      className={cn(
-        "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border transition-all active:scale-95",
-        disabled
-          ? "border-border/40 text-muted-foreground/40"
-          : "border-border/60 bg-card text-foreground hover:bg-accent",
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -120,8 +91,9 @@ export function SettingsSheet() {
     setTextSize,
   } = useTheme();
 
-  // Position on the ladder, which is what a stepper moves — the stored value is
-  // the label on the rung, not the rung.
+  // Position on the ladder, which is what the slider moves — the stored value
+  // is the label on the rung, not the rung. A range input only speaks numbers,
+  // so this is also the conversion in both directions.
   const sizeIndex = Math.max(0, TEXT_SIZES.indexOf(textSize));
 
   /**
@@ -222,45 +194,88 @@ export function SettingsSheet() {
               ))}
             </OptionGroup>
 
-            {/* A stepper, not six buttons. Six cells across a 360px drawer
-                would be 50px each of unreadable numbers, and the axis is
-                ordered — "one more" is the actual thought, not "pick the
-                fourth". */}
-            <OptionGroup title="Text size" columns={1}>
-              <div className="flex items-center gap-2">
-                <StepButton
-                  label="Smaller text"
-                  disabled={sizeIndex === 0}
-                  onClick={() => setTextSize(TEXT_SIZES[sizeIndex - 1]!)}
-                >
-                  <Minus className="h-4 w-4" />
-                </StepButton>
+            {/* A slider, not a stepper and not six buttons.
 
-                {/* The bar is the readout. A number would be a number; this
-                    shows how much room is left in either direction. */}
-                <div className="flex flex-1 items-center gap-1">
-                  {TEXT_SIZES.map((value, i) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setTextSize(value)}
-                      aria-label={`Text size ${i + 1} of ${TEXT_SIZES.length}`}
-                      aria-pressed={sizeIndex === i}
-                      className={cn(
-                        "h-6 flex-1 rounded-sm transition-colors",
-                        i <= sizeIndex ? "bg-primary" : "bg-secondary",
-                      )}
+                The stepper this replaces was two taps away from either end of
+                a six-rung ladder and gave no way to say "that one" — you had
+                to walk there. A range input drags, and a tap anywhere on the
+                track jumps to the nearest rung, so both readings of "pick a
+                size" work with one control.
+
+                The +/- buttons went with it rather than sitting alongside.
+                They were 80px of a 320px drawer doing what an arrow key and a
+                drag already do, and the room they gave back is what makes the
+                track long enough that six rungs are far enough apart to hit.
+
+                The two A's are the scale, not decoration — they are set at the
+                sizes the ends of the ladder actually produce, in px, so they
+                stay put while everything between them moves. */}
+            <OptionGroup title="Text size" columns={1}>
+              <div className="flex items-center gap-3">
+                <span
+                  aria-hidden
+                  className="flex-shrink-0 font-semibold leading-none text-muted-foreground"
+                  style={{ fontSize: 11 }}
+                >
+                  A
+                </span>
+
+                {/* data-vaul-no-drag, or a left-to-right drag on the slider is
+                    also a left-to-right drag on a right-hand drawer, and vaul
+                    reads it as "dismiss me" — so raising the text size would
+                    close the panel you raised it from. */}
+                <div className="relative h-7 flex-1" data-vaul-no-drag>
+                  {/* Inset by half a thumb at each end: a range thumb's centre
+                      travels from 10px to width-10px, never to the very edge,
+                      so ticks laid out across the full width would drift out
+                      of line with it — worst at the two ends, which are the
+                      two positions people check. */}
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-y-0 left-[10px] right-[10px]"
+                  >
+                    <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-secondary" />
+                    <div
+                      className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-primary"
+                      style={{ width: `${(sizeIndex / (TEXT_SIZES.length - 1)) * 100}%` }}
                     />
-                  ))}
+                    {TEXT_SIZES.map((value, i) => (
+                      <span
+                        key={value}
+                        className={cn(
+                          "absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full",
+                          i <= sizeIndex ? "bg-primary-foreground/60" : "bg-muted-foreground/50",
+                        )}
+                        style={{ left: `${(i / (TEXT_SIZES.length - 1)) * 100}%` }}
+                      />
+                    ))}
+                  </div>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={TEXT_SIZES.length - 1}
+                    step={1}
+                    value={sizeIndex}
+                    onChange={(event) =>
+                      setTextSize(TEXT_SIZES[Number(event.target.value)]!)
+                    }
+                    aria-label="Text size"
+                    // The stored values are "0".."5", which read as sizes in
+                    // pixels or points to anything speaking them aloud. This
+                    // says where you are on the ladder instead.
+                    aria-valuetext={`Size ${sizeIndex + 1} of ${TEXT_SIZES.length}`}
+                    className="size-slider absolute inset-0 w-full"
+                  />
                 </div>
 
-                <StepButton
-                  label="Larger text"
-                  disabled={sizeIndex === TEXT_SIZES.length - 1}
-                  onClick={() => setTextSize(TEXT_SIZES[sizeIndex + 1]!)}
+                <span
+                  aria-hidden
+                  className="flex-shrink-0 font-semibold leading-none text-muted-foreground"
+                  style={{ fontSize: 21 }}
                 >
-                  <Plus className="h-4 w-4" />
-                </StepButton>
+                  A
+                </span>
               </div>
             </OptionGroup>
 

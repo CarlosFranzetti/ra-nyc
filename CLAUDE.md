@@ -46,14 +46,21 @@ next review lands at the next multiple of seven.
 ## Tests
 
 Run the suites freely — they are local and cost nothing but time. Pipe output
-through `tail`; a full untruncated dump of all seven suites is thousands of
+through `tail`; a full untruncated dump of all eight suites is thousands of
 tokens of PASS lines nobody reads.
 
 ```
-npm run test          # 139 Vitest units
-npm run test:all      # everything: units + layout, player, search, preview,
-                      # donate and offline e2e (~2 minutes)
+npm run test          # 156 Vitest units
+npm run test:all      # typecheck, then units + layout, player, search, preview,
+                      # donate, settings and offline e2e (~2 minutes)
 ```
+
+`test:all` starts with `npm run typecheck`, and that is not decoration.
+Vercel builds the API with esbuild, which strips types without checking them,
+so a type error is not a build failure — it is a 500 in production. That is
+exactly how `/api/backfill` shipped using `SEARCH_AHEAD_DAYS` without importing
+it: every suite passed, the deploy went green, and the endpoint threw a
+`ReferenceError` on every call until someone happened to run `tsc`.
 
 The e2e suites each spawn their own Vite server on a fixed port. If one fails
 with `EADDRINUSE`, a previous run left a server behind — pass `E2E_PORT=<free

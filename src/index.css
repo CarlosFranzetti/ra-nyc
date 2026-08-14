@@ -192,15 +192,17 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    Typography variants: a neutral sans, an open humanist, a condensed display.
 
-   Seven faces have now been through these three slots. The pattern in every
-   Condensed-slot failure was the same — Bebas Neue, Space Grotesk, Bricolage
+   Eight faces have now been through these three slots. The pattern in most
+   Condensed-slot failures was the same — Bebas Neue, Space Grotesk, Bricolage
    Grotesque, JetBrains Mono and Zilla Slab are all *text* faces of similar
    colour on the page, so beside system-ui the picker kept offering three
    shades of one idea. Anton broke that and broke readability with it: one
-   weight, and that weight is a poster. The Legible slot had its own version of
-   the same failure — Atkinson Hyperlegible read as "system-ui, but rounder" —
-   fixed the same way, by moving to a face with different proportions rather
-   than a different flavour of the same proportions. See .type-legible below.
+   weight, and that weight is a poster. Oswald then held the weight and lost
+   the shape, which is the failure that took the longest to name. The Legible
+   slot had its own version of the same problem — Atkinson Hyperlegible read as
+   "system-ui, but rounder" — fixed the same way, by moving to a face with
+   different proportions rather than a different flavour of the same
+   proportions. See .type-legible below.
 
    These three differ in proportion, not just in shape, which is the thing the
    eye actually notices at a glance.
@@ -241,17 +243,40 @@
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
 }
 
-/* Condensed — Oswald, on headings only.
+/* Condensed — Fjalla One, on headings only.
 
-   Impact is what this slot is reaching for and Impact cannot be reached for
-   directly: it ships one weight, so "a bit less bold" is not a thing it can do,
-   which is exactly why Anton came out again after a single round. Oswald is the
-   same idea — tall, narrow, poster lineage — in a family with real weights.
+   The brief for this slot has been the same three times running: *Impact, but
+   not as bold as Impact*. Two faces have now missed it from opposite sides.
 
-   Pinned at 500 rather than 600 or 700, and pinned regardless of the text-size
-   preference. A condensed face gains apparent weight as it grows, so a heading
-   that looks right at the smallest step reads as a slab of ink at the largest;
-   fixing the weight is what keeps the largest size usable. */
+   Anton missed by weight. It is a poster face with one weight and that weight
+   is the poster, so at the largest text step a column of titles turned into a
+   column of bars and there was no lighter cut to fall back to.
+
+   Oswald missed by shape, which took longer to see because the weight was
+   right. Oswald is drawn from Alternate Gothic: narrower than Impact, higher
+   stroke contrast, smaller x-height, and altogether more refined. Turning its
+   weight up would have made it heavy without making it Impact — the gap was
+   never weight, so no amount of weight closed it.
+
+   Fjalla One is the shape. Grotesque rather than gothic, flat terminals, the
+   big x-height and short extenders that give Impact its density, and spacing
+   tight enough that a two-word title still reads as a block — but drawn at a
+   medium weight rather than a black one.
+
+   It ships exactly one weight, which is the thing that sank Anton and is fine
+   here, because the single weight *is* the target rather than something to be
+   walked back from. `font-weight: 400` is stated rather than left to inherit
+   for exactly that reason: the headline rules elsewhere ask for 600, and
+   asking a family with no bold for one gets a synthesised smear, not a fallback
+   to what it has. Nothing in the app can set another weight, so the failure
+   mode Anton had — right face, no way down — cannot arise. The one it trades
+   for is real and narrower: if this ever reads a touch heavy at the top of the
+   size ladder, the fix is another family, not another number.
+
+   The tracking opens very slightly, against the grain of a condensed face, for
+   the same reason the weight is pinned: tight spacing plus a large x-height is
+   what makes Impact hard to read at length, and this is a listings app where
+   titles run long. */
 .type-condensed {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
@@ -265,9 +290,13 @@
    match an element against itself — so the picker's own "Condensed" label
    rendered in system-ui, which is the one place it has to not. */
 .type-condensed.type-headline {
-  font-family: 'Oswald', 'Haettenschweiler', 'Arial Narrow', sans-serif;
-  font-weight: 500;
-  letter-spacing: 0.005em;
+  /* Impact sits in the fallback chain on purpose. If the webfont never
+     arrives, the nearest thing on a Windows or macOS machine is the face this
+     slot was always imitating — a better degradation than Arial Narrow, which
+     is condensed but not remotely a display face. */
+  font-family: 'Fjalla One', 'Haettenschweiler', 'Impact', 'Arial Narrow', sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.012em;
   line-height: 1.2;
 }
 
@@ -404,6 +433,99 @@
 .text-size-3 { --text-scale: 1.191; }
 .text-size-4 { --text-scale: 1.262; }
 .text-size-5 { --text-scale: 1.338; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   The Text size slider.
+
+   A native `input[type=range]`, not six buttons and a pair of steppers. The
+   axis is ordered and continuous-feeling, and a range input already does every
+   gesture that implies — drag the thumb, tap anywhere on the track to jump to
+   the nearest step, arrow keys, Home/End, VoiceOver's rotor — none of which a
+   row of buttons gets without being reimplemented badly.
+
+   Everything visible is drawn by the markup in SettingsSheet: the track, the
+   fill and the six tick dots are ordinary divs underneath, and the input's own
+   track is transparent. Painting the track through `background` on the input
+   would mean maintaining it twice (WebKit and Gecko name the pseudo-elements
+   differently and neither inherits), and it could not show ticks at all.
+
+   Sizes here are px on purpose, everywhere. Every other length in this file
+   scales with `--text-scale`, and this is the one control that must not: a
+   slider that grows under your thumb *as you drag it* moves the target you are
+   aiming at.
+
+   28px is the hit area; the visible track is 4px. The gap between those two
+   numbers is the whole reason this is a range input rather than a styled bar —
+   a 4px tap target is unusable, and a 28px visible bar is a scrollbar. */
+.size-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.size-slider:focus {
+  outline: none;
+}
+
+.size-slider::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+  border: none;
+}
+
+.size-slider::-moz-range-track {
+  height: 28px;
+  background: transparent;
+  border: none;
+}
+
+/* WebKit centres nothing for you: the thumb is positioned from the top of the
+   track, so it needs (28 - 20) / 2 of its own margin. Gecko centres it, and
+   applying the same margin there pushes it off. Hence two rules that look
+   like duplicates and are not. */
+.size-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border-radius: 9999px;
+  border: 2px solid hsl(var(--background));
+  background: hsl(var(--primary));
+  box-shadow: 0 0 8px hsl(var(--glow-color) / var(--glow-intensity));
+  transition: transform 0.12s ease;
+}
+
+.size-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  border: 2px solid hsl(var(--background));
+  background: hsl(var(--primary));
+  box-shadow: 0 0 8px hsl(var(--glow-color) / var(--glow-intensity));
+  transition: transform 0.12s ease;
+}
+
+/* Grows under the finger while dragging, which is the only feedback available
+   on a touchscreen once the thumb is underneath a thumb. */
+.size-slider:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.size-slider:active::-moz-range-thumb {
+  transform: scale(1.15);
+}
+
+.size-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.4);
+}
+
+.size-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.4);
+}
 
 html {
   font-size: calc(16px * var(--text-scale, 1));
