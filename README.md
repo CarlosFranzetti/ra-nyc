@@ -70,8 +70,9 @@ residencies it mentions decide which of several same-named accounts to trust.
 When nothing corroborates, an empty set list is the answer — a confidently wrong
 one is worse.
 
-**Looks.** Five themes (Vapor, Neon, Matrix, Sunset, Mono — listed lightest to
-darkest), three typefaces, three densities and six text sizes. Card, border and
+**Looks.** Four themes (Vapor, Neon, Matrix, Sunset — listed lightest to
+darkest), three typefaces, three densities and six text sizes. Typeface and text
+size are sliders; theme and density are rows. Card, border and
 muted-text lightness are identical across every theme, so the only things that
 change are hue and how dark the background goes. Spacing tracks type size at partial strength,
 so the ratio of ink to air stays roughly constant across every combination rather
