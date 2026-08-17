@@ -835,6 +835,15 @@ html {
   --player-h: 0px;
 }
 
+/* The transport's live edge.
+   A glow thrown upward off the top border only — `0 -4px` with no spread, so it
+   bleeds onto the page above the bar and not down into the safe area, where it
+   would just haze the home indicator. Tailwind has no shorthand for a one-sided
+   shadow, hence a rule rather than a class list. */
+.player-live {
+  box-shadow: 0 -4px 16px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.55));
+}
+
 /* The native range input is unusable at this size on mobile — a hairline track
    and a system thumb that ignores the theme entirely. The element stays 20px
    tall for the touch target while the visible track is drawn at 3px, and the

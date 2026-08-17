@@ -95,7 +95,7 @@ that supports it.
 </p>
 
 **Search.** The magnifier next to the calendar searches NYC listings by DJ,
-party, promoter or venue — a month ahead and five months back, upcoming first,
+party, promoter or venue — six weeks ahead and four months back, upcoming first,
 then past. Matching is accent- and leet-insensitive and tolerates a typo, so
 `bjork` finds Björk and `holo` finds h0l0, and a typo lands in either word of a
 two-word name. Vibe words widen too — `after` reaches afterhours and sunrise

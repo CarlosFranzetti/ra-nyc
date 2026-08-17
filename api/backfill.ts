@@ -36,8 +36,8 @@ import {
 /**
  * Days per run.
  *
- * Was 14, which is fine arithmetic and a bad experience: the window is 181 days
- * (150 back, 30 ahead), so a cold index took a fortnight of nightly runs to
+ * Was 14, which is fine arithmetic and a bad experience: the window is 166 days
+ * (120 back, 45 ahead), so a cold index took a fortnight of nightly runs to
  * become useful, and for that fortnight search answers "nothing found" for
  * anything older than a week. Filling it in three nights instead is the
  * difference between a feature that works and one you have to be told to wait

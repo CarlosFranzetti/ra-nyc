@@ -272,7 +272,7 @@ describe("searchRAEvents", () => {
     }
   });
 
-  it("looks a month ahead and four months back", async () => {
+  it("looks six weeks ahead and four months back", async () => {
     const ranges: { from: string; to: string }[] = [];
     stubRA(corpus, { onRequest: (r) => ranges.push(r) });
     await searchRAEvents({ term: "lakuti" });

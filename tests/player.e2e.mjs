@@ -84,7 +84,14 @@ const mkSet = (n) => ({
   title: `Set Number ${n}`,
   url: `https://soundcloud.com/test/${n}`,
   embedUrl: `https://w.soundcloud.com/player/?url=https%3A%2F%2Fsoundcloud.com%2Ftest%2F${n}&auto_play=false`,
-  duration: 3600,
+  // Deliberately WRONG, and deliberately shorter than the widget's real 3600s.
+  //
+  // This is the resolver's metadata — what RA and the oEmbed lookup claim — and
+  // in production the two disagree constantly. It used to read 3600 here, which
+  // by coincidence matched the fake widget exactly, so a timeline that ignored
+  // the widget entirely and echoed the seed back still measured correct. The
+  // suite was green through a bug you could watch happen on a phone.
+  duration: 2400,
   plays: 1000 * n,
   createdAt: null,
   artwork: null,
@@ -116,25 +123,48 @@ const ARTIST = {
  * autoplay is refused. Only an iframe that has already played — i.e. one reused
  * via load() — starts on its own. window.__built counts iframes so the suite can
  * assert the player reuses rather than rebuilds.
+ *
+ * It also models the widget's *timing*, which is what the timeline bug turned
+ * on. Two details, both real and both previously missing here:
+ *
+ * 1. `getDuration` answers **0 until the track actually starts.** The widget is
+ *    ready to take commands before it has parsed the track, so the one question
+ *    the adapter used to ask arrived too early and got a zero — and the stub,
+ *    by answering correctly on the first call, made a broken adapter look
+ *    fine. That is why the suite was green through a bug you could see on the
+ *    screen.
+ * 2. `PLAY_PROGRESS` carries `relativePosition` alongside `currentPosition`.
+ *    It is how the adapter now derives the true length on every tick, so a stub
+ *    without it cannot exercise the fix at all.
  */
 const FAKE_SC = `
 (function(){
   var Events={READY:'ready',PLAY:'play',PAUSE:'pause',FINISH:'finish',PLAY_PROGRESS:'playProgress',ERROR:'error'};
   window.__built = 0;
   function Widget(iframe){
-    var l={},pos=0,timer=null,duration=3600000,activated=false;
+    var l={},pos=0,timer=null,duration=3600000,activated=false,parsed=false;
     window.__built++;
     function emit(e,p){(l[e]||[]).forEach(function(f){f(p);});}
-    function run(){ if(timer) return; emit(Events.PLAY);
-      timer=setInterval(function(){ pos+=250; emit(Events.PLAY_PROGRESS,{currentPosition:pos});
+    function tick(){ emit(Events.PLAY_PROGRESS,{currentPosition:pos,relativePosition:pos/duration}); }
+    function run(){ if(timer) return; parsed=true; emit(Events.PLAY);
+      timer=setInterval(function(){ pos+=250; tick();
         if(pos>=duration){clearInterval(timer);timer=null;emit(Events.FINISH);} },250); }
     return {
       bind:function(e,cb){(l[e]=l[e]||[]).push(cb); if(e===Events.READY) setTimeout(cb,40);},
-      getDuration:function(cb){cb(duration);},
-      load:function(url,opts){ pos=0; activated=true; if(opts&&opts.callback) setTimeout(opts.callback,20); },
+      // 0 before the track is parsed — the real widget's behaviour, and the
+      // whole reason the adapter cannot rely on asking once.
+      getDuration:function(cb){cb(parsed?duration:0);},
+      // A late tick from the OUTGOING track, fired after load() was called and
+      // before the swap completes. The real widget does this — postMessage is
+      // in flight when the swap is requested — and it is the second half of the
+      // timeline bug: that stale position landed as the new track's, so a set
+      // skipped into opened its timeline wherever the previous one had got to.
+      load:function(url,opts){ var stale=pos; pos=0; activated=true;
+        setTimeout(function(){ emit(Events.PLAY_PROGRESS,{currentPosition:stale,relativePosition:stale/duration}); },5);
+        if(opts&&opts.callback) setTimeout(opts.callback,20); },
       play:function(){ if(!activated){ activated=true; run(); return; } run(); },
       pause:function(){ if(timer){clearInterval(timer);timer=null;} emit(Events.PAUSE); },
-      seekTo:function(ms){ pos=ms; emit(Events.PLAY_PROGRESS,{currentPosition:pos}); }
+      seekTo:function(ms){ pos=ms; tick(); }
     };
   }
   Widget.Events=Events;
@@ -269,7 +299,13 @@ await page.waitForTimeout(1600);
 const t2 = await at();
 check("timeline advances while playing", t2 > t1, `${t1}s -> ${t2}s`);
 check("toggle shows Pause while playing", (await page.locator('button[aria-label="Pause"]').count()) > 0);
-check("duration reported from provider", (await seek.getAttribute("max")) === "3600");
+// 3600 is the *widget's* length; 2400 is the metadata seed above. Asserting the
+// larger one is asserting that the player believes the thing actually playing
+// rather than the thing that was written down about it — which is the entire
+// timeline bug in one number.
+check("the timeline takes its length from the widget, not the metadata",
+  (await seek.getAttribute("max")) === "3600",
+  `max ${await seek.getAttribute("max")} (seed says 2400)`);
 
 // The lock screen reads this. Before it was set, a locked phone showed the
 // embedded widget's own idea of itself ("SoundCloud widget") instead of the set.
@@ -302,7 +338,31 @@ const osNext = await page.evaluate(() => {
 check("media session action handlers are wired", osNext);
 
 const builtBefore = await page.evaluate(() => window.__built);
+const beforeSwap = await at();
+
+// Sample hard across the swap rather than once after it.
+//
+// The stale tick the fake widget fires on load() carries the OUTGOING track's
+// position, and it is only wrong for a couple of hundred milliseconds before
+// the incoming track's own ticks overwrite it — so a single reading taken
+// afterwards sees a plausible number and proves nothing. What a person sees is
+// the flash: tap next on a set thirty minutes in and the new one opens at
+// thirty minutes before snapping back. Watching every frame of the window is
+// the only way to catch that.
 await page.locator('button[aria-label="Next mix"]').click();
+const peak = await page.evaluate(async () => {
+  const input = document.querySelector('input[aria-label="Seek"]');
+  let highest = 0;
+  for (let i = 0; i < 20; i++) {
+    highest = Math.max(highest, Number(input.value));
+    await new Promise((r) => setTimeout(r, 15));
+  }
+  return highest;
+});
+check("a new track starts at the beginning, with no flash of the old position",
+  peak < Math.max(2, beforeSwap / 2),
+  `peaked at ${peak}s after leaving the previous set at ${beforeSwap}s`);
+
 await page.waitForTimeout(500);
 check(
   "transport drives playback from inside a sheet",
