@@ -233,6 +233,11 @@ export default function HomePage() {
             to the event rather than to the listings. */}
         <VenueSheet
           venue={selectedVenue}
+          // Taken from the event rather than threaded through onSelectVenue:
+          // this sheet is only ever opened from the venue line of the event
+          // that is already selected, so the two cannot disagree. Null for
+          // anything that came from the saved index, which has no venue ids.
+          venueId={selectedEvent?.venue.id ?? null}
           ticketsUrl={selectedEvent?.url ?? null}
           open={venueOpen}
           onOpenChange={setVenueOpen}

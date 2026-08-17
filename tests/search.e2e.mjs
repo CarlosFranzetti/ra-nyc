@@ -228,6 +228,11 @@ await page.route("**/api/venue*", (route) =>
       lat: 40.7108,
       lon: -73.9229,
       label: "Nowadays, Troutman Street, Queens, New York",
+      // `address` is what the sheet renders; `label` is the geocoder's raw
+      // match and is kept separately so the response can say which of the two
+      // sources answered. A stub with only `label` shows no address at all.
+      address: "Nowadays, Troutman Street, Queens, New York",
+      addressSource: "geocoder",
       mapsUrl: "https://maps.apple.com/?q=Nowadays&ll=40.7108,-73.9229",
     }),
   }),
@@ -301,7 +306,19 @@ check("tiles are drawn at exactly the size they are placed on",
 check("adjacent tiles abut rather than overlap", map !== null && map.overlap === false);
 
 check("there is a way out to the platform's map app",
-  (await page.locator('a[aria-label="Open in Maps"]').count()) > 0);
+  (await page.locator('a[aria-label="Show on maps"]').count()) > 0);
+
+// Uber, Lyft, then maps. The order is the order people decide in — hail
+// something, and fall back to a map only if you are walking or still working
+// out where the place is.
+const rideOrder = await page.evaluate(() =>
+  [...document.querySelectorAll('[role="dialog"] a[aria-label]')]
+    .map((a) => a.getAttribute("aria-label"))
+    .filter((l) => /Uber|Lyft|maps/i.test(l ?? ""))
+    .map((l) => (/Uber/.test(l) ? "uber" : /Lyft/.test(l) ? "lyft" : "maps")),
+);
+check("the ways to get there are ordered Uber, Lyft, maps",
+  rideOrder.join(",") === "uber,lyft,maps", rideOrder.join(",") || "none");
 
 // Getting there is the next thing you do after finding out where it is.
 const uber = page.locator('a[aria-label^="Get an Uber"]');
@@ -321,11 +338,28 @@ check("the Lyft link carries the venue as the destination",
     lyftHref.includes("destination%5Blongitude%5D=-73.9229"),
   lyftHref.slice(0, 90));
 
+// The address is a bold span inside the line rather than the whole line,
+// because the distance shares that line and must NOT be bold — it is a
+// qualifier on the address, not a second fact.
 check("the address is set in bold",
   await page
-    .locator('[role="dialog"] p:has-text("Troutman Street")')
+    .locator('[role="dialog"] span:has-text("Troutman Street")')
     .first()
     .evaluate((el) => Number(getComputedStyle(el).fontWeight) >= 600),
+);
+check("and is not the same colour as the venue name above it",
+  await page.evaluate(() => {
+    // Found from the address outwards, not from the first dialog inwards: the
+    // venue sheet is stacked over the still-open event sheet, so
+    // querySelector('[role="dialog"]') returns the event underneath it.
+    const address = [...document.querySelectorAll('[role="dialog"] span')].find(
+      (el) => el.textContent?.includes("Troutman Street") && el.children.length === 0,
+    );
+    const dialog = address?.closest('[role="dialog"]');
+    const name = dialog?.querySelector("[class*='text-venue']");
+    if (!name || !address) return false;
+    return getComputedStyle(name).color !== getComputedStyle(address).color;
+  }),
 );
 
 check("both tile sources are credited",

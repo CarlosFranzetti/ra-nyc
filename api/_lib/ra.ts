@@ -37,7 +37,7 @@ export interface RAEvent {
   endTime: string;
   url: string;
   imageUrl: string | null;
-  venue: { name: string; area: string };
+  venue: { id: string | null; name: string; area: string };
   artists: RAArtist[];
   attending: number;
   isPick: boolean;
@@ -144,7 +144,13 @@ function transformListing(listing: RAListing): RAEvent {
     endTime: event.endTime ?? "",
     url: `https://ra.co${event.contentUrl}`,
     imageUrl: rawImage ? normalizeImageUrl(rawImage) : null,
-    venue: { name: event.venue?.name ?? "TBA", area: "New York" },
+    // The id travels with the name so the venue sheet can ask RA for an
+    // address. Nullable because a TBA listing has no venue at all.
+    venue: {
+      id: event.venue?.id ?? null,
+      name: event.venue?.name ?? "TBA",
+      area: "New York",
+    },
     // Keep ids, not just names: the artist page and its Mixcloud lookup are
     // keyed on them, and RA reuses names across different artists.
     artists:
