@@ -456,14 +456,49 @@ function matchesTerm(event: RAEvent, term: string): boolean {
   // a DJ name in this scene — could never be found at all. Splitting both and
   // requiring *every* query word to land somewhere fixes that without letting
   // a single matching word drag in half the city.
-  const words = (value: string) =>
-    value.split(/[\s,&·/]+/).map(searchKey).filter((key) => key.length >= FUZZY_MIN_LENGTH);
+  const split = (value: string) => value.split(/[\s,&·/]+/).map(searchKey).filter(Boolean);
 
-  const fieldWords = fields.flatMap(words);
-  if (fieldWords.length === 0) return false;
+  const words = (value: string) =>
+    split(value).filter((key) => key.length >= FUZZY_MIN_LENGTH);
+
+  /**
+   * Single words *and* adjacent pairs, both long enough to risk an edit.
+   *
+   * The pairs are what make short names reachable, and they close two misses
+   * that a word-only pool could not:
+   *
+   * - **"bosa nova" found nothing.** Both query words are four letters, so both
+   *   are dropped as too short to fuzzy-match, and the whole-term fallback then
+   *   compared "bosanova" against the haystack's individual words — "bossa",
+   *   "civic" — none of which is within an edit of it. The bigram "bossanova"
+   *   is, exactly.
+   * - **"dj kose" found nothing**, for the same reason from the other side:
+   *   "DJ Koze" is two words of two and four letters, so it contributed *no*
+   *   words to the pool at all and was unreachable by any typo whatsoever.
+   *   Its bigram "djkoze" is one edit from "djkose".
+   *
+   * Pairs only, not every n-gram: a title's full key is far too long to be
+   * within one edit of anything anyone types, and the cost is linear rather
+   * than quadratic in the words of a field.
+   */
+  const pool = (value: string) => {
+    const parts = split(value);
+    const out: string[] = [];
+    for (let i = 0; i < parts.length; i += 1) {
+      if (parts[i]!.length >= FUZZY_MIN_LENGTH) out.push(parts[i]!);
+      if (i + 1 < parts.length) {
+        const pair = parts[i]! + parts[i + 1]!;
+        if (pair.length >= FUZZY_MIN_LENGTH) out.push(pair);
+      }
+    }
+    return out;
+  };
+
+  const haystack = fields.flatMap(pool);
+  if (haystack.length === 0) return false;
 
   const near = (needle: string) =>
-    fieldWords.some((word) => withinEditDistance(word, needle, 1));
+    haystack.some((word) => withinEditDistance(word, needle, 1));
 
   const termWords = words(term);
 

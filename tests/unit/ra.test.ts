@@ -197,6 +197,55 @@ describe("searchRAEvents", () => {
     expect((await searchRAEvents({ term: "lakuki" })).upcoming.map((e) => e.id)).toContain("f1");
   });
 
+  /**
+   * Typos in names whose *words* are all too short to fuzzy-match on their own.
+   *
+   * Both of these returned nothing, and for the same reason from opposite
+   * sides. A word has to be five characters before a single edit is allowed to
+   * match it — below that an edit matches half the city — and that filter ran
+   * on the haystack as well as the query. So "Bossa Nova Civic Club"
+   * contributed only "bossa" and "civic" to the pool, and "DJ Koze"
+   * contributed *nothing at all*, making it unreachable by any typo whatever.
+   *
+   * Adjacent word pairs are now in the pool alongside single words, which is
+   * long enough to be matchable while still being short enough that one edit
+   * means something: "bossanova" is one edit from "bosanova", "djkoze" is one
+   * from "djkose".
+   */
+  it("finds a two-short-word venue through a typo", async () => {
+    stubRA(corpus);
+    const hits = (await searchRAEvents({ term: "bosa nova" })).upcoming.map((e) => e.id);
+    expect(hits).toContain("f2");
+  });
+
+  it("finds a two-short-word artist through a typo", async () => {
+    stubRA([
+      ...corpus,
+      listing({ id: "k1", title: "Something", date: day(4), artists: ["DJ Koze"] }),
+    ]);
+    const hits = (await searchRAEvents({ term: "dj kose" })).upcoming.map((e) => e.id);
+    expect(hits).toContain("k1");
+  });
+
+  /**
+   * The other half of widening the pool: it must not have become a sieve.
+   *
+   * Pairs are longer than the words they are built from, so they are *harder*
+   * to match by accident, not easier — but that is an argument, and this is the
+   * check. Two edits away stays two edits away.
+   */
+  it("still refuses a two-edit miss", async () => {
+    stubRA(corpus);
+    const hits = (await searchRAEvents({ term: "bxsa nxva" })).upcoming.map((e) => e.id);
+    expect(hits).not.toContain("f2");
+  });
+
+  it("does not match an unrelated name at all", async () => {
+    stubRA(corpus);
+    const { upcoming, past } = await searchRAEvents({ term: "peggy gou" });
+    expect([...upcoming, ...past]).toHaveLength(0);
+  });
+
   it("does not fuzzy-match short terms into everything", async () => {
     stubRA(corpus);
     const { upcoming, past } = await searchRAEvents({ term: "abcd" });
