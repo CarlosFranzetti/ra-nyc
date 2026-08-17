@@ -146,6 +146,18 @@ async function measure({ width, height, density = "default", textSize = "0", typ
   return out;
 }
 
+// ── the document declares its language, and declines to be translated
+//
+// Both, because the first is not enough. Chrome runs its own detector over the
+// visible text and overrides `lang` when it disagrees confidently — and nearly
+// every word on the listings screen is a promoter, a party or a DJ alias, none
+// of which are English words. It was offering "Indonesian to English" on every
+// load.
+const doc = await fetch(BASE).then((r) => r.text());
+check("the document declares English", /<html[^>]+lang="en"/.test(doc));
+check("and opts out of the browser's translate prompt",
+  /<meta name="google" content="notranslate"/.test(doc));
+
 // ── the manifest, which is what makes an install chrome-free
 const manifestRes = await fetch(`${BASE}/manifest.webmanifest`);
 check("a web app manifest is served", manifestRes.ok, `HTTP ${manifestRes.status}`);
