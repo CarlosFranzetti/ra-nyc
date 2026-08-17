@@ -46,7 +46,7 @@ export function Header({ selectedDate, onDateChange, onSearchClick }: HeaderProp
 
   return (
     <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border/50 pt-safe">
-      <div className="shell px-4 py-4 flex items-center justify-between">
+      <div className="shell px-4 py-3 flex items-center justify-between">
         {/* A logo, not a heading — so it is deliberately outside every
             preference axis. It used to inherit the `type-*` class from <html>,
             which meant the app's own name was rendered in whichever typeface
