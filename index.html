@@ -10,6 +10,25 @@
     />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#080808" />
+    <!-- Stops Chrome offering to translate the page, which it was doing on
+         every load — usually "Indonesian to English".
+
+         `lang="en"` above is already correct and is not enough on its own.
+         Chrome runs its own detector over the visible text and overrides the
+         declared language when it disagrees confidently, and almost every word
+         on this screen is a proper noun: promoters, party names and DJ aliases
+         like "vivaval", "PUFF", "LIONESSA", "Varist". None of those are English
+         words, so the detector reaches for whatever language they look most like
+         and lands somewhere random. The English here — "going", "events",
+         "Low-key" — is a handful of short labels and is outnumbered.
+
+         Suppressing it outright rather than trying to win the argument. The
+         cost is that a non-English speaker cannot machine-translate the
+         interface, which is a few dozen words of chrome; the benefit is not
+         dismissing a banner over the listings every single time the app opens.
+         Nothing here is prose, and the names are exactly what a translator
+         should leave alone anyway. -->
+    <meta name="google" content="notranslate" />
     <!-- Installed, the app runs without an address bar, tab strip or toolbar on
          every platform that supports it: `standalone` covers iOS (via the Apple
          meta below, which predates the manifest and is still what Safari reads)

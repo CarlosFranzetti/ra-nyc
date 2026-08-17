@@ -2,6 +2,8 @@
   "name": "RA NYC Events",
   "short_name": "RA NYC",
   "description": "Resident Advisor NYC events in a fast, mobile-friendly list.",
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
