@@ -288,6 +288,48 @@ await page.waitForTimeout(700);
 check("but a tap past the end of the options still closes it",
   (await stillOpen()) === false);
 
+// ── the hidden screen
+//
+// Open Customize, close it, then tap the logo twenty-six times. The counting
+// itself is unit-tested in tests/unit/secretTaps.test.ts; what this checks is
+// the wiring — that the panel closing is what arms it, that the logo is
+// actually a tap target, and that the thing which opens is on top of
+// everything rather than trapped inside the header's backdrop-filter.
+const logo = page.locator(".logo");
+const boxes = () => page.locator('[aria-label="Add a box"]');
+
+// The panel is already closed by the check above, so the sequence is armed.
+for (let i = 0; i < 26; i++) await logo.click({ position: { x: 10, y: 10 } });
+await page.waitForTimeout(400);
+check("twenty-six taps after closing Customize open the hidden screen",
+  (await boxes().count()) === 1);
+
+// It has to sit above the transport bar's z-[70], and a portal is the only way
+// it can: the header it is triggered from has a backdrop-filter, which
+// contains fixed-position descendants.
+const layered = await page.evaluate(() => {
+  const el = document.querySelector('[aria-label="Add a box"]')?.closest("div.fixed");
+  if (!el) return null;
+  return {
+    z: Number(getComputedStyle(el).zIndex),
+    body: el.parentElement === document.body,
+    full: Math.round(el.getBoundingClientRect().height) >= window.innerHeight - 1,
+  };
+});
+check("it covers the app rather than sitting inside the header",
+  layered !== null && layered.z >= 100 && layered.body && layered.full,
+  JSON.stringify(layered));
+
+await page.locator('[aria-label="Close"]').click();
+await page.waitForTimeout(300);
+check("and the exit closes it", (await boxes().count()) === 0);
+
+// Disarmed on the way in, so it cannot be reopened without the panel again.
+for (let i = 0; i < 26; i++) await logo.click({ position: { x: 10, y: 10 } });
+await page.waitForTimeout(300);
+check("tapping twenty-six more times does not reopen it",
+  (await boxes().count()) === 0);
+
 await browser.close();
 server.kill("SIGTERM");
 

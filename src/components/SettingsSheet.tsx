@@ -150,8 +150,21 @@ function OptionButton({
   );
 }
 
-export function SettingsSheet() {
-  const [open, setOpen] = useState(false);
+/**
+ * `onOpenChange` exists for one caller and one reason: the header watches this
+ * panel closing, because that is the first half of the logo's unlock sequence.
+ * Optional, so nothing else has to care.
+ */
+export function SettingsSheet({
+  onOpenChange,
+}: {
+  onOpenChange?: (open: boolean) => void;
+} = {}) {
+  const [open, setOpenState] = useState(false);
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    onOpenChange?.(next);
+  };
   const {
     colorTheme,
     setColorTheme,
