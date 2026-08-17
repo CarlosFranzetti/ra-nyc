@@ -1861,6 +1861,155 @@ The narrower lesson: a passing test suite is evidence about the code the suite
 executes. For serverless routes nothing executes locally, so `tsc` is not a
 style gate there — it is the entire test suite.
 
+### 3.x · The SoundCloud timeline was echoing a guess
+
+Two bugs, both visible on a phone, both invisible to a green suite.
+
+`set.duration` is the resolver's metadata — a seed, so the bar has *a* length
+before the widget will give one. The adapter asked `getDuration` once, at READY,
+and then handed whatever it got to every progress tick for the rest of the
+track. READY only means the widget will accept commands, not that it has parsed
+anything, so it frequently answers **0** — and when it did, the seed survived
+and every later tick re-asserted it. A two-hour set on a forty-minute guess pins
+the playhead at the far right after forty minutes and stays there.
+
+Every other adapter in `lib/players/` re-reads its duration as it plays. This
+one was the outlier, and it is the priority provider.
+
+It now asks again on **PLAY**, which is the first moment the track is definitely
+parsed, and derives the length on every tick from `relativePosition`, which
+`PLAY_PROGRESS` has carried all along (`currentPosition / relativePosition`).
+The arithmetic is the backstop rather than the primary: it needs 1% of the track
+to have played, which on an hour-long mix is the first thirty-six seconds.
+
+The second half: the handle is deliberately reused across tracks — that is what
+makes the second set start on one tap — but reuse means *one* progress binding
+serves every track, and the outgoing one keeps emitting after `load()` is
+called. Those late ticks landed as the new track's position, so skipping into a
+set opened its timeline wherever the previous one had reached. Progress is now
+dropped while a swap is in flight, and `start()` emits an explicit zero rather
+than waiting for the first real tick.
+
+**Why the suite could not have caught either**, which is the transferable part:
+the fake widget answered `getDuration` correctly on the first call, and the
+metadata fixture happened to equal the widget's length *exactly*. So a timeline
+that ignored the widget entirely and echoed the seed back still measured
+correct. A stub that is more cooperative than the real thing is not a stub, it
+is a second implementation that agrees with you. It now answers 0 until parsed,
+carries `relativePosition`, and fires the stale in-flight tick; the fixture
+disagrees with the widget on purpose.
+
+### 3.x · Names whose words are all too short to typo
+
+An audit of the matcher turned up two misses with one cause. A word must be five
+characters before a single edit is allowed to match it — below that an edit
+matches half the city — and that filter ran on the **haystack** as well as the
+query. "Bossa Nova Civic Club" therefore contributed only `bossa` and `civic`,
+and "DJ Koze" contributed *nothing at all*, which made it unreachable by any
+typo whatsoever. `bosa nova` and `dj kose` both returned empty.
+
+Adjacent word **pairs** now join single words in the pool: `bossanova` is one
+edit from `bosanova`, `djkoze` one from `djkose`. Pairs only — a full title's
+key is far too long to be within one edit of anything anyone types, and the cost
+stays linear in a field's words rather than quadratic.
+
+Widening a fuzzy pool is exactly how a search becomes a sieve, so the negatives
+are asserted alongside: two edits away stays two edits away, an unrelated name
+returns nothing. Probed the rest of the surface while in there — accents, leet
+venues (`h0l0`), vibe words, promoters in titles, multi-word typos — and it
+holds.
+
+**Dates are still not searchable.** A weekday query would match a seventh of a
+166-day window, and "what is on the 15th" is what the date rail and the calendar
+already answer.
+
+### 3.x · Venues that never had an address
+
+The address sat below the map and appeared only when Nominatim produced a label,
+so the venues that most need one — the warehouse, the loft, the boat, none of
+which a street-address geocoder can place — showed nothing at all.
+
+RA has them, because a promoter typed them in. `/api/venue` now takes an RA
+venue id (newly carried on the events payload) and asks. Two decisions worth
+keeping:
+
+- **A second request, not a field on the listings query.** Nothing else in the
+  app touches this part of RA's schema; a mismatch in the listings query would
+  take down every event in the app rather than one line of one sheet. Every
+  failure in it is caught and means "no address".
+- **RA's address is handed *back* to the geocoder** when the venue's name got
+  nowhere. A street address is precisely what Nominatim is good at, so an
+  unplaceable venue becomes a pin, a distance, and a ride with a real drop-off.
+
+That refactor introduced a cache bug on the way through, which is the part worth
+remembering: with both upstream calls swallowing their own failures, a timeout
+returned a perfectly valid body with no coordinates — and this response is
+cached for **a month**. A five-second Nominatim blip would have pinned a venue
+as unmappable until September. Geocode results now report whether the geocoder
+answered *at all*, separately from whether it had anything, and a degraded
+answer takes a five-minute cache.
+
+The sheet: address first and always, bold, in `--foreground` rather than
+`--venue` (repeating the name's hue read as one wrapped title). Distance in
+parentheses, not bold — a qualifier on the address, not a second fact. Then
+Uber, Lyft, maps, always all three.
+
+The geolocation permission is new and narrow. The ride links still do not ask —
+`pickup=my_location` hands that to Uber and Lyft, who ask anyway. "How far is
+it" is different because nothing else can answer it, so it asks once, only from
+this sheet, and every refusal resolves to no parenthesis and no explanation.
+
+### 3.x · Preferences: four themes, two sliders
+
+Mono is gone; back to the four this app shipped with. It was the only theme with
+no hue, which was the idea and also the problem — every other theme here is a
+mood you pick for a night out — and at 2% it broke the ladder whose next-darkest
+was 3.5%.
+
+Typography joined Text size as a slider. Three faces ordered by departure from
+the system default is the same shape of choice as six sizes: "one further" and
+"that one" are both real thoughts, and buttons only serve the second. The names
+stay under the ticks, each set in the face it selects.
+
+And the panel stopped closing while you used it. The rule was "anything that is
+not a button, link or input closes the sheet" — fine when every setting was a
+button, wrong the moment two became sliders, because a slider is *surrounded* by
+things that are none of those. A finger leaving the track a few pixels high shut
+the panel mid-adjust. The options are one `data-controls` region now; closing
+takes a deliberate tap past the end of them.
+
+### 3.x · A hidden screen behind the logo
+
+Open Customize, close it, tap the logo twenty-six times in a row.
+
+The counting is a pure function in `lib/secretTaps.ts` and unit-tested away from
+the DOM, because every interesting case is about *time*. "In a row" is a 1.5s
+window between taps — without it the counter is a lifetime tally and the screen
+eventually opens by accident, which is a trap rather than a secret. A tap while
+disarmed *clears* the run rather than merely not counting, so a near-complete
+run cannot be banked and finished after reopening the panel.
+
+Counter and armed flag are refs, not state: twenty-five of every twenty-six taps
+change nothing visible, and state would re-render the header and every date chip
+under it once per tap to display the same thing.
+
+`DividedBoxes` renders through a portal into `document.body`, which is not a
+preference — **`backdrop-filter` creates a containing block for fixed-position
+descendants**, and the header it is triggered from has one, so rendered in place
+a full-screen overlay is trapped inside the header's box.
+
+### 3.x · The green build that was a 500
+
+`api/backfill.ts` used `SEARCH_AHEAD_DAYS` and never imported it, so every call
+threw a `ReferenceError` for a week.
+
+**Vercel builds the API with esbuild, which strips types without checking them.**
+A type error is not a build failure — the deploy goes green and the endpoint
+500s. Meanwhile `test:all` ran eight suites over the front end and passed,
+because none of them call that route. `test:all` now begins with `npm run
+typecheck`. For serverless routes nothing executes locally, so `tsc` is not a
+style gate there — it is the entire test suite.
+
 ## 4 · Map of the code
 
 ```

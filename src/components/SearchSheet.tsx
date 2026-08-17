@@ -156,7 +156,7 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
             <div className="px-1 pt-6 text-center">
               <p className="text-sm text-foreground">No events found</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Nothing matching “{query.trim()}” in the last five months or the next one.
+                Nothing matching “{query.trim()}” in the last four months or the next six weeks.
               </p>
               {/* The difference between "this DJ has no gigs" and "we have not
                   looked at those days yet" is the whole answer, and only one of
@@ -181,7 +181,7 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
               "this may be incomplete" teaches people to ignore it. */}
           {data?.truncated && (upcoming.length > 0 || past.length > 0) && (
             <p className="px-1 pb-2 text-center text-[0.6875rem] text-muted-foreground/60">
-              Searching the next month and the last five.
+              Searching the next six weeks and the last four months.
             </p>
           )}
         </div>

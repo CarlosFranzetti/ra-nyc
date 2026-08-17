@@ -12,7 +12,7 @@ export interface Event {
   endTime: string;
   url: string;
   imageUrl: string | null;
-  venue: { name: string; area: string };
+  venue: { id: string | null; name: string; area: string };
   artists: Artist[];
   attending: number;
   isPick: boolean;

@@ -11,27 +11,33 @@
    the rules out of the build. Only Neon survived, because `:root` anchored it.
    Plain CSS is never purged.
    ───────────────────────────────────────────────────────────────────────────── */
-/* Five themes, one structure, two variables.
+/* Four themes, one structure, two variables.
 
    Everything above the background is shared and fixed: cards 8.8%, secondary
    12.7%, muted 14.7%, input 16.7%, borders 17.6%, muted-foreground 58%,
    foreground ~95%, glow 0.3. That uniformity is what stops a theme switch from
    changing how *heavy* the app feels — the original set had Matrix at 3% and
-   Sunset at 5% with borders drifting eight points, and it read as five apps.
+   Sunset at 5% with borders drifting eight points, and it read as four apps.
 
-   The one thing that now varies besides hue is the **background**, deliberately,
+   The one thing that varies besides hue is the **background**, deliberately,
    because the themes are meant to be a ladder from lightest to darkest rather
-   than five variations of one grey:
+   than four variations of one grey:
 
      Vapor   4.5%    lightest
      Neon    4.25%
      Matrix  3.75%
-     Sunset  3.5%
-     Mono    2%      almost black
+     Sunset  3.5%    darkest
 
    The picker lists them in exactly that order.
 
-   If you add a sixth theme: pick a background from that ladder, copy every other
+   Mono was a fifth for one round and is gone again, back to the four this app
+   shipped with. It was the only theme with no hue at all, which was the idea —
+   get out of the way and let the flyers be the only colour on screen — and also
+   the problem: every other theme here is a *mood* you pick for a night out, and
+   a greyscale listings app is not one. It also broke the ladder's premise, at
+   2% against a set whose next-darkest was 3.5%.
+
+   If you add a fifth theme: pick a background from that ladder, copy every other
    value verbatim, and change only the hues. */
 
 /* Neon Theme - Electric Cyan */
@@ -66,7 +72,7 @@
      it is not decoration, it is the signal that a thing makes sound, and a
      signal that changes colour with the wallpaper stops being learnable. Green
      because a green triangle already means play everywhere else on a phone.
-     Declared on :root, so all five themes inherit it and nothing has to
+     Declared on :root, so all four themes inherit it and nothing has to
      remember to redefine it. */
   --play: 145 80% 48%;
 }
@@ -154,39 +160,6 @@
   /* The violet sky above the orange, and the one hue in this theme
      that is not a neighbour of its primary. */
   --venue: 286 78% 72%;
-}
-
-/* Mono Theme - Greyscale
-   The one theme with no hue at all. Every other theme colours the interface and
-   lets the flyers sit inside it; this one gets out of the way entirely, so the
-   only colour on screen is the artwork — and the green play triangle, which is
-   inherited from :root rather than redefined precisely so it stays the single
-   piece of signal that survives here. */
-.theme-mono {
-  --background: 0 0% 2%;
-  --foreground: 0 0% 96%;
-  --card: 0 0% 8.8%;
-  --card-foreground: 0 0% 96%;
-  --popover: 0 0% 8.8%;
-  --popover-foreground: 0 0% 96%;
-  --primary: 0 0% 92%;
-  --primary-foreground: 0 0% 2%;
-  --secondary: 0 0% 12.7%;
-  --secondary-foreground: 0 0% 96%;
-  --muted: 0 0% 14.7%;
-  --muted-foreground: 0 0% 58%;
-  --accent: 0 0% 12.7%;
-  --accent-foreground: 0 0% 92%;
-  --destructive: 0 70% 50%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 17.6%;
-  --input: 0 0% 16.7%;
-  --ring: 0 0% 92%;
-  --glow-color: 0 0% 92%;
-  --glow-intensity: 0.3;
-  /* Venue names keep their hierarchy through lightness rather than a
-     second hue — the one job colour does everywhere else. */
-  --venue: 0 0% 66%;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -833,6 +806,15 @@ html {
    removed the themes once already. */
 :root {
   --player-h: 0px;
+}
+
+/* The transport's live edge.
+   A glow thrown upward off the top border only — `0 -4px` with no spread, so it
+   bleeds onto the page above the bar and not down into the safe area, where it
+   would just haze the home indicator. Tailwind has no shorthand for a one-sided
+   shadow, hence a rule rather than a class list. */
+.player-live {
+  box-shadow: 0 -4px 16px hsl(var(--glow-color) / calc(var(--glow-intensity) * 0.55));
 }
 
 /* The native range input is unusable at this size on mobile — a hairline track

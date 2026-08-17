@@ -235,6 +235,101 @@ check("the slider itself does not grow with the size it sets",
   small.height === large.height && small.height === 28,
   `${small.height}px then ${large.height}px`);
 
+// ── the typeface slider, which is the same control over a different axis
+const fontSlider = page.locator('input[type="range"][aria-label="Typography"]');
+check("the typeface control is a range input too", (await fontSlider.count()) === 1);
+
+const face = () =>
+  page.evaluate(() =>
+    [...document.documentElement.classList].find((c) => c.startsWith("type-")),
+  );
+
+await fontSlider.click({ position: { x: (await fontSlider.boundingBox()).width - 4, y: 14 } });
+await page.waitForTimeout(250);
+check("sliding it to the end selects the condensed face",
+  (await face()) === "type-condensed", (await face()) ?? "none");
+
+await fontSlider.click({ position: { x: 2, y: 14 } });
+await page.waitForTimeout(250);
+check("and back to the start returns to the system face",
+  (await face()) === "type-system", (await face()) ?? "none");
+
+// The names under the track are still the picker, not decoration.
+await page.locator('button[aria-pressed]:has-text("Legible")').click();
+await page.waitForTimeout(250);
+check("tapping a name under the track picks it too", (await face()) === "type-legible",
+  (await face()) ?? "none");
+
+// ── the panel must survive being used
+//
+// This is the complaint that produced the data-controls region: the old rule
+// closed on anything that was not a button, link or input, and a slider is
+// surrounded by things that are none of those. A finger leaving the track a few
+// pixels high after a drag landed on one of them and the panel shut mid-adjust.
+const stillOpen = async () =>
+  (await page.locator('input[aria-label="Text size"]').isVisible().catch(() => false));
+
+const sizeBox = await slider.boundingBox();
+// Just above the track: inside the group, outside every control.
+await page.mouse.click(sizeBox.x + sizeBox.width / 2, sizeBox.y - 10);
+await page.waitForTimeout(600);
+check("a tap in the space around a slider does not dismiss the panel", await stillOpen());
+
+// The heading of a group — also not a control, also inside the block.
+await page.locator("text=Typography").first().click({ force: true });
+await page.waitForTimeout(600);
+check("nor does a tap on a group heading", await stillOpen());
+
+// Dead space past the end of the options still closes, which is the behaviour
+// the region was carved out of rather than a replacement for it.
+const controls = await page.locator("[data-controls]").boundingBox();
+await page.mouse.click(controls.x + controls.width / 2, controls.y + controls.height + 60);
+await page.waitForTimeout(700);
+check("but a tap past the end of the options still closes it",
+  (await stillOpen()) === false);
+
+// ── the hidden screen
+//
+// Open Customize, close it, then tap the logo twenty-six times. The counting
+// itself is unit-tested in tests/unit/secretTaps.test.ts; what this checks is
+// the wiring — that the panel closing is what arms it, that the logo is
+// actually a tap target, and that the thing which opens is on top of
+// everything rather than trapped inside the header's backdrop-filter.
+const logo = page.locator(".logo");
+const boxes = () => page.locator('[aria-label="Add a box"]');
+
+// The panel is already closed by the check above, so the sequence is armed.
+for (let i = 0; i < 26; i++) await logo.click({ position: { x: 10, y: 10 } });
+await page.waitForTimeout(400);
+check("twenty-six taps after closing Customize open the hidden screen",
+  (await boxes().count()) === 1);
+
+// It has to sit above the transport bar's z-[70], and a portal is the only way
+// it can: the header it is triggered from has a backdrop-filter, which
+// contains fixed-position descendants.
+const layered = await page.evaluate(() => {
+  const el = document.querySelector('[aria-label="Add a box"]')?.closest("div.fixed");
+  if (!el) return null;
+  return {
+    z: Number(getComputedStyle(el).zIndex),
+    body: el.parentElement === document.body,
+    full: Math.round(el.getBoundingClientRect().height) >= window.innerHeight - 1,
+  };
+});
+check("it covers the app rather than sitting inside the header",
+  layered !== null && layered.z >= 100 && layered.body && layered.full,
+  JSON.stringify(layered));
+
+await page.locator('[aria-label="Close"]').click();
+await page.waitForTimeout(300);
+check("and the exit closes it", (await boxes().count()) === 0);
+
+// Disarmed on the way in, so it cannot be reopened without the panel again.
+for (let i = 0; i < 26; i++) await logo.click({ position: { x: 10, y: 10 } });
+await page.waitForTimeout(300);
+check("tapping twenty-six more times does not reopen it",
+  (await boxes().count()) === 0);
+
 await browser.close();
 server.kill("SIGTERM");
 

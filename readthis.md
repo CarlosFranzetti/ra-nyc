@@ -10,7 +10,8 @@ says you are done.
 
 ## 1 · The whole thing, from a phone, in order
 
-Six months of listings that work offline — five back, one ahead — needs three
+Five and a half months of listings that work offline — four back, six weeks
+ahead — needs three
 things switched on. All three are ordinary web pages. **Nothing here needs a
 laptop.** Total hands-on time is about ten minutes; the rest is the index
 filling itself overnight.
@@ -88,15 +89,15 @@ months real.
 ### Step 5 · Wait three mornings, then check
 
 The job runs at **09:00 UTC** (about 4–5am New York) and now covers **60 days
-per run**, so a 181-day window fills in **three nights**. It used to be 14 days
+per run**, so a 166-day window fills in **three nights**. It used to be 14 days
 a night — thirteen nights — which is why this was worth changing.
 
 Nothing visible happens when it works. The two ways to confirm:
 
 - **vercel.com → ra-nyc → Cron Jobs** — `/api/backfill` returns `200`, not `503`.
-- **`/api/health`** — `search.indexed` climbs toward `search.window` (181).
+- **`/api/health`** — `search.indexed` climbs toward `search.window` (166).
 
-Once `indexed` is near 181, search answers for the whole six months, and the
+Once `indexed` is near 166, search answers for the whole window, and the
 service worker keeps that text readable with no signal at all.
 
 ---

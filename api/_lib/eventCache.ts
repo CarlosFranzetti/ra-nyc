@@ -68,7 +68,11 @@ function toEvent(row: CacheRow): RAEvent {
     endTime: row.end_time ?? "",
     url: row.url ?? "",
     imageUrl: row.image_url,
-    venue: { name: row.venue_name, area: row.venue_area ?? "" },
+    // No id from the index: the schema predates it, and a migration to add a
+    // column the venue sheet can re-derive from a live listing would be a
+    // migration for nothing. A cached event's venue simply geocodes by name,
+    // which is what every venue did until now anyway.
+    venue: { id: null, name: row.venue_name, area: row.venue_area ?? "" },
     artists: row.artists ?? [],
     attending: row.attending ?? 0,
     isPick: row.is_pick ?? false,

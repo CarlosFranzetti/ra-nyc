@@ -37,7 +37,7 @@ export interface RAEvent {
   endTime: string;
   url: string;
   imageUrl: string | null;
-  venue: { name: string; area: string };
+  venue: { id: string | null; name: string; area: string };
   artists: RAArtist[];
   attending: number;
   isPick: boolean;
@@ -144,7 +144,13 @@ function transformListing(listing: RAListing): RAEvent {
     endTime: event.endTime ?? "",
     url: `https://ra.co${event.contentUrl}`,
     imageUrl: rawImage ? normalizeImageUrl(rawImage) : null,
-    venue: { name: event.venue?.name ?? "TBA", area: "New York" },
+    // The id travels with the name so the venue sheet can ask RA for an
+    // address. Nullable because a TBA listing has no venue at all.
+    venue: {
+      id: event.venue?.id ?? null,
+      name: event.venue?.name ?? "TBA",
+      area: "New York",
+    },
     // Keep ids, not just names: the artist page and its Mixcloud lookup are
     // keyed on them, and RA reuses names across different artists.
     artists:
@@ -308,19 +314,21 @@ export function isValidDate(value: string): boolean {
  * How far either side of today a search looks.
  *
  * Asymmetric, because the two directions answer different questions. Ahead, the
- * question is "is X playing soon" — a month is as far as anyone plans a night
- * out, and RA itself thins out beyond it. Behind, it is "when were they last
- * on", and that keeps being interesting far longer: five months covers a
- * quarterly residency, a season of a party, and a touring artist's last pass
- * through, none of which fit in two.
+ * question is "is X playing soon", and six weeks is about as far as anyone plans
+ * a night out — far enough to catch a tour announcement, not so far that most of
+ * the window is empty listings. Behind, it is "when were they last on", and that
+ * keeps being interesting far longer: four months covers a quarterly residency,
+ * a season of a party, and a touring artist's last pass through.
  *
  * Widening the past is cheap in a way widening the future is not, because the
  * past does not change — once the index holds a day it never needs that day
  * again, so four months back costs a one-time backfill rather than ongoing
- * requests.
+ * requests. The future is the opposite: every day in it will change as lineups
+ * are announced, so those days have to be re-fetched rather than banked, which
+ * is why this pair moved *in* at the back while moving out at the front.
  */
-export const SEARCH_AHEAD_DAYS = 30;
-export const SEARCH_BEHIND_DAYS = 150;
+export const SEARCH_AHEAD_DAYS = 45;
+export const SEARCH_BEHIND_DAYS = 120;
 
 /** Requests per direction. Each is one call to RA; the edge cache absorbs repeats. */
 const SEARCH_PAGES = 3;
@@ -448,14 +456,49 @@ function matchesTerm(event: RAEvent, term: string): boolean {
   // a DJ name in this scene — could never be found at all. Splitting both and
   // requiring *every* query word to land somewhere fixes that without letting
   // a single matching word drag in half the city.
-  const words = (value: string) =>
-    value.split(/[\s,&·/]+/).map(searchKey).filter((key) => key.length >= FUZZY_MIN_LENGTH);
+  const split = (value: string) => value.split(/[\s,&·/]+/).map(searchKey).filter(Boolean);
 
-  const fieldWords = fields.flatMap(words);
-  if (fieldWords.length === 0) return false;
+  const words = (value: string) =>
+    split(value).filter((key) => key.length >= FUZZY_MIN_LENGTH);
+
+  /**
+   * Single words *and* adjacent pairs, both long enough to risk an edit.
+   *
+   * The pairs are what make short names reachable, and they close two misses
+   * that a word-only pool could not:
+   *
+   * - **"bosa nova" found nothing.** Both query words are four letters, so both
+   *   are dropped as too short to fuzzy-match, and the whole-term fallback then
+   *   compared "bosanova" against the haystack's individual words — "bossa",
+   *   "civic" — none of which is within an edit of it. The bigram "bossanova"
+   *   is, exactly.
+   * - **"dj kose" found nothing**, for the same reason from the other side:
+   *   "DJ Koze" is two words of two and four letters, so it contributed *no*
+   *   words to the pool at all and was unreachable by any typo whatsoever.
+   *   Its bigram "djkoze" is one edit from "djkose".
+   *
+   * Pairs only, not every n-gram: a title's full key is far too long to be
+   * within one edit of anything anyone types, and the cost is linear rather
+   * than quadratic in the words of a field.
+   */
+  const pool = (value: string) => {
+    const parts = split(value);
+    const out: string[] = [];
+    for (let i = 0; i < parts.length; i += 1) {
+      if (parts[i]!.length >= FUZZY_MIN_LENGTH) out.push(parts[i]!);
+      if (i + 1 < parts.length) {
+        const pair = parts[i]! + parts[i + 1]!;
+        if (pair.length >= FUZZY_MIN_LENGTH) out.push(pair);
+      }
+    }
+    return out;
+  };
+
+  const haystack = fields.flatMap(pool);
+  if (haystack.length === 0) return false;
 
   const near = (needle: string) =>
-    fieldWords.some((word) => withinEditDistance(word, needle, 1));
+    haystack.some((word) => withinEditDistance(word, needle, 1));
 
   const termWords = words(term);
 

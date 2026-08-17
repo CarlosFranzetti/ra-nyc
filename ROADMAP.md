@@ -86,6 +86,33 @@ Sequence if it happens: one source at a time, behind the existing
 `event_cache` shape, with de-duplication proved on a week of real data before
 the second one is added.
 
+### Full-size flyer on a second tap — P2, needs a decision
+
+Double-tapping a card's thumbnail would open the flyer full-screen. The flyer is
+the one piece of a listing that is genuinely worth looking at large — it carries
+the lineup, the times and the door price that RA's own fields often do not — and
+`/api/image` already proxies and caches the full-resolution file, so nothing new
+has to be fetched.
+
+Raised by the owner and explicitly deferred: *"maybe this is for roadmap and you
+should ask me later"*. **Ask before building it.** The open question is the
+gesture rather than the viewer. A double-tap on a card whose single tap already
+opens the event sheet means every single tap now waits ~250ms to find out
+whether a second one is coming, which makes the whole list feel laggy to
+everyone who never double-taps. The alternatives are a long-press, a tap on the
+flyer *inside* the event sheet (where nothing else competes for it), or a small
+expand affordance on the thumbnail.
+
+### Search over dates — P3
+
+`matchesTerm` covers titles, venues and lineups. A date query (`aug 15`,
+`friday`) finds nothing unless the word happens to be in a title.
+
+Left undone deliberately: a weekday matches a seventh of a 166-day window, which
+is worse than no answer, and "what is on the 15th" is what the date rail and the
+calendar are already for. Only worth doing for unambiguous forms — ISO dates and
+month-plus-day — and only if anyone actually types them.
+
 ### Smaller things — P3
 
 - **Filter chips** — genre, RA Pick only, free, before-midnight.

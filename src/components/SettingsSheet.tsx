@@ -46,6 +46,78 @@ function OptionGroup({
   );
 }
 
+/**
+ * A range input over a short ordered list, drawn as a track with one tick per
+ * value.
+ *
+ * Shared by Text size and Typography because they are the same control twice:
+ * an axis with a handful of stops where you want both "one more" and "that
+ * one". Everything visible is markup underneath a transparent native input —
+ * see `.size-slider` in index.css for why the track is not painted through the
+ * element's own pseudo-elements, and why the fill and ticks are inset 10px.
+ */
+function StepSlider({
+  label,
+  count,
+  index,
+  onChange,
+  valueText,
+}: {
+  label: string;
+  count: number;
+  index: number;
+  onChange: (next: number) => void;
+  valueText: string;
+}) {
+  const pct = (i: number) => (count > 1 ? (i / (count - 1)) * 100 : 0);
+
+  return (
+    /* data-vaul-no-drag, or a left-to-right drag on the slider is also a
+       left-to-right drag on a right-hand drawer, and vaul reads it as "dismiss
+       me" — so raising a setting would close the panel you raised it from. */
+    <div className="relative h-7 flex-1" data-vaul-no-drag>
+      {/* Inset by half a thumb at each end: a range thumb's centre travels from
+          10px to width-10px, never to the very edge, so ticks laid out across
+          the full width would drift out of line with it — worst at the two
+          ends, which are the two positions people check. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-[10px] right-[10px]"
+      >
+        <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-secondary" />
+        <div
+          className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-primary"
+          style={{ width: `${pct(index)}%` }}
+        />
+        {Array.from({ length: count }, (_, i) => (
+          <span
+            key={i}
+            className={cn(
+              "absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full",
+              i <= index ? "bg-primary-foreground/60" : "bg-muted-foreground/50",
+            )}
+            style={{ left: `${pct(i)}%` }}
+          />
+        ))}
+      </div>
+
+      <input
+        type="range"
+        min={0}
+        max={count - 1}
+        step={1}
+        value={index}
+        onChange={(event) => onChange(Number(event.target.value))}
+        aria-label={label}
+        // The stored values are "0".."5" and "system"/"legible"/"condensed",
+        // neither of which reads as a position when spoken aloud.
+        aria-valuetext={valueText}
+        className="size-slider absolute inset-0 w-full"
+      />
+    </div>
+  );
+}
+
 function OptionButton({
   active,
   onClick,
@@ -78,8 +150,21 @@ function OptionButton({
   );
 }
 
-export function SettingsSheet() {
-  const [open, setOpen] = useState(false);
+/**
+ * `onOpenChange` exists for one caller and one reason: the header watches this
+ * panel closing, because that is the first half of the logo's unlock sequence.
+ * Optional, so nothing else has to care.
+ */
+export function SettingsSheet({
+  onOpenChange,
+}: {
+  onOpenChange?: (open: boolean) => void;
+} = {}) {
+  const [open, setOpenState] = useState(false);
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    onOpenChange?.(next);
+  };
   const {
     colorTheme,
     setColorTheme,
@@ -95,18 +180,33 @@ export function SettingsSheet() {
   // is the label on the rung, not the rung. A range input only speaks numbers,
   // so this is also the conversion in both directions.
   const sizeIndex = Math.max(0, TEXT_SIZES.indexOf(textSize));
+  const fontIndex = Math.max(
+    0,
+    TYPOGRAPHY_OPTIONS.findIndex((option) => option.value === typography),
+  );
 
   /**
-   * Close on any tap that isn't an option.
+   * Close on a tap outside the controls.
    *
-   * vaul already dismisses on the overlay, but the panel itself has a lot of
-   * dead space — headings, gaps, the padding around the grids — and tapping
-   * those felt like the sheet was stuck. Anything that isn't an interactive
-   * control now closes it, so there is no way to tap and have nothing happen.
+   * vaul already dismisses on the overlay, but the panel has dead space below
+   * the options and tapping it felt like the sheet was stuck, so that space
+   * closes too.
+   *
+   * The rule used to be "anything that is not a button, link or input", and
+   * that was too narrow once two of the settings became sliders. A slider is
+   * surrounded by things that are none of those — its own padding, the tick
+   * row, the letters flanking it, the gap before the next group — and a finger
+   * leaving the track a few pixels high after a drag landed on one of them. The
+   * panel closed while you were still adjusting, which is what "it closes as
+   * soon as I set the size" was describing.
+   *
+   * The whole options block is now one interactive region: tapping inside it
+   * adjusts something or does nothing, and closing takes a deliberate tap past
+   * the end of it.
    */
   const closeUnlessOption = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    if (!target.closest("button, a, input, [role='button']")) {
+    if (!target.closest("[data-controls], button, a, input, [role='button']")) {
       setOpen(false);
     }
   };
@@ -130,17 +230,17 @@ export function SettingsSheet() {
             Customize
           </DrawerTitle>
 
-          {/* Opened back up. Fitting all four groups on one screen was worth
-              less than it cost: the groups ran together, and the panel already
-              scrolls, so the options below the fold are one flick away rather
-              than hidden. */}
-          <div className="mt-4 space-y-5">
-            {/* One row. The drawer is 320px, so five cells with a 4px gutter
-                land at ~52px each — enough for a 20px swatch and "Matrix" at
-                10px, which is why that group alone drops a step in gap and
-                type. Seeing all five side by side is worth more than the two
-                points of label size it costs. */}
-            <OptionGroup title="Theme" columns={5}>
+          {/* data-controls marks the whole block as interactive, so a tap that
+              lands in the gaps around a slider adjusts nothing rather than
+              dismissing the panel. See closeUnlessOption. */}
+          <div data-controls className="mt-4 space-y-5">
+            {/* One row. The drawer is 320px, so four cells with a 4px gutter
+                land at ~70px each — comfortable for a 20px swatch and "Matrix"
+                at 10px. It was five cells at ~52px while Mono existed, which is
+                why the group still drops a step in gap and type; with four it
+                no longer has to, but the smaller label reads fine and changing
+                it back would be churn. */}
+            <OptionGroup title="Theme" columns={4}>
               {THEME_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
@@ -178,20 +278,54 @@ export function SettingsSheet() {
               ))}
             </OptionGroup>
 
-            {/* Each option's label is set in the face it selects. A font picker
-                that names three fonts in a fourth font is asking you to take
-                its word for it. */}
-            <OptionGroup title="Typography" columns={3}>
-              {TYPOGRAPHY_OPTIONS.map((opt) => (
-                <OptionButton
-                  key={opt.value}
-                  active={typography === opt.value}
-                  onClick={() => setTypography(opt.value)}
-                  label={opt.label}
-                  description={opt.desc}
-                  labelClassName={cn(opt.className, "type-headline")}
-                />
-              ))}
+            {/* A slider, like Text size, because it is the same shape of
+                choice: three faces ordered by how far they depart from the
+                system default, so "one further" and "that one" are both real
+                thoughts. Three buttons could only ever serve the second.
+
+                The names stay under the ticks and each is still set in the face
+                it selects — a font picker that names three fonts in a fourth
+                font is asking you to take its word for it, and that is as true
+                of a slider as it was of the buttons. The selected name takes
+                the primary colour so the track and the labels read as one
+                control rather than two.
+
+                No sample sentence above it: the entire app behind this panel is
+                already rendering in the face, at the size and density you
+                actually read it at, which nothing inside a 320px drawer can
+                improve on. */}
+            <OptionGroup title="Typography" columns={1}>
+              <StepSlider
+                label="Typography"
+                count={TYPOGRAPHY_OPTIONS.length}
+                index={fontIndex}
+                onChange={(next) => setTypography(TYPOGRAPHY_OPTIONS[next]!.value)}
+                valueText={TYPOGRAPHY_OPTIONS[fontIndex]!.label}
+              />
+              <div className="flex items-start justify-between gap-1 px-0.5">
+                {TYPOGRAPHY_OPTIONS.map((opt, i) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setTypography(opt.value)}
+                    aria-pressed={typography === opt.value}
+                    className={cn(
+                      // The ends anchor to their own tick rather than centring,
+                      // which would push "System" left of where the track starts
+                      // and "Condensed" past where it ends.
+                      "min-w-0 flex-1 text-[0.6875rem] leading-tight transition-colors",
+                      i === 0 && "text-left",
+                      i === TYPOGRAPHY_OPTIONS.length - 1 && "text-right",
+                      i > 0 && i < TYPOGRAPHY_OPTIONS.length - 1 && "text-center",
+                      typography === opt.value
+                        ? "font-semibold text-primary"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    <span className={cn(opt.className, "type-headline")}>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
             </OptionGroup>
 
             {/* A slider, not a stepper and not six buttons.
@@ -220,54 +354,13 @@ export function SettingsSheet() {
                   A
                 </span>
 
-                {/* data-vaul-no-drag, or a left-to-right drag on the slider is
-                    also a left-to-right drag on a right-hand drawer, and vaul
-                    reads it as "dismiss me" — so raising the text size would
-                    close the panel you raised it from. */}
-                <div className="relative h-7 flex-1" data-vaul-no-drag>
-                  {/* Inset by half a thumb at each end: a range thumb's centre
-                      travels from 10px to width-10px, never to the very edge,
-                      so ticks laid out across the full width would drift out
-                      of line with it — worst at the two ends, which are the
-                      two positions people check. */}
-                  <div
-                    aria-hidden
-                    className="pointer-events-none absolute inset-y-0 left-[10px] right-[10px]"
-                  >
-                    <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-secondary" />
-                    <div
-                      className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-primary"
-                      style={{ width: `${(sizeIndex / (TEXT_SIZES.length - 1)) * 100}%` }}
-                    />
-                    {TEXT_SIZES.map((value, i) => (
-                      <span
-                        key={value}
-                        className={cn(
-                          "absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full",
-                          i <= sizeIndex ? "bg-primary-foreground/60" : "bg-muted-foreground/50",
-                        )}
-                        style={{ left: `${(i / (TEXT_SIZES.length - 1)) * 100}%` }}
-                      />
-                    ))}
-                  </div>
-
-                  <input
-                    type="range"
-                    min={0}
-                    max={TEXT_SIZES.length - 1}
-                    step={1}
-                    value={sizeIndex}
-                    onChange={(event) =>
-                      setTextSize(TEXT_SIZES[Number(event.target.value)]!)
-                    }
-                    aria-label="Text size"
-                    // The stored values are "0".."5", which read as sizes in
-                    // pixels or points to anything speaking them aloud. This
-                    // says where you are on the ladder instead.
-                    aria-valuetext={`Size ${sizeIndex + 1} of ${TEXT_SIZES.length}`}
-                    className="size-slider absolute inset-0 w-full"
-                  />
-                </div>
+                <StepSlider
+                  label="Text size"
+                  count={TEXT_SIZES.length}
+                  index={sizeIndex}
+                  onChange={(next) => setTextSize(TEXT_SIZES[next]!)}
+                  valueText={`Size ${sizeIndex + 1} of ${TEXT_SIZES.length}`}
+                />
 
                 <span
                   aria-hidden

@@ -122,12 +122,14 @@ export default function HomePage() {
           onSearchClick={() => setSearchOpen(true)}
         />
 
-        {/* Directly under the header and hairline-separated from the rail, so
-            the top of the screen reads as one block: who you are, then what
-            you are looking at, then which day. Centred because it is a caption
-            for the rail below it rather than a label on the left. */}
-        <div className="border-b border-border/40 py-2">
-          <p className="shell flex items-center justify-center gap-2.5 text-xs">
+        {/* The caption and the rail are one block, not two.
+            They used to be separate sections, each with its own border and its
+            own vertical padding, which spent about twenty pixels drawing a line
+            between two halves of a single statement: which day you are looking
+            at, and which days there are. A caption belongs to the thing it
+            captions. One border now, at the bottom of both. */}
+        <div className="border-b border-border/50 pb-1.5 pt-1.5">
+          <p className="shell flex items-center justify-center gap-2.5 pb-1 text-xs">
             {/* The date leads, because it is what you are looking at; the count
                 answers a question you only ask once you know the night. A rule
                 between them rather than a middot — two facts, not a phrase. */}
@@ -143,16 +145,14 @@ export default function HomePage() {
               </>
             )}
           </p>
-        </div>
 
-        <div className="py-2 border-b border-border/50">
           <div className="shell">
             <DatePicker selectedDate={selectedDate} onDateChange={setSelectedDate} />
           </div>
         </div>
 
         {(hasEvents || data?.stale) && (
-          <div className={cn("shell flex items-center justify-between gap-2 py-2", padX)}>
+          <div className={cn("shell flex items-center justify-between gap-2 py-1.5", padX)}>
             {hasEvents ? (
               <FilterChips active={filters} counts={counts} onToggle={toggleFilter} />
             ) : (
@@ -233,6 +233,11 @@ export default function HomePage() {
             to the event rather than to the listings. */}
         <VenueSheet
           venue={selectedVenue}
+          // Taken from the event rather than threaded through onSelectVenue:
+          // this sheet is only ever opened from the venue line of the event
+          // that is already selected, so the two cannot disagree. Null for
+          // anything that came from the saved index, which has no venue ids.
+          venueId={selectedEvent?.venue.id ?? null}
           ticketsUrl={selectedEvent?.url ?? null}
           open={venueOpen}
           onOpenChange={setVenueOpen}

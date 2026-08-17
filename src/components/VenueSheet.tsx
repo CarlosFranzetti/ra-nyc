@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Car, MapPin, Navigation, Ticket } from "lucide-react";
+import { MapPin, Navigation, Ticket } from "lucide-react";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
+import { useDistance } from "@/hooks/useDistance";
+import { LyftMark, UberMark } from "@/components/RideMarks";
 import { lyftLink, uberLink } from "@/lib/rideLinks";
 import { TILE_SIZE, tileMosaic } from "@/lib/tiles";
 
@@ -10,11 +12,16 @@ interface VenueResponse {
   lat: number | null;
   lon: number | null;
   label: string | null;
+  address: string | null;
+  addressSource: "geocoder" | "ra" | null;
   mapsUrl: string;
 }
 
 interface VenueSheetProps {
   venue: string | null;
+  /** RA's venue id, when the listing came from a live fetch. Lets the lookup
+   *  ask RA for an address the geocoder could not produce. */
+  venueId?: string | null;
   /** The event this venue was opened from, so tickets are one tap from the map. */
   ticketsUrl?: string | null;
   open: boolean;
@@ -27,8 +34,14 @@ interface VenueSheetProps {
  */
 const ZOOM = 16;
 
-async function fetchVenue(name: string, signal?: AbortSignal): Promise<VenueResponse> {
-  const res = await fetch(`/api/venue?name=${encodeURIComponent(name)}`, { signal });
+async function fetchVenue(
+  name: string,
+  id: string | null,
+  signal?: AbortSignal,
+): Promise<VenueResponse> {
+  const query = new URLSearchParams({ name });
+  if (id) query.set("id", id);
+  const res = await fetch(`/api/venue?${query.toString()}`, { signal });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? "Couldn't locate this venue");
@@ -81,10 +94,16 @@ function useMeasuredSize<T extends HTMLElement>() {
  * is the right weight for something most sessions never open. See that file for
  * why this stopped being an OpenStreetMap iframe.
  */
-export function VenueSheet({ venue, ticketsUrl, open, onOpenChange }: VenueSheetProps) {
+export function VenueSheet({
+  venue,
+  venueId,
+  ticketsUrl,
+  open,
+  onOpenChange,
+}: VenueSheetProps) {
   const { data, isLoading, error } = useQuery({
-    queryKey: ["venue", venue],
-    queryFn: ({ signal }) => fetchVenue(venue!, signal),
+    queryKey: ["venue", venue, venueId ?? null],
+    queryFn: ({ signal }) => fetchVenue(venue!, venueId ?? null, signal),
     enabled: open && Boolean(venue),
     staleTime: Infinity,
     retry: 1,
@@ -94,8 +113,12 @@ export function VenueSheet({ venue, ticketsUrl, open, onOpenChange }: VenueSheet
 
   const located = data?.lat != null && data?.lon != null;
   const destination = located
-    ? { name: data!.name, lat: data!.lat!, lon: data!.lon!, address: data!.label }
+    ? { name: data!.name, lat: data!.lat!, lon: data!.lon!, address: data!.address }
     : null;
+
+  // Only asked for once the sheet is open and the venue has coordinates, so
+  // neither launching the app nor opening an unplaceable venue prompts.
+  const distance = useDistance(destination, open);
 
   const tiles =
     located && mapSize.width > 0
@@ -122,7 +145,84 @@ export function VenueSheet({ venue, ticketsUrl, open, onOpenChange }: VenueSheet
           </DrawerTitle>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
+        {/* space-y-2.5 rather than 3: the address, the rides and the map are
+            one answer to one question — how do I get there — and they were
+            drifting apart into three separate blocks. */}
+        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain p-4 pt-3">
+          {/* Address first, and present whether or not there is a map.
+              It used to sit *below* the map and only appear when the geocoder
+              had produced a label, so the venues most in need of an address —
+              the warehouse, the loft, the boat, none of which geocode — were
+              exactly the ones that showed nothing at all. */}
+          {(data?.address || isLoading) && (
+            <div className="px-1">
+              {isLoading ? (
+                <div className="skeleton-glow h-4 w-2/3 rounded" />
+              ) : (
+                <p data-selectable className="text-xs leading-snug">
+                  {/* Bold, and its own colour rather than the venue's. The name
+                      above is already `text-venue`; repeating that hue here
+                      would read as one wrapped title rather than as a name and
+                      then an address. */}
+                  <span className="font-semibold text-foreground">{data!.address}</span>
+                  {distance && (
+                    /* Not bold, in parentheses, same line. It is a qualifier on
+                       the address rather than a second fact — "Ridgewood" means
+                       nothing until you know it is four miles away. */
+                    <span className="font-normal text-muted-foreground">
+                      {" "}
+                      ({distance})
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Getting there, in the order people actually decide in: hail
+              something, and only fall back to a map if you are walking or
+              working out where it is. Always all three, even with no
+              coordinates — the links degrade to "open the app" and "search
+              this name", which is still further along than a dead end. */}
+          <div className="grid grid-cols-3 gap-2">
+            <a
+              href={
+                destination
+                  ? uberLink(destination)
+                  : "https://m.uber.com/ul/?action=setPickup&pickup=my_location"
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Get an Uber to ${venue ?? "this venue"}`}
+              className={rideClass}
+            >
+              <UberMark className="h-3.5 w-auto text-foreground" />
+              <span className="text-[0.625rem] text-muted-foreground">Ride</span>
+            </a>
+
+            <a
+              href={destination ? lyftLink(destination) : "https://lyft.com/ride?id=lyft"}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Get a Lyft to ${venue ?? "this venue"}`}
+              className={rideClass}
+            >
+              <LyftMark className="h-3.5 w-auto text-foreground" />
+              <span className="text-[0.625rem] text-muted-foreground">Ride</span>
+            </a>
+
+            <a
+              href={data?.mapsUrl ?? `https://maps.apple.com/?q=${encodeURIComponent(venue ?? "")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Show on maps"
+              className={rideClass}
+            >
+              <Navigation className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[0.625rem] text-muted-foreground">Maps</span>
+            </a>
+          </div>
+
           <div
             ref={measureMap}
             aria-label={located ? `Map of ${venue}` : undefined}
@@ -176,26 +276,18 @@ export function VenueSheet({ venue, ticketsUrl, open, onOpenChange }: VenueSheet
                 <p className="text-xs text-muted-foreground">
                   {error
                     ? error.message
-                    : "The venue isn't on the map yet — often the case for one-off and TBA locations."}
+                    : data?.address
+                      ? "Not on the map, but the address above is RA's own — the rides can still take you."
+                      : "The venue isn't on the map yet — often the case for one-off and TBA locations."}
                 </p>
               </div>
             )}
           </div>
 
-          {data?.label && (
-            <p
-              data-selectable
-              className="px-1 text-xs font-semibold leading-relaxed text-foreground"
-            >
-              {data.label}
-            </p>
-          )}
-
-          {/* Above the ride buttons on purpose. Someone who has got as far as
-              working out how to *get* there has already decided they want to
-              go — this is the one screen where a ticket link is the helpful
-              answer rather than an interruption. Small, and it sits out of the
-              way of the three things this sheet is actually for. */}
+          {/* Below the rides now rather than above them. Someone who has got
+              this far has decided they want to go; the ticket link is the
+              helpful last word rather than something to step over on the way to
+              the thing this sheet is for. */}
           {ticketsUrl && (
             <a
               href={ticketsUrl}
@@ -207,48 +299,6 @@ export function VenueSheet({ venue, ticketsUrl, open, onOpenChange }: VenueSheet
               Tickets on RA
             </a>
           )}
-
-          {/* Getting there is the next thing you do after finding out where it
-              is, so the three ways to do it sit together rather than one being
-              a button and the others an afterthought. */}
-          <div className="grid grid-cols-3 gap-2">
-            <a
-              href={data?.mapsUrl ?? `https://maps.apple.com/?q=${encodeURIComponent(venue ?? "")}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open in Maps"
-              className={rideClass}
-            >
-              <Navigation className="h-4 w-4 text-primary" />
-              Open in Maps
-            </a>
-
-            <a
-              href={
-                destination
-                  ? uberLink(destination)
-                  : `https://m.uber.com/ul/?action=setPickup&pickup=my_location`
-              }
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`Get an Uber to ${venue ?? "this venue"}`}
-              className={rideClass}
-            >
-              <Car className="h-4 w-4 text-primary" />
-              Get an Uber
-            </a>
-
-            <a
-              href={destination ? lyftLink(destination) : "https://lyft.com/ride?id=lyft"}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`Get a Lyft to ${venue ?? "this venue"}`}
-              className={rideClass}
-            >
-              <Car className="h-4 w-4 text-primary" />
-              Get a Lyft
-            </a>
-          </div>
 
           <p className="pb-safe px-1 text-center text-[0.6875rem] text-muted-foreground/60">
             Map data © OpenStreetMap contributors, © CARTO

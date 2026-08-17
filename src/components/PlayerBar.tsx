@@ -122,11 +122,25 @@ export function PlayerBar() {
          propagation keeps skipping a track from also closing the sheet you were
          reading. */
       onPointerDown={(event) => event.stopPropagation()}
-      className="pointer-events-auto fixed inset-x-0 bottom-0 z-[70] border-t border-border/50 bg-background/95 pb-safe backdrop-blur-lg"
+      /* A primary-coloured top edge rather than the same hairline border every
+         other surface uses. The bar was the one genuinely live thing on screen
+         and it was dressed as page chrome — at a glance it read as a footer, so
+         people scrolled past a set that was actually playing. Two pixels in the
+         theme's own accent, with the glow the rest of the app already uses,
+         costs no height and makes it the loudest edge in the layout.
+
+         `player-live` sits in index.css because the glow is a box-shadow off
+         the *top* edge only, which Tailwind cannot express. */
+      className="player-live pointer-events-auto fixed inset-x-0 bottom-0 z-[70] border-t-2 border-primary/70 bg-background/95 pb-safe backdrop-blur-lg"
     >
       <div className="shell flex items-center gap-2 px-3 pt-2">
+        {/* `shown`, not `position`. While you are dragging, the thumb follows
+            your finger and the playhead does not move until you let go — so
+            reading the raw position here meant the number sat still under a
+            handle that was travelling, which looks like the scrubber is
+            ignoring you. */}
         <span className="w-9 flex-shrink-0 text-right text-[0.5625rem] tabular-nums text-muted-foreground">
-          {formatClock(position)}
+          {formatClock(shown)}
         </span>
         <input
           type="range"
