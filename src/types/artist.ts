@@ -1,5 +1,5 @@
 /** Shape returned by `/api/artist` — mirrors `api/_lib/artistLinks.ts`. */
-export type SetProvider = "soundcloud" | "mixcloud" | "archive" | "youtube";
+export type SetProvider = "soundcloud" | "mixcloud" | "archive";
 
 export interface ArtistSet {
   provider: SetProvider;
@@ -18,7 +18,7 @@ export interface ArtistSet {
 
 export interface ArtistBio {
   text: string;
-  source: "Resident Advisor" | "SoundCloud" | "Mixcloud" | "Discogs";
+  source: "Resident Advisor" | "SoundCloud" | "Mixcloud";
   url: string | null;
 }
 
@@ -37,7 +37,6 @@ export interface ArtistDetails {
   mixcloudUrl: string | null;
   soundcloudUser: string | null;
   soundcloudUrl: string | null;
-  discogsUrl: string | null;
   raUrl: string | null;
   bio: ArtistBio | null;
   sets: ArtistSet[];
@@ -51,5 +50,4 @@ export const PROVIDER_LABELS: Record<SetProvider, string> = {
   soundcloud: "SoundCloud",
   mixcloud: "Mixcloud",
   archive: "Internet Archive",
-  youtube: "YouTube",
 };

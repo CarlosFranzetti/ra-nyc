@@ -64,8 +64,6 @@ documents each variable in more detail than the table below.
 | `CRON_SECRET` | `/api/backfill` refuses to run, so the search index only fills from ordinary traffic. |
 | `SOUNDCLOUD_CLIENT_ID` | SoundCloud degrades to a search link. Mixcloud and the Internet Archive still fill the set list. |
 | `SOUNDCLOUD_CLIENT_SECRET` | Sets which SoundCloud API is used — see below. |
-| `YOUTUBE_API_KEY` | No YouTube fallback sets. |
-| `DISCOGS_TOKEN` | The Discogs link is a search URL rather than the artist's page. |
 
 ### The SoundCloud trap
 
@@ -104,7 +102,7 @@ curl https://<deployment>/api/health
   "database": { "configured": true, "reachable": true,
                 "tables": { "artist_links": true, "event_cache": true } },
   "search": { "indexed": 74, "window": 91, "oldest": "…", "newest": "…" },
-  "soundcloud": "official", "youtube": false, "discogs": false
+  "soundcloud": "official"
 }
 ```
 

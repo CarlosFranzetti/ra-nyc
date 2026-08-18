@@ -4,7 +4,6 @@ import {
   ExternalLink,
   Headphones,
   Library,
-  MonitorPlay,
   Music,
   Pause,
   Play,
@@ -31,7 +30,6 @@ const PROVIDER_ICON: Record<SetProvider, typeof Music> = {
   soundcloud: Music,
   mixcloud: Headphones,
   archive: Library,
-  youtube: MonitorPlay,
 };
 
 /** How many sets the list shows before it needs asking. */

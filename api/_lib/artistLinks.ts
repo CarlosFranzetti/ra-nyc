@@ -20,7 +20,6 @@ import { normalizeName } from "./normalize.js";
  * | SoundCloud | official API or api-v2 | widget, keyless | **yes** — see `soundcloudMode` |
  * | Mixcloud | public API | widget | no |
  * | Internet Archive | advancedsearch | `/embed/` | no |
- * | YouTube | Data API v3 | `/embed/` | optional — `YOUTUBE_API_KEY` |
  *
  * SoundCloud is first because it has the most DJ sets, but it is also the only
  * provider here that needs credentials, and it issues two incompatible kinds —
@@ -35,7 +34,7 @@ import { normalizeName } from "./normalize.js";
 
 export { normalizeName };
 
-export type SetProvider = "soundcloud" | "mixcloud" | "archive" | "youtube";
+export type SetProvider = "soundcloud" | "mixcloud" | "archive";
 
 /**
  * How many sets an artist's queue can hold.
@@ -71,7 +70,7 @@ export interface ArtistSet {
 export interface ArtistBio {
   text: string;
   /** Where the prose came from, so the UI can attribute it. */
-  source: "Resident Advisor" | "SoundCloud" | "Mixcloud" | "Discogs";
+  source: "Resident Advisor" | "SoundCloud" | "Mixcloud";
   url: string | null;
 }
 
@@ -95,7 +94,6 @@ export interface ArtistLinks {
   mixcloudUrl: string | null;
   soundcloudUser: string | null;
   soundcloudUrl: string | null;
-  discogsUrl: string | null;
   raUrl: string | null;
   bio: ArtistBio | null;
   sets: ArtistSet[];
@@ -124,9 +122,9 @@ const RA_TIMEOUT_MS = 3_000;
 const CATALOGUE_LIMIT = 50;
 
 /**
- * Archive and YouTube are fallbacks for artists the first two don't cover, and
- * their matching is the loosest of the four. Pulling fifty guesses would bury a
- * real catalogue under near-misses, so they stay small.
+ * The Archive is the fallback for artists the first two don't cover, and its
+ * matching is the loosest of the three. Pulling fifty guesses would bury a real
+ * catalogue under near-misses, so it stays small.
  */
 const FALLBACK_LIMIT = 4;
 
@@ -139,7 +137,7 @@ const FALLBACK_LIMIT = 4;
  * and IDs, short enough to keep a one-hour radio slot.
  *
  * Applied to SoundCloud only. Mixcloud is mixes by construction, and the
- * Archive and YouTube fallbacks are already filtered hard on title.
+ * Archive fallback is already filtered hard on title.
  */
 const MIN_SOUNDCLOUD_SECONDS = 45 * 60;
 
@@ -685,96 +683,21 @@ async function resolveArchive(
     }));
 }
 
-// ─── YouTube (optional) ─────────────────────────────────────────────────────
-
-interface YtSearch {
-  items?: {
-    id?: { videoId?: string };
-    snippet?: {
-      title?: string;
-      publishedAt?: string;
-      channelTitle?: string;
-      thumbnails?: { high?: { url?: string }; medium?: { url?: string } };
-    };
-  }[];
-}
-
-async function resolveYouTube(
-  name: string,
-  signal?: AbortSignal,
-): Promise<ArtistSet[]> {
-  const key = process.env.YOUTUBE_API_KEY;
-  if (!key) return [];
-
-  const q = encodeURIComponent(`${name} dj set`);
-  const json = await fetchJson<YtSearch>(
-    `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoDuration=long&maxResults=${FALLBACK_LIMIT}&q=${q}&key=${encodeURIComponent(key)}`,
-    signal,
-  );
-
-  return (json?.items ?? [])
-    .filter((i) => i.id?.videoId && i.snippet?.title)
-    .filter((i) => titleMentions(name, i.snippet!.title!))
-    .map((i) => ({
-      provider: "youtube" as const,
-      id: `yt-${i.id!.videoId!}`,
-      title: i.snippet!.title!,
-      url: `https://www.youtube.com/watch?v=${i.id!.videoId!}`,
-      embedUrl: `https://www.youtube-nocookie.com/embed/${i.id!.videoId!}`,
-      artwork:
-        i.snippet?.thumbnails?.high?.url ??
-        i.snippet?.thumbnails?.medium?.url ??
-        null,
-      duration: null,
-      plays: null,
-      createdAt: i.snippet?.publishedAt ?? null,
-    }));
-}
-
-// ─── Discogs ────────────────────────────────────────────────────────────────
-
-interface DiscogsSearch {
-  results?: { id?: number; uri?: string; title?: string; resource_url?: string }[];
-}
-interface DiscogsArtist {
-  profile?: string | null;
-  uri?: string;
-}
-
-async function resolveDiscogs(
-  name: string,
-  signal?: AbortSignal,
-): Promise<{ url: string; profile: string | null } | null> {
-  const token = process.env.DISCOGS_TOKEN;
-  // Discogs' search endpoint requires auth, so without a token the honest
-  // offering is a search URL — see buildFallbackLinks.
-  if (!token) return null;
-
-  const json = await fetchJson<DiscogsSearch>(
-    `https://api.discogs.com/database/search?type=artist&per_page=5&q=${encodeURIComponent(name)}&token=${encodeURIComponent(token)}`,
-    signal,
-  );
-
-  const hit = json?.results?.find((r) => r.title && isPlausibleMatch(name, r.title));
-  if (!hit) return null;
-
-  const url = hit.uri?.startsWith("http")
-    ? hit.uri
-    : `https://www.discogs.com${hit.uri ?? ""}`;
-
-  let profile: string | null = null;
-  if (hit.resource_url) {
-    const detail = await fetchJson<DiscogsArtist>(
-      `${hit.resource_url}?token=${encodeURIComponent(token)}`,
-      signal,
-    );
-    // Discogs profiles are full of [a=Artist] and [l=Label] markup.
-    profile =
-      detail?.profile?.replace(/\[\/?[abl](?:=[^\]]*)?\]/gi, "").trim() || null;
-  }
-
-  return { url, profile };
-}
+/**
+ * YouTube and Discogs used to sit here, and are deliberately gone.
+ *
+ * Both were resolvers that only ran with an API key nobody had set, so in
+ * practice YouTube contributed no sets at all and Discogs contributed no
+ * profile — while the Discogs *link* was always shown, pointing at a keyless
+ * search URL rather than an artist. "Search releases" is a link that makes the
+ * reader do the work, on a page whose whole premise is that it already did it.
+ *
+ * Removed rather than left dormant: dead paths behind unset environment
+ * variables are the ones nobody notices have rotted. Both are written up in
+ * ROADMAP.md with what they would need to be worth having, and the
+ * `discogs_url` column stays in the database — dropping it would need a
+ * migration run by hand, and an unused nullable column costs nothing.
+ */
 
 // ─── Resident Advisor ───────────────────────────────────────────────────────
 
@@ -850,7 +773,6 @@ function buildFallbackLinks(name: string) {
   const q = encodeURIComponent(name);
   return {
     soundcloudUrl: `https://soundcloud.com/search?q=${q}`,
-    discogsUrl: `https://www.discogs.com/search/?type=artist&q=${q}`,
     raUrl: `https://ra.co/search?searchTerm=${q}`,
     // Bandcamp has no keyless artist search API, so this is an honest search
     // link rather than a resolved profile.
@@ -861,23 +783,16 @@ function buildFallbackLinks(name: string) {
 /**
  * Builds the link list shown under the bio.
  *
- * Resolved profiles sort ahead of search URLs — a real Discogs page is worth
- * more than a name search — and the whole thing is capped so the page stays a
- * short read rather than a link farm.
+ * Resolved profiles sort ahead of search URLs — an artist's actual SoundCloud
+ * is worth more than a name search — and the whole thing is capped so the page
+ * stays a short read rather than a link farm.
  */
 function buildLinkList(parts: {
-  discogs: { url: string; resolved: boolean };
   bandcamp: string;
   soundcloud: { url: string; user: string | null };
   mixcloud: { url: string | null; user: string | null };
 }): ArtistLink[] {
   const candidates: ArtistLink[] = [
-    {
-      label: "Discogs",
-      url: parts.discogs.url,
-      detail: parts.discogs.resolved ? "Discography" : "Search releases",
-      resolved: parts.discogs.resolved,
-    },
     {
       label: "Bandcamp",
       url: parts.bandcamp,
@@ -916,7 +831,6 @@ interface ArtistRow {
   mixcloud_url: string | null;
   soundcloud_user: string | null;
   soundcloud_url: string | null;
-  discogs_url: string | null;
   ra_url: string | null;
   bio: ArtistBio | null;
   sets: ArtistSet[] | null;
@@ -931,7 +845,7 @@ async function readCached(artistId: string): Promise<ArtistLinks | null> {
   try {
     const rows = (await sql`
       select ra_artist_id, name, mixcloud_user, mixcloud_url, soundcloud_user,
-             soundcloud_url, discogs_url, ra_url, bio, sets, links, link_source
+             soundcloud_url, ra_url, bio, sets, links, link_source
       from artist_links
       where ra_artist_id = ${artistId}
     `) as unknown as ArtistRow[];
@@ -946,7 +860,6 @@ async function readCached(artistId: string): Promise<ArtistLinks | null> {
       mixcloudUrl: row.mixcloud_url,
       soundcloudUser: row.soundcloud_user,
       soundcloudUrl: row.soundcloud_url,
-      discogsUrl: row.discogs_url,
       raUrl: row.ra_url,
       bio: row.bio,
       sets: row.sets ?? [],
@@ -969,11 +882,11 @@ async function writeCached(links: ArtistLinks): Promise<void> {
     await sql`
       insert into artist_links (
         ra_artist_id, name, mixcloud_user, mixcloud_url, soundcloud_user,
-        soundcloud_url, discogs_url, ra_url, bio, sets, links, link_source,
+        soundcloud_url, ra_url, bio, sets, links, link_source,
         resolved_at, updated_at
       ) values (
         ${links.id}, ${links.name}, ${links.mixcloudUser}, ${links.mixcloudUrl},
-        ${links.soundcloudUser}, ${links.soundcloudUrl}, ${links.discogsUrl},
+        ${links.soundcloudUser}, ${links.soundcloudUrl},
         ${links.raUrl}, ${links.bio ? JSON.stringify(links.bio) : null}::jsonb,
         ${JSON.stringify(links.sets)}::jsonb,
         ${JSON.stringify(links.links)}::jsonb, ${links.linkSource}, now(), now()
@@ -984,7 +897,6 @@ async function writeCached(links: ArtistLinks): Promise<void> {
         mixcloud_url    = excluded.mixcloud_url,
         soundcloud_user = excluded.soundcloud_user,
         soundcloud_url  = excluded.soundcloud_url,
-        discogs_url     = excluded.discogs_url,
         ra_url          = excluded.ra_url,
         bio             = excluded.bio,
         sets            = excluded.sets,
@@ -1007,7 +919,6 @@ const PROVIDER_RANK: Record<SetProvider, number> = {
   soundcloud: 0,
   mixcloud: 1,
   archive: 2,
-  youtube: 3,
 };
 
 function releasedAt(set: ArtistSet): number | null {
@@ -1092,8 +1003,6 @@ export async function getArtistLinks(
 
     const sideSignal = deadline(UPSTREAM_TIMEOUT_MS);
     const archivePending = settle(resolveArchive(name, sideSignal), "archive", []);
-    const youtubePending = settle(resolveYouTube(name, sideSignal), "youtube", []);
-    const discogsPending = settle(resolveDiscogs(name, sideSignal), "discogs", null);
 
     const ra = await resolveRa(artistId, deadline(RA_TIMEOUT_MS));
     // A bio-less or failed RA lookup still yields the parenthetical off the
@@ -1102,12 +1011,10 @@ export async function getArtistLinks(
     const context = buildArtistContext(name, ra.biography);
 
     const catalogueSignal = deadline(UPSTREAM_TIMEOUT_MS);
-    const [soundcloud, mixcloud, archive, youtube, discogs] = await Promise.all([
+    const [soundcloud, mixcloud, archive] = await Promise.all([
       resolveSoundcloud(name, context, catalogueSignal),
       resolveMixcloud(name, context, catalogueSignal),
       archivePending,
-      youtubePending,
-      discogsPending,
     ]);
 
     const fallback = buildFallbackLinks(name);
@@ -1116,26 +1023,19 @@ export async function getArtistLinks(
       ...(soundcloud?.sets ?? []),
       ...(mixcloud?.sets ?? []),
       ...archive,
-      ...youtube,
     ]);
 
     // Bio priority: RA is the scene-native source, then the artist's own
-    // Mixcloud blurb, then Discogs prose.
+    // Mixcloud blurb, then their SoundCloud description.
     const bio: ArtistBio | null = ra.biography
       ? { text: ra.biography, source: "Resident Advisor", url: ra.url }
       : mixcloud?.biog
         ? { text: mixcloud.biog, source: "Mixcloud", url: mixcloud.url }
         : soundcloud?.description
           ? { text: soundcloud.description, source: "SoundCloud", url: soundcloud.url }
-          : discogs?.profile
-            ? { text: discogs.profile, source: "Discogs", url: discogs.url }
-            : null;
+          : null;
 
     const linkList = buildLinkList({
-      discogs: {
-        url: discogs?.url ?? fallback.discogsUrl,
-        resolved: Boolean(discogs?.url),
-      },
       bandcamp: fallback.bandcampUrl,
       soundcloud: {
         url: soundcloud?.url ?? fallback.soundcloudUrl,
@@ -1151,7 +1051,6 @@ export async function getArtistLinks(
       mixcloudUrl: mixcloud?.url ?? null,
       soundcloudUser: soundcloud?.user ?? null,
       soundcloudUrl: soundcloud?.url ?? fallback.soundcloudUrl,
-      discogsUrl: discogs?.url ?? fallback.discogsUrl,
       raUrl: ra.url ?? fallback.raUrl,
       bio,
       sets,
