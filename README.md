@@ -143,8 +143,8 @@ with no network at all the app still opens and still shows the days you looked a
 | Database  | Optional Neon — artist links and the search index; degrades to live lookups without it |
 | Tests     | Vitest for pure functions; Playwright (`playwright-core`) for behaviour |
 
-Sets come from SoundCloud, Mixcloud, the Internet Archive and YouTube, each
-behind a common player interface. Only SoundCloud needs credentials; the rest are
+Sets come from SoundCloud, Mixcloud and the Internet Archive, each behind a
+common player interface. Only SoundCloud needs credentials; the other two are
 keyless.
 
 ---

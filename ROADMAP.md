@@ -103,6 +103,36 @@ everyone who never double-taps. The alternatives are a long-press, a tap on the
 flyer *inside* the event sheet (where nothing else competes for it), or a small
 expand affordance on the thumbnail.
 
+### Bring YouTube and Discogs back, properly — P3
+
+Both were removed rather than left dormant. Each sat behind an API key nobody
+had set, so YouTube contributed **no sets at all** and Discogs contributed no
+profile — while the Discogs *link* was shown regardless, pointing at a keyless
+search URL. "Search releases" is a link that hands the work back to the reader
+on a page whose whole premise is that it already did it.
+
+Dead paths behind unset environment variables are the ones nobody notices have
+rotted, which is why they are gone rather than disabled. The `discogs_url`
+column stays in `artist_links`: dropping it needs a migration run by hand, and
+an unused nullable column costs nothing.
+
+**YouTube** would need to clear a bar the other providers do not. It is a video
+host, so a "DJ set" there is as often a fan-uploaded rip, a tracklist slideshow
+or an hour of a festival stream as it is the artist's own upload — and the Data
+API gives no way to tell those apart beyond the title, which is exactly the
+signal `titleMentions` already found too weak on its own. A daily quota on top.
+Worth revisiting only with a matching rule that can distinguish an artist's
+channel from a channel that mentions them; the embed and player adapter were
+straightforward and are the easy half.
+
+**Discogs** is the better bet of the two, and for a different job than it had.
+Its value is not a link — nobody browsing tonight's listings wants a
+discography — it is the *identity graph*: aliases, group memberships, name
+variations. That is the hard problem in `isPlausibleMatch`, where "Anthony
+Naples" and "AN" and "DJ Ushi" are the same person and nothing in the current
+pipeline knows it. Wire it into name resolution rather than into the link list,
+and the token starts paying for itself.
+
 ### Search over dates — P3
 
 `matchesTerm` covers titles, venues and lineups. A date query (`aug 15`,

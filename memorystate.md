@@ -2044,6 +2044,42 @@ never broken. It now samples every 20ms across the first half-second and fails
 if the rail is ever somewhere else; sabotaged back to `"smooth"`, it reports
 "still moving at 0ms".
 
+### 3.x · YouTube and Discogs removed
+
+Both were resolvers gated on an API key nobody had set. In practice that meant
+YouTube contributed **no sets at all**, and Discogs contributed no profile —
+while the Discogs *link* was rendered regardless, because `buildFallbackLinks`
+supplied a keyless search URL. "Search releases" is a link that hands the work
+back to the reader on a page whose entire premise is that it already did it.
+
+Removed rather than disabled. A dead path behind an unset environment variable
+is the kind nobody notices has rotted, and there were four of them: the two
+resolvers, a YouTube player adapter, and a provider slot in every union,
+icon map and label table in the app.
+
+What went: `resolveYouTube`, `resolveDiscogs`, `lib/players/youtube.ts`, the
+`youtube` member of `SetProvider`, the `Discogs` member of the bio-source
+union, `discogsUrl` on `ArtistLinks`, the Discogs entry in `buildLinkList`, and
+both flags from `/api/health`.
+
+What stayed: **the `discogs_url` column in `artist_links`.** Dropping it needs a
+migration run by hand on a phone, and an unused nullable column costs nothing —
+so the reads and writes stopped and the column did not. If the feature comes
+back it is already there.
+
+Both are written up in ROADMAP.md with the reason each is not simply a matter of
+adding the key back:
+
+- **YouTube** is a video host, so a "DJ set" there is as often a fan rip, a
+  tracklist slideshow or an hour of festival stream as the artist's own upload,
+  and the Data API offers nothing to tell them apart beyond the title — the
+  exact signal `titleMentions` was already found too weak to trust alone.
+- **Discogs** is worth having for a different job than it had. Its value is not
+  a link but the *identity graph*: aliases, group memberships, name variations.
+  That is the hard problem in `isPlausibleMatch`, where "Anthony Naples" and
+  "AN" are the same person and nothing in the pipeline knows it. Wire it into
+  name resolution rather than the link list.
+
 ## 4 · Map of the code
 
 ```

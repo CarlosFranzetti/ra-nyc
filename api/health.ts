@@ -34,8 +34,6 @@ export interface HealthResponse {
     newest: string | null;
   };
   soundcloud: "official" | "api-v2" | "off";
-  youtube: boolean;
-  discogs: boolean;
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
@@ -80,8 +78,6 @@ export default async function handler(
         newest: status.newest,
       },
       soundcloud: soundcloudMode(),
-      youtube: Boolean(process.env.YOUTUBE_API_KEY),
-      discogs: Boolean(process.env.DISCOGS_TOKEN),
     };
 
     return send(res, 200, body);

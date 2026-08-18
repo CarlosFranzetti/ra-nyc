@@ -3,7 +3,6 @@ import type { CreatePlayer } from "./types";
 import { createArchivePlayer } from "./archive";
 import { createMixcloudPlayer } from "./mixcloud";
 import { createSoundcloudPlayer } from "./soundcloud";
-import { createYoutubePlayer } from "./youtube";
 
 /**
  * Adapters are loaded on demand so no provider SDK is in the initial bundle —
@@ -14,7 +13,6 @@ const LOADERS: Record<SetProvider, () => Promise<CreatePlayer>> = {
   soundcloud: async () => createSoundcloudPlayer,
   mixcloud: async () => createMixcloudPlayer,
   archive: async () => createArchivePlayer,
-  youtube: async () => createYoutubePlayer,
 };
 
 export function playerFor(provider: SetProvider): Promise<CreatePlayer> {

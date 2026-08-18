@@ -104,7 +104,6 @@ const ARTIST = {
   mixcloudUrl: null,
   soundcloudUser: "test",
   soundcloudUrl: "https://soundcloud.com/test",
-  discogsUrl: null,
   raUrl: null,
   bio: null,
   sets: Array.from({ length: SET_COUNT }, (_, i) => mkSet(i + 1)),

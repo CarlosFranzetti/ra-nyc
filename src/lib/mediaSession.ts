@@ -48,7 +48,6 @@ const PROVIDER_ALBUM: Record<ArtistSet["provider"], string> = {
   soundcloud: "SoundCloud",
   mixcloud: "Mixcloud",
   archive: "Internet Archive",
-  youtube: "YouTube",
 };
 
 export function publishPlaybackState(playing: boolean): void {

@@ -127,8 +127,8 @@ describe("orderSets", () => {
     expect(first!.id).toBe("recent");
   });
 
-  // Undated sets sort last, which lands the Archive/YouTube fallbacks after the
-  // real catalogue without needing a rule that says so.
+  // Undated sets sort last, which lands the Archive fallback after the real
+  // catalogue without needing a rule that says so.
   it("sorts undated sets last despite high play counts", () => {
     const ordered = orderSets([
       set({ id: "archive", provider: "archive", createdAt: null, plays: 99_999 }),
@@ -139,11 +139,11 @@ describe("orderSets", () => {
 
   it("breaks undated ties by provider rank, not plays", () => {
     const ordered = orderSets([
-      set({ id: "yt", provider: "youtube", createdAt: null, plays: 900 }),
+      set({ id: "ar", provider: "archive", createdAt: null, plays: 900 }),
       set({ id: "mc", provider: "mixcloud", createdAt: null, plays: 10 }),
       set({ id: "sc", provider: "soundcloud", createdAt: null, plays: 5 }),
     ]);
-    expect(ordered.map((s) => s.id)).toEqual(["sc", "mc", "yt"]);
+    expect(ordered.map((s) => s.id)).toEqual(["sc", "mc", "ar"]);
   });
 
   it("caps at MAX_SETS and keeps the newest, not the oldest", () => {
