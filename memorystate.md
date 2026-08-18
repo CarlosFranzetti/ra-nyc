@@ -2010,6 +2010,40 @@ because none of them call that route. `test:all` now begins with `npm run
 typecheck`. For serverless routes nothing executes locally, so `tsc` is not a
 style gate there — it is the entire test suite.
 
+### 3.x · The date rail slid on load
+
+Reported as the rail opening on the wrong days: three nights of history to the
+left of tonight instead of one.
+
+The end state was always correct. The effect that parks the selected chip in the
+second slot worked, and if you waited it arrived — it just animated getting
+there, on mount as well as on a date change, and for the first few hundred
+milliseconds the strip sat on a fortnight of history and slid. What you see on
+load *is* the journey.
+
+First placement is now instant, every later one still animated. On load there is
+nowhere to animate from; after that, a date change is a move from somewhere to
+somewhere and the animation shows which direction you went.
+
+The value is `"instant"`, not `"auto"`, and that is the part that would be
+easy to get wrong twice: the rail carries `scroll-smooth`, and `auto` means
+*defer to the CSS*. Only `instant` overrides it.
+
+Tonight's chip also now reads **Today** instead of its weekday. Measured against
+`currentNight()` rather than the calendar date, like everything else here — at
+2am on the 18th it marks the 17th, because that is the night still in progress.
+The label survives navigating away, so it stays a landmark to come back to. It
+is set a size smaller with the tracking dropped: five characters in a box built
+for three, and wrapping would make one chip taller than its neighbours and put a
+step in the middle of the rail.
+
+**The first version of this test passed against the bug**, which is the third
+time this session. It read the rail once, after a wait long enough for the
+smooth scroll to have finished, so it asserted the end state — the half that was
+never broken. It now samples every 20ms across the first half-second and fails
+if the rail is ever somewhere else; sabotaged back to `"smooth"`, it reports
+"still moving at 0ms".
+
 ## 4 · Map of the code
 
 ```

@@ -34,6 +34,19 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   );
 
   /**
+   * True once the rail has been positioned at least once.
+   *
+   * The first placement is *instant* and every later one animated. On load
+   * there is nothing to animate from — the rail has never been anywhere — so a
+   * smooth scroll is half a second of the strip sliding under your thumb before
+   * it settles, which reads as the app still loading, and is why the rail could
+   * be caught showing three days of history instead of one. After that, a date
+   * change is a move from somewhere to somewhere and the animation is what
+   * shows you which direction you went.
+   */
+  const placed = useRef(false);
+
+  /**
    * Park the selected day in the *second* slot, so the night before it stays
    * visible on its left and everything ahead fills the rest of the rail.
    *
@@ -55,7 +68,16 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
     // the chip, shaving its left edge. The browser also honours the rail's
     // `scroll-pl-2`, which is what leaves a gutter instead of pinning the chip
     // flush to the screen edge.
-    first.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+    //
+    // `"instant"`, not `"auto"`, and the difference matters here: the rail
+    // carries `scroll-smooth`, and `auto` means *defer to the CSS*, so it would
+    // animate anyway. `instant` is the only value that overrides it.
+    first.scrollIntoView({
+      behavior: placed.current ? "smooth" : "instant",
+      inline: "start",
+      block: "nearest",
+    });
+    placed.current = true;
   }, [selectedDate]);
 
   // Warm the day before it's tapped. On touch, `touchstart` fires well before
@@ -76,6 +98,19 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
         const isSelected = isSameDay(date, selectedDate);
         const isWeekend = date.getDay() === 0 || date.getDay() === 6;
         const isPast = date < tonight && !isSameDay(date, tonight);
+        /**
+         * One chip says TODAY instead of its weekday.
+         *
+         * Measured against `tonight` rather than the calendar date, which is
+         * the same everywhere else in this app and is deliberate: before
+         * 3:30am those differ, and the night you are still out on is the one
+         * the listings are showing. At 2am on the 18th this marks the 17th,
+         * because that is the night in progress — see lib/night.ts.
+         *
+         * It stays labelled whichever day is selected, so scrolling three
+         * weeks out never loses the landmark you navigate back to.
+         */
+        const isToday = isSameDay(date, tonight);
 
         return (
           <button
@@ -85,7 +120,9 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
             onTouchStart={() => handlePrefetch(date)}
             onMouseEnter={() => handlePrefetch(date)}
             aria-pressed={isSelected}
-            aria-label={format(date, "EEEE d MMMM")}
+            aria-label={
+              isToday ? `Today, ${format(date, "d MMMM")}` : format(date, "EEEE d MMMM")
+            }
             className={cn(
               // 2.28rem is 3.25 less thirty percent. Still rem, so it tracks
               // the text-size preference — the chips get narrower, not
@@ -108,11 +145,18 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
           >
             <span
               className={cn(
-                "text-[0.5rem] font-medium uppercase tracking-wide",
+                "font-medium uppercase whitespace-nowrap",
+                // TODAY is five characters where every other chip has three, in
+                // a box 2.28rem wide. Losing the tracking and a fraction of the
+                // size is what keeps it on one line — wrapping would make this
+                // chip taller than its neighbours and put a step in the rail.
+                isToday
+                  ? "text-[0.4375rem] tracking-tight"
+                  : "text-[0.5rem] tracking-wide",
                 isSelected ? "text-primary-foreground" : "text-muted-foreground",
               )}
             >
-              {format(date, "EEE")}
+              {isToday ? "Today" : format(date, "EEE")}
             </span>
             <span
               className={cn(
