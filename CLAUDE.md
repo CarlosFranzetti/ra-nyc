@@ -83,6 +83,20 @@ port>` rather than killing processes blindly.
 Vercel deploys `main` automatically. Confirm the production deployment reached
 `READY` before reporting a deploy as done — a merge is not a deploy.
 
+**Production is readable from a session.** Direct egress is blocked — `curl
+https://ra-nyc.vercel.app/...` returns `CONNECT tunnel failed, 403` — but the
+Vercel MCP server's `web_fetch_vercel_url` fetches the deployment from Vercel's
+side and works:
+
+```
+web_fetch_vercel_url("https://ra-nyc.vercel.app/api/health")
+```
+
+Use it. `/api/health` answers whether the database is configured, reachable, has
+its tables and how much of the search window is indexed; `/api/search?q=` proves
+a fix actually landed. This was believed impossible for several rounds, and the
+cost was asking the owner to read JSON off their phone and type it back.
+
 Project `prj_PeaknPbv6DenbJgnwy6Qd1Jpbqot`, team `team_2sVeVCDGjXW2eMc1O6Qr78l5`.
 
 ## Where the rest is written down

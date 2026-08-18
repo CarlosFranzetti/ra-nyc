@@ -2,124 +2,57 @@
 
 Everything outstanding that needs a human.
 
-**All of it is doable from a phone**, including the backfill trigger. §1 is the
-whole thing as a numbered checklist; start at the top and stop when `/api/health`
-says you are done.
-
 ---
 
-## 1 · The whole thing, from a phone, in order
+## 1 · The database — **done, nothing to do**
 
-Five and a half months of listings that work offline — four back, six weeks
-ahead — needs three
-things switched on. All three are ordinary web pages. **Nothing here needs a
-laptop.** Total hands-on time is about ten minutes; the rest is the index
-filling itself overnight.
+Checked against production on **2026-08-18**:
 
----
-
-### Step 1 · Find out what is already done — 10 seconds
-
-Open **`ra-nyc.vercel.app/api/health`**.
-
-Look at the `database` block and find your row:
-
-| What it says | What to do |
-| --- | --- |
-| `"configured": false` | No database at all. **Start at Step 2.** |
-| `"configured": true`, `"event_cache": false` | Database exists, tables don't. **Skip to Step 3.** |
-| both `true` | Schema is done. **Skip to Step 4.** |
-
-Send me the JSON if you'd rather not read it — it never contains a
-connection string or a key, only whether things are set.
-
----
-
-### Step 2 · Create the database — only if Step 1 said `configured: false`
-
-1. **vercel.com** → sign in → project **ra-nyc**
-2. **Storage** tab → **Create Database** → **Neon** (Serverless Postgres)
-3. Free plan → **Connect**
-
-Vercel sets `DATABASE_URL` and redeploys by itself. Do *not* sign up at Neon
-separately — you would end up typing a connection string on a phone keyboard.
-
----
-
-### Step 3 · Create the tables — one paste
-
-**vercel.com → ra-nyc → Storage → your database → Query**
-
-Make sure the **Read-only** toggle is off. Then paste
-[`migrations/0000_bootstrap.sql`](./migrations/0000_bootstrap.sql) and hit
-**Run**. Phone-friendly link to copy from:
-
-```
-raw.githubusercontent.com/CarlosFranzetti/ra-nyc/main/migrations/0000_bootstrap.sql
+```json
+"database": { "configured": true, "reachable": true,
+              "tables": { "artist_links": true, "event_cache": true } },
+"search":   { "indexed": 165, "window": 166,
+              "oldest": "2026-04-20", "newest": "2026-10-02" }
 ```
 
-Use the **Raw** view if you go via github.com — the normal file view is a table
-with line numbers and copying it drags the numbers into your SQL.
+All three switches are on:
 
-**If it says `cannot insert multiple commands into a prepared statement`,** that
-box runs one statement per Run. Wrap the whole file in a `DO $$ begin … end $$;`
-block, or paste the statements one at a time. Every one of them is safe to
-re-run except the single `delete`, which is meant to remove rows.
+- **`DATABASE_URL`** is set in Vercel and Neon answers.
+- **Both tables exist** — the migration was run by hand and it took.
+- **`CRON_SECRET`** is set. `/api/backfill` returns `401 Unauthorized` rather
+  than `503 "Backfill is disabled"`, which is the difference between "the secret
+  is wrong or absent from the request" and "no secret is configured at all".
 
-Reload `/api/health` — both tables should now read `true`.
+The index covers **2026-04-20 → 2026-10-02**: 120 days back and 45 forward from
+the day it was checked, which is the whole window. The nightly cron filled it —
+the iOS shortcut in §3 was never needed and is kept only as a way to force a
+run.
 
----
+**165 of 166 is what complete looks like.** A day RA genuinely has no NYC
+listings for never gets a row, so it stays "missing" and is retried on every
+run for ever. Chasing the last one is chasing a day with nothing on it.
 
-### Step 4 · Set `CRON_SECRET` — this is the one that fills the index
+Verified end to end while checking: `?q=sergio` returns *"Crashbeat with Reade
+Truth, Richard Hinge, Sergio Dimoff"* at Bossa Nova Civic Club — the gig whose
+absence started the whole search investigation.
 
-Without it the nightly job **503s every morning** and the index never grows
-beyond the days you personally browsed. This is the step that makes the six
-months real.
+### Two optional integrations are off
 
-1. **vercel.com → ra-nyc → Settings → Environment Variables**
-2. **Key** `CRON_SECRET` · **Value** any long random string — ask your password
-   manager for 32 characters. Nobody ever types this again.
-3. Leave all three environments ticked → **Save**
-4. **Deployments → newest → ⋯ → Redeploy.** ← *Do not skip.* Changing an
-   environment variable does not redeploy on its own. This exact trap already
-   cost a round with `SOUNDCLOUD_CLIENT_ID`.
+Neither is the database and neither breaks anything.
 
----
+| Key | State | What it costs you |
+| --- | --- | --- |
+| `SOUNDCLOUD_*` | working (`api-v2`) | — |
+| `YOUTUBE_API_KEY` | not set | A *fallback* only, used when SoundCloud and Mixcloud both have nothing for a DJ. Fewer sets resolve than could. |
+| `DISCOGS_TOKEN` | not set | Artist link enrichment only. |
 
-### Step 5 · Wait three mornings, then check
-
-The job runs at **09:00 UTC** (about 4–5am New York) and now covers **60 days
-per run**, so a 166-day window fills in **three nights**. It used to be 14 days
-a night — thirteen nights — which is why this was worth changing.
-
-Nothing visible happens when it works. The two ways to confirm:
-
-- **vercel.com → ra-nyc → Cron Jobs** — `/api/backfill` returns `200`, not `503`.
-- **`/api/health`** — `search.indexed` climbs toward `search.window` (166).
-
-Once `indexed` is near 166, search answers for the whole window, and the
-service worker keeps that text readable with no signal at all.
+Each is one variable in **Vercel → ra-nyc → Settings → Environment Variables**,
+followed by a redeploy — setting a variable does not redeploy on its own. Not
+worth doing unless you notice DJs with no sets.
 
 ---
 
-### Step 6 · Optional — don't want to wait three nights?
-
-The job takes an `Authorization` header, which a browser address bar cannot
-send. From a phone, **iOS Shortcuts**:
-
-*New Shortcut → Get Contents of URL → Method `GET` → Headers: add
-`Authorization` = `Bearer <your CRON_SECRET>` → URL:*
-
-```
-https://ra-nyc.vercel.app/api/backfill?days=90
-```
-
-Run it three or four times, a minute apart. Watch the `remaining` field in the
-response come down to `0`.
-
----
-
-### Also outstanding, unrelated to the index
+## 2 · Still outstanding
 
 **Delete the merged branches.** github.com → ra-nyc → **Branches** → *All
 branches* → bin icon. Everything named `claude/…` is merged. Then tick
@@ -133,21 +66,21 @@ policy, not permissions.
 
 ---
 
-## 2 · What I could not do, and why
+## 3 · What I could not do, and why
 
 | Thing | Reason |
 | --- | --- |
 | Run the migrations | This sandbox has no route to Neon, and no `DATABASE_URL`. Asking you to paste a live connection string into chat would put a production credential in the transcript. |
 | Delete the merged branches | The git proxy returns **HTTP 403** on `git-receive-pack` for a delete. Pushes work; deletions are blocked. Confirmed twice. |
-| Verify anything against production | This session's network policy denies egress to `ra-nyc.vercel.app`, `ra.co`, SoundCloud, Mixcloud and CARTO. Deployment state is verified through Vercel's API instead. |
+| ~~Verify anything against production~~ | **No longer true, and this is worth knowing.** Direct egress to `ra-nyc.vercel.app`, `ra.co`, SoundCloud, Mixcloud and CARTO is still denied — `curl` gets `CONNECT tunnel failed, 403`. But Vercel's MCP server has `web_fetch_vercel_url`, which fetches a deployment *from Vercel's side*, and that reaches the app fine. `/api/health`, `/api/search` and the rest are all readable. Several rounds of "open this on your phone and tell me what it says" were unnecessary. |
 | Set the repo Website / topics | No repository-metadata write exists in this session — you did both already. |
 | Run the last Sonnet code review | The review agent died on an API session limit mid-run. I did the review passes myself, which is how three hook bugs were caught, but that is not a second pair of eyes. |
 
 ---
 
-## 3 · The last two exchanges
+## 4 · The last two exchanges
 
-### 3.1 — "Are we all deployed"
+### 4.1 — "Are we all deployed"
 
 **You asked:** whether everything was deployed.
 
@@ -164,7 +97,7 @@ layout, typography and offline all function without a database — but search
 coverage beyond ~3 days, the RA-outage fallback and artist set lists were all
 dark, and all three unlock with one `curl` and two `psql` commands.
 
-### 3.2 — "Make sure audio starts playing asap when you click a link…"
+### 4.2 — "Make sure audio starts playing asap when you click a link…"
 
 **You asked for:** audio starting as soon as possible on a click; clicking a
 party queueing a random set from each DJ into a SoundCloud queue that starts
@@ -217,7 +150,7 @@ review never ran; the agent died on an API session limit.
 
 ---
 
-## 4 · Where the rest is written down
+## 5 · Where the rest is written down
 
 - **[memorystate.md](./memorystate.md)** — the running journal: every decision
   and why, the open questions, and the map of the code.
