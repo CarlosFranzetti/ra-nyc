@@ -146,6 +146,96 @@ async function measure({ width, height, density = "default", textSize = "0", typ
   return out;
 }
 
+// ── where the date rail parks itself on load
+//
+// A timing bug rather than a layout one. The rail is scrolled into place by an
+// effect, and it used to animate that scroll on mount as well as on a date
+// change — so on load the strip started on a fortnight of history and slid,
+// and for the first few hundred milliseconds it showed the wrong days.
+//
+// `instant` on the first placement is the fix, and `instant` specifically: the
+// rail carries `scroll-smooth`, and the `auto` behaviour defers to that CSS
+// rather than overriding it.
+{
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await context.newPage();
+  await page.route("**/api/events*", (route) =>
+    route.fulfill({ contentType: "application/json", body: PAYLOAD }),
+  );
+  await page.route("**/images.ra.co/**", (route) => route.abort());
+  await page.goto(BASE, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("text=Event number 0", { timeout: 20000 });
+
+  // Sampled across the first half-second, not once at the end of it.
+  //
+  // The end state was always right — a smooth scroll does arrive, it just
+  // takes ~400ms to do it, and a single reading taken afterwards cannot tell
+  // the two apart. What a person sees on load is the journey: the strip
+  // sitting on a fortnight of history and then sliding. So this watches every
+  // frame of the window and fails if the rail is *ever* somewhere else.
+  const settled = await page.evaluate(async () => {
+    const track = document.querySelector("[data-selected='true']")?.parentElement;
+    if (!track) return null;
+    let wrongAt = null;
+    for (let i = 0; i < 25; i++) {
+      const selected = track.querySelector("[data-selected='true']");
+      const bounds = track.getBoundingClientRect();
+      const visible = [...track.children].filter((chip) => {
+        const r = chip.getBoundingClientRect();
+        return r.left >= bounds.left - 1 && r.right <= bounds.right + 1;
+      });
+      if (visible[1] !== selected && wrongAt === null) wrongAt = i * 20;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return { wrongAt };
+  });
+  check("the rail is in place from the first frame, with no visible slide",
+    settled !== null && settled.wrongAt === null,
+    settled?.wrongAt === null ? "" : `still moving at ${settled?.wrongAt}ms`);
+
+  await page.waitForTimeout(600);
+
+  const rail = await page.evaluate(() => {
+    const selected = document.querySelector("[data-selected='true']");
+    if (!selected) return null;
+    const track = selected.parentElement;
+    const bounds = track.getBoundingClientRect();
+    const visible = [...track.children].filter((chip) => {
+      const r = chip.getBoundingClientRect();
+      return r.left >= bounds.left - 1 && r.right <= bounds.right + 1;
+    });
+    return {
+      selectedIsSecond: visible[1] === selected,
+      firstIsDayBefore: visible[0] === selected.previousElementSibling,
+      topLine: selected.querySelector("span")?.textContent ?? "",
+      // Every chip the same height: "Today" is five characters in a box sized
+      // for three, so if it wrapped this one chip would be taller and put a
+      // step in the middle of the rail.
+      heights: [
+        ...new Set(
+          [...track.children].slice(0, 20).map((c) => Math.round(c.getBoundingClientRect().height)),
+        ),
+      ].length,
+      clipped: (() => {
+        const label = selected.querySelector("span");
+        return label.scrollWidth > label.clientWidth + 1;
+      })(),
+    };
+  });
+
+  check("the rail opens with tonight in the second slot",
+    rail !== null && rail.selectedIsSecond);
+  check("and the night before it on its left",
+    rail !== null && rail.firstIsDayBefore);
+  check("tonight's chip says Today rather than its weekday",
+    rail !== null && rail.topLine.toLowerCase() === "today", rail?.topLine);
+  check("and still fits on one line, level with every other chip",
+    rail !== null && rail.heights === 1 && rail.clipped === false,
+    rail ? `${rail.heights} distinct heights, clipped=${rail.clipped}` : "no rail");
+
+  await context.close();
+}
+
 // ── the document declares its language, and declines to be translated
 //
 // Both, because the first is not enough. Chrome runs its own detector over the
