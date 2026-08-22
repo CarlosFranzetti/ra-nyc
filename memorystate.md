@@ -2188,6 +2188,42 @@ fixtures hand over well-formed ISO dates. The real guard is
 fail four ways. The comment in the first file now says what it does and does not
 cover, because the obvious reading of it is wrong.
 
+### 3.x · Density moves air, not objects
+
+The ladder came down again — 0.6 / 0.86 / 1.12 → **0.42 / 0.7 / 0.95**. The
+spread between the ends is unchanged at 0.53 and the steps stay near-symmetric
+around Default, so the axis still means something; the whole thing simply sits
+lower. Airy now sits barely above the old Default, which is the intended shape:
+what used to be the comfortable middle is the loosest this app goes. Two rounds
+have ended in "less space", and the one time it went the other way (1.188) the
+verdict was "sprawling".
+
+**The interesting part is what that exposed.** Tailwind shares one scale between
+padding and width/height, and this app multiplies that scale by the density
+preference. So `w-24` on a flyer and `w-3` on a map pin were being scaled along
+with the gaps around them. At 0.6 that was survivable; at 0.42 the flyer came
+out **40px** and the pin a five-pixel smudge, on a screen whose entire job is
+showing flyers — and "don't shrink the images" had already been said twice.
+
+Density is how much *room* things have, not how big they are. Flyers, icons and
+the header row are now literal px and hold at every setting: flyer 80px, header
+40px, icons 20/12/11. The card still breathes — 96px at Tight against 109px at
+Airy — which is the whole axis doing its job on the air rather than the content.
+
+The header is fixed for a second reason: it was asked for directly, and the
+logo's own padding was never the problem. The three icon buttons are taller
+than the wordmark, so *they* set the row height; padding the logo without
+touching them left Airy's header 48px with the logo floating in the middle. All
+four are pinned now. The buttons come in under the 44px tap target and that is
+a considered trade — they sit at the top of the screen with nothing to mis-hit,
+and a header reserving 44px three times over is most of what this removed.
+
+Also: the flyer in the details sheet closes it explicitly now. The dead-space
+handler already did that, but only by accident of an `<img>` not being a
+control, and vaul reads a pointer-down on its content as a possible drag —
+which is exactly what a tap on a large image looks like. Saying it outright
+costs one handler.
+
 ## 4 · Map of the code
 
 ```

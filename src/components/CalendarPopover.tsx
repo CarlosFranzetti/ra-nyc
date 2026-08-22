@@ -27,9 +27,9 @@ export function CalendarPopover({
       <Popover.Trigger asChild>
         <button
           aria-label="Pick a date"
-          className="p-2 rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
+          className="p-[5px] rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
         >
-          <CalendarDays className="w-5 h-5" />
+          <CalendarDays className="h-[20px] w-[20px]" />
         </button>
       </Popover.Trigger>
 

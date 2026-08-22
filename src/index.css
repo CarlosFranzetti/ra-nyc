@@ -362,38 +362,42 @@
    The steps themselves are geometric rather than the ad-hoc −8%/+12% they were,
    so a step down looks like the same size of change as a step up. */
 :root {
-  --density: 0.86;
+  /* Matches .density-default. A fallback, for the frame before the preference
+     class lands on <html>. */
+  --density: 0.7;
   --text-scale: 1;
   --space: calc(var(--density) * (1 + (var(--text-scale) - 1) * 0.6));
 }
 
-/* This time the ladder widens instead of shifting. The complaint was that
-   Tight and Airy — the two ends of the axis — read as barely different from
-   each other, not that either read wrong on its own, so Default stays exactly
-   where it was (nobody complains about Default) and the two ends move outward
-   from it instead of the whole ladder sliding.
+/* The whole ladder comes down, keeping its shape.
+   0.6 / 0.86 / 1.12 became 0.42 / 0.7 / 0.95.
 
-   They move outward by the same amount, which is the part worth keeping true
-   on the next pass: the previous ladder was lopsided around Default — Tight
-   sat 0.16 below it, Airy only 0.114 above — so "one step tighter" and "one
-   step airier" were not equal and opposite moves, and Airy in particular had
-   little room left to read as different. Equal distance in both directions
-   keeps the axis symmetric and doubles the gap between the two ends, which is
-   the number that was actually too small.
+   The previous pass widened the gap between the ends because Tight and Airy
+   read as barely different. That held; the complaint since is simply that all
+   three sit too loose — Airy in particular fitted only four cards on a phone,
+   and a listings app that shows you four things is a listings app you scroll
+   more than you read.
 
-   Airy stops well short of 1.188, which an earlier round already tried and
-   walked back — at that size "airy" read as "sprawling," and this is a
-   widening of the gap between Tight and Airy, not a reopening of that one. */
+   So this shifts rather than widens, and the two properties worth preserving
+   both survive: the spacing between the ends is unchanged at 0.53, so the axis
+   still means something end to end, and the steps stay near-symmetric around
+   Default (0.28 down, 0.25 up) so one step tighter and one step airier are
+   still roughly equal and opposite moves.
+
+   Airy at 0.95 sits barely above the old Default of 0.86, and that is the
+   intended shape: what used to be the comfortable middle is now the loosest
+   this app goes. Two separate rounds have now ended in "less space", and the
+   one time it went the other way (1.188) the verdict was "sprawling". */
 .density-tight {
-  --density: 0.6;
+  --density: 0.42;
 }
 
 .density-default {
-  --density: 0.86;
+  --density: 0.7;
 }
 
 .density-airy {
-  --density: 1.12;
+  --density: 0.95;
 }
 
 /* Six steps, all upward, geometric at ~6% each so every tick feels like the
