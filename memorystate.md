@@ -2080,6 +2080,64 @@ adding the key back:
   "AN" are the same person and nothing in the pipeline knows it. Wire it into
   name resolution rather than the link list.
 
+### 3.x · The search field under the keyboard
+
+Tapping search raised the keyboard *over* the field it belongs to.
+
+**A phone has two viewports and they disagree the moment the keyboard opens.**
+The *layout* viewport is what `position: fixed` and `100vh` are measured
+against, and it does not change. The *visual* viewport is what you can see, and
+on iOS the keyboard covers the bottom of the layout viewport without shrinking
+it. A sheet pinned to `bottom: 0` and sized in viewport units therefore puts its
+lower half behind the keyboard.
+
+**`dvh` does not rescue this, despite reading as though it should.** The
+"dynamic" is the browser's own collapsing toolbars, not the software keyboard:
+`100dvh` with a keyboard open is still the whole window. The comment that used
+to sit on this sheet asserted the opposite — *"the dynamic viewport shrinks when
+the keyboard opens"* — and that wrong sentence is why it shipped.
+
+Two systems were also moving the same element. vaul has `repositionInputs`, on
+by default, which sets inline `height` and `bottom` in px from `visualViewport`;
+our classes set their own from `dvh`. Inline wins, `max-height` from the class
+still clamps, and the result is a sheet whose height and offset were computed by
+different arithmetic. It is now off for the search sheet — the only one with a
+field — and this app does the positioning, because this is the side that can
+also see `--player-h`.
+
+`useViewportVars` publishes two numbers at the app root:
+
+- `--vvh` — the visible height.
+- `--kb` — how much of the layout viewport's bottom is covered. Zero without a
+  keyboard, so every rule using it is inert until it matters.
+
+`--kb` subtracts `visualViewport.offsetTop` as well as its height, because iOS
+*also* scrolls the visual viewport within the layout viewport; without that term
+a scrolled viewport reports a taller keyboard than exists.
+
+Then: every bottom sheet gets `bottom: max(var(--player-h), var(--kb))` — with a
+keyboard up the transport is behind it and unreachable, so reserving room for
+both would reserve it twice. The search sheet's height becomes
+`min(88dvh - player, var(--vvh))`, which reads as the two cases it is: no
+keyboard and it is exactly what it always was; keyboard up and it becomes
+precisely the visible area, top flush with the top of the visual viewport.
+
+Both halves are needed and the tests now prove it separately. Sabotaging the
+lift alone leaves the field behind the keyboard; sabotaging the shrink alone
+overshoots and pushes it to **y = −173**, off the top — and the first version of
+that check only guarded the lower bound, so it passed a different broken layout.
+It checks both bounds now.
+
+One test artifact worth remembering: measuring right after changing the height
+reported the sheet 7px low, then 9px, then 8.65px. A drifting non-integer offset
+is an animation, not a bug — vaul re-runs its transform ease on a height change.
+The check waits for the transform to settle instead of guessing a duration.
+
+**Not verified on iOS.** Chromium has no software keyboard, so what the suite
+drives is the mechanism: it sets `--vvh` and `--kb` by hand, which is exactly
+what a keyboard opening does to them. If the sheet does not move for those it
+will not move for a real one — but the reverse is not proven from here.
+
 ## 4 · Map of the code
 
 ```

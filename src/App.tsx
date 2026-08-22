@@ -1,9 +1,15 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { PlayerProvider } from "./context/PlayerContext";
+import { useViewportVars } from "./hooks/useViewportVars";
 import HomePage from "./pages/HomePage";
 
 function App() {
+  // Publishes --vvh and --kb for anything that has to sit above the software
+  // keyboard. Once, at the root: it is a fact about the window, not about a
+  // component.
+  useViewportVars();
+
   return (
     <BrowserRouter>
       {/* Above the router on purpose: the player owns a body-level host for the

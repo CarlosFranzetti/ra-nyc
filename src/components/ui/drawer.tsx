@@ -46,9 +46,13 @@ export function DrawerContent({
           // Promote to its own layer so dragging composites instead of
           // repainting, and never animate width/height during a drag.
           "will-change-transform",
+          // `max(--player-h, --kb)` rather than just the player height: with
+          // the keyboard up, the transport is behind it and unreachable, so
+          // reserving room for it there would be reserving room twice. --kb is
+          // 0 whenever there is no keyboard, which is every case but one.
           direction === "bottom"
-            ? "inset-x-0 bottom-[var(--player-h)] mx-auto max-h-[calc(90vh_-_var(--player-h))] max-w-md rounded-t-2xl border-t"
-            : "inset-y-0 bottom-[var(--player-h)] right-0 w-[360px] max-w-[92vw] border-l",
+            ? "inset-x-0 bottom-[max(var(--player-h),var(--kb,0px))] mx-auto max-h-[calc(90vh_-_var(--player-h))] max-w-md rounded-t-2xl border-t"
+            : "inset-y-0 bottom-[max(var(--player-h),var(--kb,0px))] right-0 w-[360px] max-w-[92vw] border-l",
           className,
         )}
         {...props}
