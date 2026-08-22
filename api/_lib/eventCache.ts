@@ -432,6 +432,54 @@ export async function indexStatus(options: {
 }
 
 /** Days inside a window that the index has nothing at all for. */
+/**
+ * Days the index has, ordered by how long ago it last looked at them.
+ *
+ * `missingDays` finds days with no rows, and the backfill has only ever filled
+ * those — which means **a day is fetched once and then never looked at again**.
+ * That is fine for the facts that do not change, and wrong for the one that
+ * does: RA announces a party first and its lineup later, often weeks later, and
+ * `search_key` is computed at write time. A day indexed the morning it was
+ * announced carries a key with no DJs in it, for ever.
+ *
+ * The `artists` column is right — the in-memory pass can see it — but that pass
+ * only reaches about fifty days out. Beyond that, SQL `like` on a stale key is
+ * the only path, and a stale key cannot match a name it never contained. The
+ * symptom is a DJ who played three months ago being unfindable by name while
+ * the event sits correctly in the database.
+ *
+ * So the backfill now spends whatever budget is left after filling gaps on
+ * re-fetching the days it looked at longest ago. At sixty days a run against a
+ * 166-day window, every day is refreshed roughly every three nights.
+ */
+export async function staleDays(options: {
+  areaId: number;
+  from: string;
+  to: string;
+}): Promise<string[]> {
+  const sql = getSql();
+  if (!sql) return [];
+
+  try {
+    const rows = (await sql.query(
+      `select to_char(event_date, 'YYYY-MM-DD') as day
+         from event_cache
+        where area_id = $1
+          and event_date between $2::date and $3::date
+        group by event_date
+        -- A day is as fresh as its most recently written row: a lineup change
+        -- rewrites one event, not the whole night, and one fresh row is proof
+        -- the day was re-fetched.
+        order by max(seen_at) asc`,
+      [options.areaId, options.from, options.to],
+    )) as unknown as { day: string }[];
+    return rows.map((row) => row.day);
+  } catch (error) {
+    console.warn("[eventCache] stale scan failed", error);
+    return [];
+  }
+}
+
 export async function missingDays(options: {
   areaId: number;
   from: string;
