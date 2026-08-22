@@ -2138,6 +2138,56 @@ drives is the mechanism: it sets `--vvh` and `--kb` by hand, which is exactly
 what a keyboard opening does to them. If the sheet does not move for those it
 will not move for a real one — but the reverse is not proven from here.
 
+### 3.x · Four months of history came out the wrong end
+
+Reported as two things — "natias should find Matias" and "it isn't searching
+back the months in history". They were one bug wearing two hats, plus a second
+bug underneath.
+
+**`String(row.event_date).slice(0, 10)`.** A Postgres `date` comes back from the
+Neon driver as a **JavaScript Date**, and `String(new Date("2026-05-24"))` is
+`"Sun May 24 2026 00:00:00 GMT+0000"`. Slicing ten characters gives
+`"Sun May 24"`.
+
+Every date comparison in this app is a string comparison on those ten
+characters, and **every letter sorts above every digit** — `"Sun May 24" >
+"2026-08-22"` is true. So every event that came from the index was classified
+as *upcoming*, whatever month it was in, and search's `past` list could only
+ever hold the handful of days fetched live from RA. The history was indexed,
+matched correctly, and came out under the wrong heading. Production showed it
+plainly: a May event returned in `upcoming`, with `"date":"Sun May 24"` on it.
+
+The old comment said the column "comes back either as a bare day or an ISO
+timestamp depending on the driver" — two cases, neither of which was the one
+that happens.
+
+**`FUZZY_SCAN_LIMIT = 1200`, ordered `event_date desc`.** SQL does substring and
+leet-folding; edit distance cannot happen there without `fuzzystrmatch`, so a
+typo'd term needs rows in memory. The window runs 45 days into the *future*, and
+descending order spends the whole budget starting there: at NYC's volume the
+scan reached from +45 down to roughly +30 and stopped. **The past was never in
+memory at all**, so no typo could ever find a gig that had already happened.
+`searchCachedEvents` had the same shape, capped at 60 — a DJ with a busy autumn
+would hide their own summer.
+
+Both now order by `abs(event_date - current_date)`, growing outwards from
+tonight, and the scan limit is 5000 — about ±50 days at fifty events a day. The
+old comment claimed "newest first", which is exactly what `desc` does and
+exactly not what was wanted.
+
+That second bug is why "natias" appeared to be a fuzzy-matching failure. The
+matcher was fine: with the past in memory, `natias` → `Matias Jofre` is one
+substitution and it lands. Nothing about edit distance needed changing.
+
+**Testing note, and it is the fourth time this session.** The first version of
+the guard for this was three tests in `searchIndex.test.ts` asserting that a
+past-dated indexed event is filed as past. They pass against the *unfixed*
+`isoDay` — eventCache is mocked in that file, so `toEvent` never runs and the
+fixtures hand over well-formed ISO dates. The real guard is
+`eventCacheDates.test.ts`, tested against a reverted `isoDay` and confirmed to
+fail four ways. The comment in the first file now says what it does and does not
+cover, because the obvious reading of it is wrong.
+
 ## 4 · Map of the code
 
 ```
