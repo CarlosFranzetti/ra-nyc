@@ -140,6 +140,13 @@ async function measure({ width, height, density = "default", textSize = "0", typ
       ),
       overflowX:
         document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      // Objects, as opposed to the air around them: these must not move with
+      // the density preference.
+      thumb: card ? Math.round(card.querySelector("div").getBoundingClientRect().width) : 0,
+      cardHeight: card ? Math.round(card.getBoundingClientRect().height) : 0,
+      headerHeight: Math.round(
+        document.querySelector("header > div").getBoundingClientRect().height,
+      ),
     };
   });
   await context.close();
@@ -306,6 +313,27 @@ check("and leaves body text to the system sans",
 check("neither display face sets headings at full bold",
   phone.titleWeight === "600" && condensed.titleWeight === "400",
   `legible ${phone.titleWeight}, condensed ${condensed.titleWeight}`);
+
+// ── density moves air, not objects
+//
+// Tailwind shares one scale between padding and width/height, and this app
+// multiplies that scale by the Density preference. So `w-24` on a flyer and
+// `w-3` on a map pin were being scaled along with the gaps around them — which
+// is right for air and wrong for things. Tightening the ladder to 0.42 made it
+// obvious: the flyer came out at 40px and the pin at five, on a screen whose
+// whole job is showing flyers.
+const denseCard = await measure({ width: 390, height: 844, density: "tight" });
+const airyCard = await measure({ width: 390, height: 844, density: "airy" });
+
+check("the flyer is the same size at every density",
+  denseCard.thumb === airyCard.thumb && denseCard.thumb === 80,
+  `tight ${denseCard.thumb}px, airy ${airyCard.thumb}px`);
+check("and so is the header, so the logo keeps its own small margin",
+  denseCard.headerHeight === airyCard.headerHeight,
+  `tight ${denseCard.headerHeight}px, airy ${airyCard.headerHeight}px`);
+check("while the card itself still breathes differently",
+  denseCard.cardHeight < airyCard.cardHeight,
+  `${denseCard.cardHeight}px vs ${airyCard.cardHeight}px`);
 
 // ── the whole point of coupling spacing to text size
 // The ladder is six rungs, all upward, so the bottom of it *is* the default —

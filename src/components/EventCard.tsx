@@ -46,8 +46,15 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
           leftover splits in two, and it does so at every density and text size
           because the rule is alignment rather than a padding value that would
           have to be re-tuned for each. */}
+      {/* Icons and the flyer are sized in literal px, everything else in the
+          density-scaled scale. Tailwind shares one scale between padding and
+          width/height, so `w-24` on the thumbnail and `w-3` on a pin were both
+          being multiplied by the Density preference — which is right for air
+          and wrong for objects. At Tight the flyer had become 40px and the map
+          pin a five-pixel smudge. Density changes how much room things have,
+          not how big they are. */}
       <article className="press flex items-center gap-3 bg-card rounded-lg overflow-hidden hover:bg-accent active:bg-accent border border-border/50 p-2 glow-primary-hover">
-        <div className="relative w-24 h-24 flex-shrink-0 rounded-md overflow-hidden bg-muted">
+        <div className="relative h-[80px] w-[80px] flex-shrink-0 overflow-hidden rounded-md bg-muted">
           <EventThumb
             imageUrl={event.imageUrl}
             alt={event.title}
@@ -86,12 +93,12 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
                 venue gets its own hue and weight rather than sitting in the
                 same muted grey as the time and the head count. */}
             <span className="flex items-center gap-0.5 min-w-0 font-semibold text-venue">
-              <MapPin className="w-3 h-3 flex-shrink-0" />
+              <MapPin className="h-[12px] w-[12px] flex-shrink-0" />
               <span className="truncate">{event.venue.name}</span>
             </span>
             {event.startTime && (
               <span className="flex items-center gap-0.5">
-                <Clock className="w-3 h-3" />
+                <Clock className="h-[12px] w-[12px] flex-shrink-0" />
                 {showDate && `${formatEventDay(event.date)}, `}
                 {formatTime(event.startTime)}
               </span>
@@ -111,7 +118,7 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
 
           {event.attending > 0 && (
             <div className="mt-0.5 flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
-              <Users className="h-2.5 w-2.5" />
+              <Users className="h-[11px] w-[11px] flex-shrink-0" />
               <span>{event.attending.toLocaleString()} going</span>
             </div>
           )}

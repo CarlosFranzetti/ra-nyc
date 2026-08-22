@@ -170,9 +170,24 @@ export function EventDetailsSheet({
           onClick={closeUnlessInteractive}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
+          {/* Tapping the flyer returns to the listings.
+              The dead-space handler above already did this, since an <img> is
+              not a control — but only by accident of what it is *not*, and only
+              while nothing between here and the scroller stops the event. vaul
+              also treats a pointer-down on its content as a possible drag,
+              which is exactly the gesture a tap on a large image looks like.
+              Saying it outright costs one handler and stops it being a
+              behaviour that could quietly disappear.
+
+              role="button" so the sheet's own closeUnlessInteractive skips it
+              rather than firing a second time on the way up. */}
           <div
+            role="button"
+            tabIndex={-1}
+            aria-label="Back to listings"
+            onClick={() => onOpenChange(false)}
             className={cn(
-              "w-full overflow-hidden bg-muted transition-all duration-200",
+              "w-full cursor-pointer overflow-hidden bg-muted transition-all duration-200",
               // Expanding trades flyer for text — the reason you expand is to
               // read the rest, not to see a bigger picture.
               expanded ? "aspect-auto h-24" : "aspect-square max-h-[40vh]",

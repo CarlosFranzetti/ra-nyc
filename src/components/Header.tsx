@@ -46,7 +46,14 @@ export function Header({ selectedDate, onDateChange, onSearchClick }: HeaderProp
 
   return (
     <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border/50 pt-safe">
-      <div className="shell px-4 py-3 flex items-center justify-between">
+      {/* py in literal px, not the density-scaled scale.
+          Every other gap in the app answers to the Density preference, and this
+          one deliberately does not: the logo row is a fixed mark and a row of
+          icons, so there is nothing in it that reads better with more air. On
+          Airy it was taking 22px above the wordmark — a quarter of the header —
+          to separate a title from a browser toolbar it is already separated
+          from. Small and constant is the whole requirement. */}
+      <div className="shell flex items-center justify-between px-4 py-[5px]">
         {/* A logo, not a heading — so it is deliberately outside every
             preference axis. It used to inherit the `type-*` class from <html>,
             which meant the app's own name was rendered in whichever typeface
@@ -72,14 +79,14 @@ export function Header({ selectedDate, onDateChange, onSearchClick }: HeaderProp
           <button
             onClick={onSearchClick}
             aria-label="Search events"
-            className="p-2 rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
+            className="p-[5px] rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
           >
-            <Search className="w-5 h-5" />
+            <Search className="h-[20px] w-[20px]" />
           </button>
           <Suspense
             fallback={
               <span className="p-2 text-muted-foreground">
-                <CalendarDays className="h-5 w-5" />
+                <CalendarDays className="h-[20px] w-[20px]" />
               </span>
             }
           >
