@@ -25,6 +25,11 @@ import { useEffect } from "react";
  * - `--vvh` — the visible height. What a full-screen sheet should actually be.
  * - `--kb` — how much of the layout viewport's *bottom* is covered right now.
  *   Zero with no keyboard, so every rule that uses it is inert until it matters.
+ * - `--vv-top` — how far the visual viewport has been scrolled *within* the
+ *   layout viewport. Non-zero only on iOS, and only while a keyboard is up: it
+ *   is what a `position: fixed` element has to be offset by to sit where the
+ *   user is actually looking, because fixed is measured against the layout
+ *   viewport and the two have come apart.
  *
  * `--kb` subtracts `offsetTop` as well as the height, because iOS also scrolls
  * the visual viewport within the layout viewport when the keyboard opens.
@@ -52,6 +57,10 @@ export function useViewportVars(): void {
       // frame of a momentum scroll, and nothing downstream can use the decimal.
       root.style.setProperty("--vvh", `${Math.round(height)}px`);
       root.style.setProperty("--kb", `${Math.max(0, Math.round(covered))}px`);
+      root.style.setProperty(
+        "--vv-top",
+        `${Math.max(0, Math.round(viewport?.offsetTop ?? 0))}px`,
+      );
     };
 
     apply();
