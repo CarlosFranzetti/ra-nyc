@@ -83,7 +83,14 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
   );
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    /* repositionInputs={false} turns vaul's own keyboard handling off for this
+       sheet, and only this sheet — it is the only one with a text field.
+       vaul's version sets `height` and `bottom` inline from visualViewport, in
+       px, which overrides the classes below; two systems moving the same
+       element with different arithmetic is how the field ended up under the
+       keyboard rather than above it. One of them had to stop, and the one that
+       can also see --player-h is this one. */
+    <Drawer open={open} onOpenChange={onOpenChange} repositionInputs={false}>
       {/* A fixed height, not a max-height. Two reasons, and the second is the
           bug: content-hugging made the sheet only as tall as its results, so a
           single hit left it ~340px tall with the dimmed listings page showing
@@ -91,9 +98,25 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
           than as "the sheet ends here". It would also have resized on every
           keystroke as results came and went.
 
-          dvh, not vh: the dynamic viewport shrinks when the keyboard opens, so
-          the sheet sits above it instead of extending behind it. */}
-      <DrawerContent className="h-[calc(88dvh_-_var(--player-h))] max-h-[calc(88dvh_-_var(--player-h))]">
+          The `min()` is the keyboard fix, and it reads as two cases because it
+          is two cases:
+
+          - **No keyboard.** `--vvh` is the whole window, so the smaller term is
+            `88dvh - player`, and this is exactly what it always was: a tall
+            sheet with a strip of the dimmed listings above it.
+          - **Keyboard up.** `--vvh` is what is left above it — often barely
+            half the screen — so that wins, and the sheet becomes precisely the
+            visible area. Paired with the `bottom: max(player, --kb)` in
+            DrawerContent, its top lands at the top of the visual viewport and
+            the search field sits directly under the browser's own chrome.
+
+          `dvh` alone does not do this, despite reading as though it should. The
+          "dynamic" in dynamic viewport units is the browser's collapsing
+          toolbars, not the software keyboard: `100dvh` with a keyboard open is
+          still the full window, and half of it is behind the keyboard. That
+          distinction is the entire bug, and the comment that used to sit here
+          asserted the opposite. */}
+      <DrawerContent className="h-[min(calc(88dvh_-_var(--player-h)),var(--vvh,100dvh))] max-h-[min(calc(88dvh_-_var(--player-h)),var(--vvh,100dvh))]">
         <DrawerTitle className="sr-only">Search events</DrawerTitle>
 
         <div className="flex flex-shrink-0 items-center gap-2 border-b border-border/50 px-3 pb-3 pt-1">

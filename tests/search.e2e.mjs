@@ -148,6 +148,95 @@ const input = page.locator('input[aria-label="Search events"]');
 check("search sheet opens with a field", await input.isVisible());
 check("prompts before it will search", await page.locator("text=Type at least").isVisible());
 
+// ── the sheet has to sit above the software keyboard
+//
+// A phone has two viewports. The **layout** viewport is what `position: fixed`
+// and even `100dvh` are measured against, and on iOS it does not shrink when
+// the keyboard opens — the keyboard simply covers its bottom. So a sheet
+// pinned to `bottom: 0` and sized in `dvh` puts its lower half behind the
+// keyboard, which is how tapping the search field raised the keyboard over the
+// field itself.
+//
+// Chromium here has no software keyboard, so what is checked is the mechanism
+// rather than iOS: `--vvh` and `--kb` are the two numbers `useViewportVars`
+// publishes from `visualViewport`, and setting them by hand is exactly what a
+// keyboard opening does. If the sheet does not move for these, it will not
+// move for a real one either. **The iOS behaviour itself is not covered by any
+// test in this repo** — it cannot be from here.
+{
+  const sheet = () =>
+    page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const field = document.querySelector('input[aria-label="Search events"]');
+      if (!dialog || !field) return null;
+      const box = dialog.getBoundingClientRect();
+      const input = field.getBoundingClientRect();
+      // Everything read in one pass, from the page, at the same instant.
+      // Comparing a height captured here against a window measurement taken
+      // from the test process is how an eleven-pixel disagreement appears out
+      // of nowhere and costs twenty minutes.
+      return {
+        window: window.innerHeight,
+        gapBelow: Math.round(window.innerHeight - box.bottom),
+        height: Math.round(box.height),
+        fieldTop: Math.round(input.top),
+        fieldBottom: Math.round(input.bottom),
+        kb: parseInt(getComputedStyle(document.documentElement).getPropertyValue("--kb")) || 0,
+      };
+    });
+
+  const closed = await sheet();
+
+  // A keyboard covering the bottom 45% of the window, which is about right for
+  // an iPhone in portrait.
+  await page.evaluate(() => {
+    const root = document.documentElement;
+    const kb = Math.round(window.innerHeight * 0.45);
+    root.style.setProperty("--kb", `${kb}px`);
+    root.style.setProperty("--vvh", `${window.innerHeight - kb}px`);
+  });
+  // Wait for vaul to finish easing rather than guessing at a duration.
+  // Changing the height re-runs its transform animation, and measuring
+  // mid-ease reports the sheet a few pixels low — a drifting, non-integer few,
+  // which is the tell that it is an animation and not an offset. The first
+  // version of this check used a flat 300ms and failed by 7px, then 9px, then
+  // 8.65px.
+  await page.waitForFunction(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) return false;
+    const t = getComputedStyle(dialog).transform;
+    if (t === "none") return true;
+    const ty = Number(t.split(",").pop()?.replace(")", "") ?? "0");
+    return Math.abs(ty) < 0.5;
+  }, { timeout: 5000 });
+  const open = await sheet();
+
+  check("the sheet lifts off the bottom by exactly the keyboard's height",
+    open !== null && Math.abs(open.gapBelow - open.kb) <= 1,
+    open ? `${open.gapBelow}px above the bottom, keyboard is ${open.kb}px` : "no sheet");
+
+  check("and shrinks to the space left rather than staying tall",
+    closed !== null && open !== null && open.height < closed.height,
+    closed && open ? `${closed.height} → ${open.height}` : "no sheet");
+
+  // The whole point: the field a keyboard exists to type into must be visible
+  // with it open. Both bounds, because there are two ways to fail. Lifting
+  // without shrinking overshoots and pushes the field off the *top* — a
+  // sabotage run put it at -173 while a lower-bound-only check still passed,
+  // which is a check that would have blessed a different broken layout.
+  check("so the field sits in the visible band, above the keyboard",
+    open !== null && open.fieldTop >= 0 && open.fieldBottom <= open.window - open.kb,
+    open
+      ? `field occupies ${open.fieldTop}–${open.fieldBottom}, visible band is 0–${open.window - open.kb}`
+      : "no sheet");
+
+  await page.evaluate(() => {
+    document.documentElement.style.removeProperty("--kb");
+    document.documentElement.style.removeProperty("--vvh");
+  });
+  await page.waitForTimeout(250);
+}
+
 // ── debounce: one request for a burst of keystrokes
 searchCalls = 0;
 await input.type("lakuti", { delay: 40 });
