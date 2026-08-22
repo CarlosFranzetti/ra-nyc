@@ -14,14 +14,6 @@
 ---
 
 <p align="center">
-  <img src="docs/img/listings.png" alt="The listings on a phone" width="260">
-  &nbsp;
-  <img src="docs/img/search.png" alt="Searching for a DJ" width="260">
-  &nbsp;
-  <img src="docs/img/playing.png" alt="A set playing while you browse" width="260">
-</p>
-
-<p align="center">
   <sub>The night's listings · search by DJ, party, promoter or venue · a set
   playing in the docked transport</sub>
 </p>
