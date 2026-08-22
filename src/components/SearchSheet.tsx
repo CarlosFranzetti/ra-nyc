@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Loader, Search, X } from "lucide-react";
-import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { EventCard } from "@/components/EventCard";
 import { MIN_QUERY, useSearch } from "@/hooks/useSearch";
 import type { Event } from "@/types/event";
@@ -72,6 +72,27 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
     node?.focus({ preventScroll: true });
   }, []);
 
+  /**
+   * Escape closes, and the body stops scrolling underneath.
+   *
+   * Both came free with vaul and have to be done by hand now. The body lock is
+   * the one that shows: without it, scrolling the results to their end hands
+   * the gesture to the listings behind, and the page you cannot see moves.
+   */
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onOpenChange(false);
+    };
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onOpenChange]);
+
   const busy = isFetching || pending;
   const upcoming = data?.upcoming ?? [];
   const past = data?.past ?? [];
@@ -82,44 +103,46 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
     data?.coverage && data.coverage.indexed < data.coverage.window * 0.9,
   );
 
+  // No mount when closed, which also means the field is freshly focused every
+  // time it opens rather than restored from wherever it was left.
+  if (!open) return null;
+
   return (
-    /* repositionInputs={false} turns vaul's own keyboard handling off for this
-       sheet, and only this sheet — it is the only one with a text field.
-       vaul's version sets `height` and `bottom` inline from visualViewport, in
-       px, which overrides the classes below; two systems moving the same
-       element with different arithmetic is how the field ended up under the
-       keyboard rather than above it. One of them had to stop, and the one that
-       can also see --player-h is this one. */
-    <Drawer open={open} onOpenChange={onOpenChange} repositionInputs={false}>
-      {/* A fixed height, not a max-height. Two reasons, and the second is the
-          bug: content-hugging made the sheet only as tall as its results, so a
-          single hit left it ~340px tall with the dimmed listings page showing
-          through the overlay below it — which reads as a blank block rather
-          than as "the sheet ends here". It would also have resized on every
-          keystroke as results came and went.
+    createPortal(
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search events"
+        /* Anchored to the TOP of the visual viewport, and that is the whole
+           fix rather than a refinement of the last one.
 
-          The `min()` is the keyboard fix, and it reads as two cases because it
-          is two cases:
+           This was a bottom sheet, and a bottom sheet is the wrong shape for
+           anything containing a text field on a phone. The keyboard comes up
+           from the bottom, so a panel that grows from the bottom is racing it —
+           and every attempt to win that race is arithmetic about how tall the
+           keyboard is, which is a number the browser tells you late, changes
+           mid-animation, and reports differently on iOS and Android.
 
-          - **No keyboard.** `--vvh` is the whole window, so the smaller term is
-            `88dvh - player`, and this is exactly what it always was: a tall
-            sheet with a strip of the dimmed listings above it.
-          - **Keyboard up.** `--vvh` is what is left above it — often barely
-            half the screen — so that wins, and the sheet becomes precisely the
-            visible area. Paired with the `bottom: max(player, --kb)` in
-            DrawerContent, its top lands at the top of the visual viewport and
-            the search field sits directly under the browser's own chrome.
+           A field pinned to the top of what you can see cannot be covered by
+           something that rises from the bottom. There is no race to win. It is
+           also what every native mobile search does, for the same reason.
 
-          `dvh` alone does not do this, despite reading as though it should. The
-          "dynamic" in dynamic viewport units is the browser's collapsing
-          toolbars, not the software keyboard: `100dvh` with a keyboard open is
-          still the full window, and half of it is behind the keyboard. That
-          distinction is the entire bug, and the comment that used to sit here
-          asserted the opposite. */}
-      <DrawerContent className="h-[min(calc(88dvh_-_var(--player-h)),var(--vvh,100dvh))] max-h-[min(calc(88dvh_-_var(--player-h)),var(--vvh,100dvh))]">
-        <DrawerTitle className="sr-only">Search events</DrawerTitle>
-
-        <div className="flex flex-shrink-0 items-center gap-2 border-b border-border/50 px-3 pb-3 pt-1">
+           `top: var(--vv-top)` rather than 0: `position: fixed` is measured
+           against the *layout* viewport, and iOS scrolls the visual viewport
+           inside it when the keyboard opens. Without that offset the overlay
+           stays pinned to a top the user can no longer see. */
+        style={{
+          top: "var(--vv-top, 0px)",
+          height: "var(--vvh, 100dvh)",
+        }}
+        className="fixed inset-x-0 z-[80] flex flex-col bg-background"
+      >
+        {/* The safe-area inset *plus* 8px, not `pt-safe` alone. This is now the
+            literal top of the screen rather than the top of a panel floating
+            above it, so it needs the notch inset — but that inset is 0px on
+            most devices, which would leave the field flush against the top
+            edge. Both terms are needed and neither is enough. */}
+        <div className="flex flex-shrink-0 items-center gap-2 border-b border-border/50 px-3 pb-2 pt-[calc(env(safe-area-inset-top)+8px)]">
           <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border/50 bg-card px-3 py-2">
             {busy ? (
               <Loader className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
@@ -208,7 +231,8 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
             </p>
           )}
         </div>
-      </DrawerContent>
-    </Drawer>
+      </div>,
+      document.body,
+    )
   );
 }

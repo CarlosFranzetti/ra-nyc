@@ -148,14 +148,18 @@ const input = page.locator('input[aria-label="Search events"]');
 check("search sheet opens with a field", await input.isVisible());
 check("prompts before it will search", await page.locator("text=Type at least").isVisible());
 
-// ── the sheet has to sit above the software keyboard
+// ── the field has to survive the software keyboard
 //
 // A phone has two viewports. The **layout** viewport is what `position: fixed`
 // and even `100dvh` are measured against, and on iOS it does not shrink when
-// the keyboard opens — the keyboard simply covers its bottom. So a sheet
-// pinned to `bottom: 0` and sized in `dvh` puts its lower half behind the
-// keyboard, which is how tapping the search field raised the keyboard over the
-// field itself.
+// the keyboard opens — the keyboard simply covers its bottom.
+//
+// This was a bottom sheet, and two rounds went into arithmetic for keeping its
+// *lower* edge above a rising keyboard. The panel is now anchored to the top of
+// the visual viewport instead, which removes the race rather than winning it:
+// a field pinned to the top of what you can see cannot be covered by something
+// that comes up from the bottom. The checks below are unchanged because they
+// always asserted the outcome rather than the mechanism.
 //
 // Chromium here has no software keyboard, so what is checked is the mechanism
 // rather than iOS: `--vvh` and `--kb` are the two numbers `useViewportVars`
@@ -211,11 +215,11 @@ check("prompts before it will search", await page.locator("text=Type at least").
   }, { timeout: 5000 });
   const open = await sheet();
 
-  check("the sheet lifts off the bottom by exactly the keyboard's height",
+  check("the panel ends exactly where the keyboard begins",
     open !== null && Math.abs(open.gapBelow - open.kb) <= 1,
     open ? `${open.gapBelow}px above the bottom, keyboard is ${open.kb}px` : "no sheet");
 
-  check("and shrinks to the space left rather than staying tall",
+  check("and fills the space left rather than staying full height",
     closed !== null && open !== null && open.height < closed.height,
     closed && open ? `${closed.height} → ${open.height}` : "no sheet");
 

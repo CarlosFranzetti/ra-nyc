@@ -2258,6 +2258,42 @@ about: it may equally be that Matias Jofre has not played NYC inside the
 120-day window. The stale-key gap is real either way and was worth closing on
 its own.
 
+### 3.x · Search stops racing the keyboard
+
+Third round on this, and the first two were the wrong shape.
+
+Search was a **bottom sheet**, and a bottom sheet is the wrong container for
+anything holding a text field on a phone. The keyboard rises from the bottom,
+so a panel that grows from the bottom is racing it — and every attempt to win
+that race is arithmetic about how tall the keyboard is. That number arrives
+late, changes mid-animation, is reported differently by iOS and Android, and is
+measured against a viewport that has itself moved. Two rounds went into that
+arithmetic and it was still wrong on a real phone.
+
+It is now **anchored to the top of the visual viewport**. A field pinned to the
+top of what you can see cannot be covered by something coming up from the
+bottom. There is no race left to win. It is also what every native mobile search
+does, for exactly this reason.
+
+Three details:
+
+- `top: var(--vv-top)`, not `0`. `position: fixed` is measured against the
+  *layout* viewport, and iOS scrolls the visual viewport inside it when the
+  keyboard opens — without the offset the panel stays pinned to a top nobody can
+  see any more. That is the third variable `useViewportVars` publishes.
+- `height: var(--vvh)` — the visible height, so the results fill the gap between
+  the field and the keyboard exactly.
+- **vaul is gone from this one sheet.** It brought drag-to-dismiss, Escape and a
+  body-scroll lock; the last two are eight lines by hand and the first is not
+  wanted for a search overlay that has a Cancel button. What it also brought was
+  a second system setting `height` and `bottom` inline from `visualViewport`,
+  which is half of what made this so hard to pin down.
+
+The suite's checks did not change, only their names — they always asserted the
+outcome (field visible, panel ending where the keyboard begins) rather than the
+mechanism, which is why they survived the container being replaced underneath
+them.
+
 ## 4 · Map of the code
 
 ```
