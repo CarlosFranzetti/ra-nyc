@@ -28,21 +28,35 @@ import { expandTerm } from "./vocab.js";
 import type { RAEvent } from "./ra.js";
 
 /**
- * Rows pulled for the fuzzy pass when the indexed filter finds nothing.
+ * Rows pulled into memory for the fuzzy pass.
  *
  * Substring and leet-folding both happen in SQL, which covers almost every
- * query. Edit-distance matching cannot, so a term that only matches by typo
- * needs rows in memory — bounded here, newest first, because a typo'd search
- * for something six weeks old is not worth scanning a year of listings for.
+ * query. Edit distance cannot — Postgres has no `levenshtein` without the
+ * `fuzzystrmatch` extension, and requiring one would be a migration run by
+ * hand. So a term that only matches by typo needs rows in memory.
+ *
+ * **1200 was not a bound, it was an accident.** Paired with `order by
+ * event_date desc`, over a window that runs 45 days into the *future*, it
+ * bought the furthest-away days first: at NYC's volume the scan reached from
+ * +45 down to somewhere around +30, and stopped. The past — the entire reason
+ * the index exists — was never in memory at all, so no typo could ever find a
+ * gig that had already happened. The old comment here said "newest first",
+ * which is exactly what `desc` does and exactly not what was wanted.
+ *
+ * The ordering is now distance from today, so the scan grows outwards from
+ * tonight in both directions, and the limit is sized to be worth having: at
+ * roughly fifty indexed events a day this covers about ±50 days, which is the
+ * span people actually ask typo'd questions about.
  */
-const FUZZY_SCAN_LIMIT = 1200;
+const FUZZY_SCAN_LIMIT = 5_000;
 
 /** Never let an index write hold up the listing it was derived from. */
 const WRITE_TIMEOUT_MS = 2_500;
 
 interface CacheRow {
   ra_event_id: string;
-  event_date: string;
+  /** A Postgres `date`. The driver returns a Date; older ones, a string. */
+  event_date: string | Date;
   title: string;
   venue_name: string;
   venue_area: string | null;
@@ -56,14 +70,47 @@ interface CacheRow {
   end_time: string | null;
 }
 
+/**
+ * `YYYY-MM-DD`, whatever the driver handed back.
+ *
+ * This existed as `String(value).slice(0, 10)` and was wrong in the one case
+ * that actually happens. A Postgres `date` column comes back from the Neon
+ * driver as a **JavaScript Date**, and `String(new Date("2026-05-24"))` is
+ * `"Sun May 24 2026 00:00:00 GMT+0000"` — so slicing ten characters produced
+ * `"Sun May 24"`.
+ *
+ * That is not a cosmetic problem. Every date comparison in this app is a string
+ * comparison on these ten characters, and **every letter sorts above every
+ * digit**: `"Sun May 24" > "2026-08-22"` is true. So every event that came from
+ * the index was classified as upcoming, whatever month it was actually in, and
+ * search's `past` list could only ever contain the handful of days fetched live
+ * from RA. Four months of history sat in the database, matched correctly, and
+ * came out the wrong end.
+ *
+ * `toISOString` is safe for the Date case because a bare `date` column is read
+ * as midnight **UTC**, and Vercel functions run with `TZ=UTC` — the two agree.
+ * A local-midnight Date in a negative-offset zone would come back a day early,
+ * which is worth knowing if this ever runs somewhere else.
+ */
+export function isoDay(value: unknown): string {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? "" : value.toISOString().slice(0, 10);
+  }
+  const text = String(value ?? "");
+  // Already a bare day or an ISO timestamp: the cheap path, and the only one
+  // the old code handled.
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+  // Anything else the driver invented. Parsing is a last resort rather than the
+  // default because it is the branch most likely to be wrong about a timezone.
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
 function toEvent(row: CacheRow): RAEvent {
   return {
     id: row.ra_event_id,
     title: row.title,
-    // Stored as a `date`, so it comes back either as a bare day or an ISO
-    // timestamp depending on the driver. The rest of the app compares the first
-    // ten characters of this string and nothing else.
-    date: String(row.event_date).slice(0, 10),
+    date: isoDay(row.event_date),
     startTime: row.start_time ?? "",
     endTime: row.end_time ?? "",
     url: row.url ?? "",
@@ -231,7 +278,11 @@ export async function searchCachedEvents(options: {
         where area_id = $1
           and event_date between $2::date and $3::date
           and (${predicate})
-        order by event_date desc
+        -- Same reasoning as the scan below: capped at SEARCH_LIMIT, ordering
+        -- by date descending spends the whole budget on the furthest-future
+        -- matches and drops the past entirely. A DJ with a busy autumn would
+        -- hide their own summer.
+        order by abs(event_date - current_date) asc
         limit $4`,
       [options.areaId, options.from, options.to, options.limit, ...keys],
     )) as unknown as CacheRow[];
@@ -295,7 +346,11 @@ export async function recentCachedEvents(options: {
          from event_cache
         where area_id = $1
           and event_date between $2::date and $3::date
-        order by event_date desc
+        -- Outwards from today, not down from the far future. Subtracting two
+        -- dates in Postgres gives an integer number of days, so this is the
+        -- cheapest way to say "nearest first", and it needs no index beyond the
+        -- one already on the date.
+        order by abs(event_date - current_date) asc
         limit $4`,
       [options.areaId, options.from, options.to, FUZZY_SCAN_LIMIT],
     )) as unknown as CacheRow[];

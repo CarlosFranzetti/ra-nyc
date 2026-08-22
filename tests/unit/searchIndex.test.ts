@@ -124,6 +124,50 @@ describe("the exact spelling is never weaker than a typo", () => {
   });
 });
 
+describe("an indexed past event is reported as past", () => {
+  /**
+   * The upcoming/past split, which is a *string* comparison against today.
+   *
+   * Worth stating what this does and does not cover, because the obvious
+   * reading is wrong. It does not guard the `isoDay` bug that prompted it —
+   * eventCache is mocked here, so `toEvent` never runs and these fixtures hand
+   * over well-formed ISO dates that no version of that function could mangle.
+   * Sabotaging `isoDay` leaves every test in this file green.
+   *
+   * What it guards is the split itself: that an event dated three months ago
+   * is filed under past. `isoDay` is tested directly in eventCacheDates.test.ts,
+   * where it bites.
+   */
+  it("does not file a gig from three months ago under upcoming", async () => {
+    indexed.push(event("old", "Winter closing party", -90, ["Matias Jofre"]));
+
+    const { upcoming, past } = await searchRAEvents({ term: "jofre" });
+
+    expect(past.map((e) => e.id)).toContain("old");
+    expect(upcoming.map((e) => e.id)).not.toContain("old");
+  });
+
+  it("finds a two-word name by either half", async () => {
+    indexed.push(event("gig", "Winter closing party", -70, ["Matias Jofre"]));
+
+    for (const term of ["matias", "jofre", "matias jofre"]) {
+      const hits = await searchRAEvents({ term });
+      expect(
+        [...hits.upcoming, ...hits.past].map((e) => e.id),
+        `searching "${term}"`,
+      ).toContain("gig");
+    }
+  });
+
+  it("finds it through a typo in the first letter", async () => {
+    // The reported case: "natias" is one substitution from "Matias".
+    indexed.push(event("gig", "Winter closing party", -70, ["Matias Jofre"]));
+
+    const hits = await searchRAEvents({ term: "natias" });
+    expect([...hits.upcoming, ...hits.past].map((e) => e.id)).toContain("gig");
+  });
+});
+
 describe("vibe words reach the index", () => {
   it("finds an afterhours party from the word after", async () => {
     indexed.push(event("dawn", "Sunrise session", -2));  // vocabulary, not substring
