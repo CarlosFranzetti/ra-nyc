@@ -2224,6 +2224,40 @@ control, and vaul reads a pointer-down on its content as a possible drag —
 which is exactly what a tap on a large image looks like. Saying it outright
 costs one handler.
 
+### 3.x · The index never looked at a day twice
+
+Found while chasing why `jofre` returned nothing after the date and scan fixes
+had both landed and `matias` was reaching back to May.
+
+`missingDays` finds days with **no rows**, and the backfill only ever filled
+those. So a day was fetched once and then frozen at the moment it was fetched.
+That is fine for everything that does not change and wrong for the one thing
+that does: **RA announces a party first and its lineup later**, and `search_key`
+is computed at write time. A day indexed on announcement carries a key with no
+DJs in it, permanently.
+
+The `artists` column is correct — the in-memory pass reads it — but that pass
+only reaches about fifty days out. Beyond that, SQL `like` on the key is the
+only path, and a key cannot match a name it never contained. The symptom is a
+DJ who played three months ago being unfindable by name while their event sits
+correct in the database.
+
+It also meant the job finished in two seconds with a fifty-second budget.
+
+`staleDays` orders indexed days by `max(seen_at)` ascending, and the backfill
+now spends whatever is left after gaps on re-fetching the oldest-looked-at.
+Gaps keep priority — a missing day is worse than a stale one. At sixty days a
+run over a 166-day window, everything is refreshed about every three nights.
+
+`remaining` counts only gaps closed, not days touched, which needed the targets
+to carry whether they were a gap; otherwise a run that refreshed forty days
+would report forty gaps closed.
+
+**Whether this is why `jofre` is empty is unknown**, and worth being straight
+about: it may equally be that Matias Jofre has not played NYC inside the
+120-day window. The stale-key gap is real either way and was worth closing on
+its own.
+
 ## 4 · Map of the code
 
 ```

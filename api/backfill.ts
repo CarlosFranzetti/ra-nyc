@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { cacheEvents, missingDays } from "./_lib/eventCache.js";
+import { cacheEvents, missingDays, staleDays } from "./_lib/eventCache.js";
 import {
   fetchRAEvents,
   NYC_AREA_ID,
@@ -13,7 +13,10 @@ import {
  * The index otherwise only learns about days somebody browsed or searched, so
  * coverage tracks traffic rather than the calendar — and with few visitors a
  * quiet Tuesday six weeks ago never gets indexed at all. This walks the window
- * and fetches the days that are missing.
+ * and fetches the days that are missing, then spends whatever budget is left
+ * re-fetching the days it looked at longest ago — because a day fetched once
+ * and never revisited keeps the lineup it had on the day it was announced, and
+ * `search_key` is computed at write time.
  *
  * ## Why it is chunked
  *
@@ -85,6 +88,8 @@ export interface BackfillResponse {
   failed: string[];
   /** Still missing after this run. Zero means the window is covered. */
   remaining: number;
+  /** Days re-fetched because their lineups may have moved on since. */
+  refreshed: number;
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
@@ -156,11 +161,39 @@ export default async function handler(
       to: shift(SEARCH_AHEAD_DAYS),
     });
 
+    /**
+     * Gaps first, then the days looked at longest ago.
+     *
+     * Filling gaps alone left this job finishing in two seconds with a
+     * fifty-second budget, and left every day it had ever fetched frozen at the
+     * moment it was fetched. That matters because RA announces a party before
+     * its lineup, and `search_key` is computed at write time — so a day indexed
+     * on announcement carries a key with no DJs in it and keeps it for ever.
+     * Beyond the in-memory scan's reach, that key is the only way to find a
+     * name, which is how a DJ who played three months ago becomes unfindable
+     * while their event sits correctly in the database.
+     *
+     * A missing day is still worse than a stale one, so gaps keep priority and
+     * refreshes only spend what is left over.
+     */
+    const stale = gaps.length >= days ? [] : await staleDays({
+      areaId: NYC_AREA_ID,
+      from: shift(-SEARCH_BEHIND_DAYS),
+      to: shift(SEARCH_AHEAD_DAYS),
+    });
     // `missingDays` returns newest first, so slicing takes the recent past.
-    const targets = gaps.slice(0, days);
+    // Each target carries whether it was a gap, because `remaining` counts only
+    // gaps and a run that refreshed forty days has not closed forty gaps.
+    const gapSet = new Set(gaps);
+    const targets = [...gaps, ...stale.filter((day) => !gapSet.has(day))]
+      .slice(0, days)
+      .map((day) => ({ day, wasGap: gapSet.has(day) }));
+
     const startedAt = Date.now();
     const failed: string[] = [];
     let indexed = 0;
+    let gapsFilled = 0;
+    let refreshed = 0;
     let events = 0;
 
     for (let i = 0; i < targets.length; i += CONCURRENCY) {
@@ -169,7 +202,7 @@ export default async function handler(
 
       const batch = targets.slice(i, i + CONCURRENCY);
       await Promise.all(
-        batch.map(async (day) => {
+        batch.map(async ({ day, wasGap }) => {
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
           try {
@@ -180,6 +213,8 @@ export default async function handler(
             });
             await cacheEvents(fetched, NYC_AREA_ID);
             indexed += 1;
+            if (wasGap) gapsFilled += 1;
+            else refreshed += 1;
             events += fetched.length;
           } catch (error) {
             // One bad day must not end the run; the next pass retries it,
@@ -198,12 +233,13 @@ export default async function handler(
     // sentinel row — would mean inventing an event that does not exist.
     return send(res, 200, {
       ok: failed.length === 0,
+      refreshed,
       missing: gaps.length,
       attempted: targets.length,
       indexed,
       events,
       failed,
-      remaining: Math.max(gaps.length - indexed, 0),
+      remaining: Math.max(gaps.length - gapsFilled, 0),
     } satisfies BackfillResponse);
   } catch (error) {
     console.error("[api/backfill] unexpected failure", error);

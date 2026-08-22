@@ -36,6 +36,18 @@ Verified end to end while checking: `?q=sergio` returns *"Crashbeat with Reade
 Truth, Richard Hinge, Sergio Dimoff"* at Bossa Nova Civic Club — the gig whose
 absence started the whole search investigation.
 
+### One thing to watch for a few nights
+
+The backfill now refreshes days it already has, oldest-looked-at first, as well
+as filling gaps. Until it has been round the window once — three nights or so —
+a DJ whose lineup RA announced *after* that day was first indexed may still be
+unfindable by name beyond about fifty days back. The event is in the database
+and correct; it is the search key that is stale, and each night's refresh fixes
+another sixty days of them.
+
+`/api/backfill` reports `refreshed` alongside `indexed` if you want to watch it
+happen.
+
 ### Two optional integrations are off
 
 Neither is the database and neither breaks anything.
