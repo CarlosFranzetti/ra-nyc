@@ -12,7 +12,6 @@
 </p>
 
 ---
-
 <p align="center">
   <sub>The night's listings · search by DJ, party, promoter or venue · a set
   playing in the docked transport</sub>
