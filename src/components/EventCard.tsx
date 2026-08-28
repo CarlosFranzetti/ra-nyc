@@ -38,14 +38,17 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
       onTouchStart={() => warmImage(event.imageUrl)}
       className="block w-full text-left group"
     >
-      {/* items-center is what puts equal air above and below the thumbnail.
-          The column beside it is almost never exactly 96px tall — a one-line
-          title with no head count is short, a two-line title with a full
-          lineup is tall — and top-aligned, every pixel of that difference
-          collected underneath the image as a single lopsided gap. Centred, the
-          leftover splits in two, and it does so at every density and text size
-          because the rule is alignment rather than a padding value that would
-          have to be re-tuned for each. */}
+      {/* items-start: the title starts level with the top of the flyer, and
+          whatever room is left over collects under the lineup.
+
+          This was `items-center`, which split the leftover in two and put half
+          of it above the title. That was the right call when the text column
+          was four rows and roughly as tall as the flyer, because the halves
+          were a pixel or two each. It is the wrong one now that the column is
+          three rows: the slack is ~14px, and centred it pushed the title down
+          the card while the flyer stayed put, so the two things that should
+          start together did not. Slack below the last line is invisible; slack
+          above the first line is a misalignment. */}
       {/* Icons and the flyer are sized in literal px, everything else in the
           density-scaled scale. Tailwind shares one scale between padding and
           width/height, so `w-24` on the thumbnail and `w-3` on a pin were both
@@ -53,7 +56,7 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
           and wrong for objects. At Tight the flyer had become 40px and the map
           pin a five-pixel smudge. Density changes how much room things have,
           not how big they are. */}
-      <article className="press flex items-center gap-3 bg-card rounded-lg overflow-hidden hover:bg-accent active:bg-accent border border-border/50 p-2 glow-primary-hover">
+      <article className="press flex items-start gap-3 bg-card rounded-lg overflow-hidden hover:bg-accent active:bg-accent border border-border/50 p-2 glow-primary-hover">
         <div className="relative h-[80px] w-[80px] flex-shrink-0 overflow-hidden rounded-md bg-muted">
           <EventThumb
             imageUrl={event.imageUrl}
@@ -68,7 +71,7 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
           )}
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col justify-center">
+        <div className="flex min-w-0 flex-1 flex-col">
           {/* Clamped at two lines, but no longer *reserving* two.
               A `min-h-[2.5em]` used to hold a second line open under every
               short title, because the card's height was set by its text and a
@@ -89,12 +92,13 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
             {event.title}
           </h3>
 
-          {/* Venue, then time and head count as one group on the right.
+          {/* Venue and time on the left, head count hard right.
               The head count used to be a fourth row of its own under the
               lineup, which cost every card in the list ~18px to carry two
-              words. Beside the time it costs nothing: that row was half empty,
-              and "10pm | 39 going" is how the fact is spoken anyway — when it
-              starts, and how many are going. */}
+              words. This row was half empty, so it costs nothing here — and
+              held to the right edge it forms a column you can read straight
+              down the list rather than a number that starts somewhere
+              different on every card. */}
           <div className="mt-0.5 flex items-center gap-x-2 text-xs text-muted-foreground">
             {/* Where it is, is the thing you scan for after what it is — so the
                 venue gets its own hue and weight rather than sitting in the
@@ -106,27 +110,28 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
                 edges and the column had a kink in it. Colour and weight already
                 say this is the venue; the pin was saying it a second time and
                 charging alignment for it. */}
-            <span className="min-w-0 flex-1 truncate font-semibold text-venue">
+            <span className="min-w-0 truncate font-semibold text-venue">
               {event.venue.name}
             </span>
 
-            <span className="flex flex-shrink-0 items-center gap-1">
-              {event.startTime && (
-                <span className="flex items-center gap-0.5">
-                  <Clock className="h-[12px] w-[12px] flex-shrink-0" />
-                  {showDate && `${formatEventDay(event.date)}, `}
-                  {formatTime(event.startTime)}
-                </span>
-              )}
-              {event.startTime && event.attending > 0 && (
-                <span aria-hidden className="h-3 w-px bg-border" />
-              )}
-              {event.attending > 0 && (
-                <span className="whitespace-nowrap">
-                  {event.attending.toLocaleString()} going
-                </span>
-              )}
-            </span>
+            {/* The time sits with the venue, where it has always been: those
+                two are one thought — where, and when. It is the head count
+                that is the separate fact, so that is the one held against the
+                right edge by `ml-auto`, in the same column down the whole
+                list. */}
+            {event.startTime && (
+              <span className="flex flex-shrink-0 items-center gap-0.5">
+                <Clock className="h-[12px] w-[12px] flex-shrink-0" />
+                {showDate && `${formatEventDay(event.date)}, `}
+                {formatTime(event.startTime)}
+              </span>
+            )}
+
+            {event.attending > 0 && (
+              <span className="ml-auto flex-shrink-0 whitespace-nowrap">
+                {event.attending.toLocaleString()} going
+              </span>
+            )}
           </div>
 
           {/* A size down from the venue line, and closer to it. The lineup is
