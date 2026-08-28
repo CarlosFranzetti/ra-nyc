@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { cn } from "@/lib/utils";
 import { FILTER_KEYS, FILTER_LABELS, type FilterKey } from "@/lib/filters";
 
@@ -6,15 +5,15 @@ interface FilterChipsProps {
   active: readonly FilterKey[];
   counts: Record<FilterKey, number>;
   onToggle: (key: FilterKey) => void;
-  /** How many events the current filters leave — shown between the chips. */
+  /** How many events the current filters leave — held against the right edge. */
   total: number;
 }
 
 /**
- * Three toggles under the date rail, with the night's total sitting in the gap
- * between the second and the third. Small on purpose — they occupy space that
- * was already empty, and they should read as an aside to the listings rather
- * than as a control panel above them.
+ * Three toggles under the date rail, grouped together on the left, with the
+ * night's total held against the right edge. Small on purpose — they occupy
+ * space that was already empty, and they should read as an aside to the
+ * listings rather than as a control panel above them.
  *
  * A chip that would leave nothing is dimmed and inert rather than hidden:
  * chips appearing and disappearing as you tap makes the row jump under your
@@ -22,58 +21,49 @@ interface FilterChipsProps {
  */
 export function FilterChips({ active, counts, onToggle, total }: FilterChipsProps) {
   return (
-    // `flex-1` so the row owns the width and the `ml-auto`s have something to
-    // push against — without it the chips huddle at the left and RA Pick sits
-    // beside Busy rather than opposite it.
+    // `flex-1` so the row owns the width and the count's `ml-auto` has
+    // something to push against — without it the whole row huddles at the left
+    // and the count sits against RA Pick rather than at the right edge.
     <div className="flex flex-1 flex-wrap items-center gap-1.5">
-      {FILTER_KEYS.map((key, i) => {
+      {FILTER_KEYS.map((key) => {
         const on = active.includes(key);
         const count = counts[key];
         const empty = count === 0 && !on;
-        const last = i === FILTER_KEYS.length - 1;
-
         return (
-          <Fragment key={key}>
-            {/* The night's total, in the gap the row already had.
-                It used to be a caption on its own line above the rail, which
-                spent a whole row of the screen on two words.
-
-                Rendered before the last chip, and both it and that chip carry
-                `ml-auto`: two auto margins split the free space between them
-                evenly, which parks the count in the middle of the run rather
-                than shunting it against Busy or against RA Pick.
-
-                A count, not a control — so no border, no chip, and not bold.
-                The accent colour is what makes it findable; weight on top of
-                colour would make it compete with the chips it sits between. */}
-            {last && (
-              <span className="ml-auto flex-shrink-0 text-[0.6875rem] font-normal leading-tight text-primary">
-                {total} event{total !== 1 ? "s" : ""}
-              </span>
+          <button
+            key={key}
+            type="button"
+            onClick={() => onToggle(key)}
+            disabled={empty}
+            aria-pressed={on}
+            className={cn(
+              "flex-shrink-0 rounded-full border px-2 py-0.5 text-[0.6875rem] leading-tight",
+              "transition-colors duration-150",
+              on
+                ? "border-primary bg-primary/15 text-primary"
+                : "border-border/70 text-muted-foreground",
+              empty && "opacity-35",
+              !on && !empty && "hover:text-foreground hover:border-border",
             )}
-
-            <button
-              type="button"
-              onClick={() => onToggle(key)}
-              disabled={empty}
-              aria-pressed={on}
-              className={cn(
-                "flex-shrink-0 rounded-full border px-2 py-0.5 text-[0.6875rem] leading-tight",
-                last && "ml-auto",
-                "transition-colors duration-150",
-                on
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-border/70 text-muted-foreground",
-                empty && "opacity-35",
-                !on && !empty && "hover:text-foreground hover:border-border",
-              )}
-            >
-              {FILTER_LABELS[key]}
-              <span className="ml-1 opacity-60 tabular-nums">{count}</span>
-            </button>
-          </Fragment>
+          >
+            {FILTER_LABELS[key]}
+            <span className="ml-1 opacity-60 tabular-nums">{count}</span>
+          </button>
         );
       })}
+
+      {/* The night's total, hard right.
+          All three chips are controls and belong together on the left — RA
+          Pick used to be pushed to the far side, which read as though it were
+          a different kind of thing. It is not; it is the third filter.
+
+          `ml-auto` on this instead, so the one element that is *not* a control
+          is the one holding the right edge. No border, no chip, and not bold:
+          the accent colour is what makes it findable, and weight on top of
+          colour would put it in competition with the chips beside it. */}
+      <span className="ml-auto flex-shrink-0 text-[0.6875rem] font-normal leading-tight text-primary">
+        {total} event{total !== 1 ? "s" : ""}
+      </span>
     </div>
   );
 }
