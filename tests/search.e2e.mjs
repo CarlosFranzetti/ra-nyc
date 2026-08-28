@@ -146,7 +146,15 @@ await searchBtn.click();
 await page.waitForSelector('input[aria-label="Search events"]', { timeout: 8000 });
 const input = page.locator('input[aria-label="Search events"]');
 check("search sheet opens with a field", await input.isVisible());
-check("prompts before it will search", await page.locator("text=Type at least").isVisible());
+// Opening search used to show a sentence about minimum query length, which is
+// a screenful of nothing at the exact moment the panel is at its shortest —
+// the keyboard is up and there are two rows to spend. It now opens onto the
+// night already being browsed, so there is something to tap before you type.
+check(
+  "opens onto tonight's listings rather than an instruction",
+  (await page.locator('[role="dialog"]').locator("text=Tonight Only").count()) > 0 &&
+    (await page.locator("text=Type at least").count()) === 0,
+);
 
 // ── the field has to survive the software keyboard
 //
@@ -234,6 +242,27 @@ check("prompts before it will search", await page.locator("text=Type at least").
       ? `field occupies ${open.fieldTop}–${open.fieldBottom}, visible band is 0–${open.window - open.kb}`
       : "no sheet");
 
+  // And the point of opening onto the listings: with the keyboard up and
+  // nothing typed, there is a tappable row in the band that is left. A panel
+  // whose entire visible area is the field it contains is a panel that has
+  // nothing to show for the space it took.
+  const firstRow = await page.evaluate(() => {
+    const card = document.querySelector('[role="dialog"] article');
+    if (!card) return null;
+    const box = card.getBoundingClientRect();
+    const kb = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--kb"),
+    );
+    return { top: Math.round(box.top), bottom: Math.round(box.bottom), band: window.innerHeight - kb };
+  });
+  check(
+    "a result is on screen above the keyboard before anything is typed",
+    firstRow !== null && firstRow.top >= 0 && firstRow.bottom <= firstRow.band,
+    firstRow
+      ? `row occupies ${firstRow.top}–${firstRow.bottom}, visible band is 0–${firstRow.band}`
+      : "no row",
+  );
+
   await page.evaluate(() => {
     document.documentElement.style.removeProperty("--kb");
     document.documentElement.style.removeProperty("--vvh");
@@ -298,9 +327,41 @@ await input.type("zzzz", { delay: 30 });
 await page.waitForSelector("text=No events found", { timeout: 8000 });
 check("empty results say so plainly", true);
 
-// ── picking a result jumps to that night and opens it
+// ── the query outlives the panel
+//
+// Closing search is usually "let me look at that one", not "I am done
+// searching", so coming back should land on the last thing you looked for
+// rather than on an empty box you have to retype. The old sheet reset to empty
+// on every open.
 await input.fill("");
 await input.type("lakuti", { delay: 30 });
+await page.waitForSelector("text=Lakuti & Tama Sumo", { timeout: 8000 });
+await page.locator('[role="dialog"] >> text=Cancel').click();
+await page.waitForTimeout(400);
+await searchBtn.click();
+await page.waitForSelector('input[aria-label="Search events"]', { timeout: 8000 });
+await page.waitForTimeout(400);
+const reopened = page.locator('input[aria-label="Search events"]');
+check(
+  "reopening search keeps the last query, results and all",
+  (await reopened.inputValue()) === "lakuti" &&
+    (await page.locator("text=Lakuti & Tama Sumo").count()) > 0,
+  await reopened.inputValue(),
+);
+// Selected rather than left with a caret at the end, so the next thing typed
+// replaces the old query instead of appending to it.
+check(
+  "and selects it, so typing starts a new search",
+  await page.evaluate(() => {
+    const field = document.querySelector('input[aria-label="Search events"]');
+    return Boolean(field) && field.selectionStart === 0 &&
+      field.selectionEnd === field.value.length && field.value.length > 0;
+  }),
+);
+
+// ── picking a result jumps to that night and opens it
+await reopened.fill("");
+await reopened.type("lakuti", { delay: 30 });
 await page.waitForSelector("text=Lakuti & Tama Sumo", { timeout: 8000 });
 await page.locator("text=Lakuti & Tama Sumo").first().click();
 await page.waitForTimeout(900);

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useRef, useState } from "react";
+import { format } from "date-fns";
 import { CalendarDays, Search } from "lucide-react";
 import { DividedBoxes } from "@/components/DividedBoxes";
 import { NO_TAPS, tap, type TapState } from "@/lib/secretTaps";
@@ -53,7 +54,7 @@ export function Header({ selectedDate, onDateChange, onSearchClick }: HeaderProp
           Airy it was taking 22px above the wordmark — a quarter of the header —
           to separate a title from a browser toolbar it is already separated
           from. Small and constant is the whole requirement. */}
-      <div className="shell flex items-center justify-between px-4 py-[5px]">
+      <div className="shell relative flex items-center justify-between px-4 py-[5px]">
         {/* A logo, not a heading — so it is deliberately outside every
             preference axis. It used to inherit the `type-*` class from <html>,
             which meant the app's own name was rendered in whichever typeface
@@ -70,8 +71,29 @@ export function Header({ selectedDate, onDateChange, onSearchClick }: HeaderProp
             it was inert before and it still looks inert. */}
         <h1 className="logo flex items-center gap-2" onClick={onLogoTap}>
           <span className="logo-mark">RA</span>
-          <span className="logo-word">NYC Events</span>
+          <span className="logo-word">NYC</span>
         </h1>
+
+        {/* The night you are looking at, in the middle of the header.
+            It used to be a caption on its own line above the date rail, which
+            cost a full row of vertical space to say eleven characters. Up here
+            it costs nothing: the header row is as tall as its icons whether or
+            not there is anything between them.
+
+            Absolutely centred rather than a flex child, and the difference is
+            visible. The wordmark and the icon cluster are not the same width,
+            so a `flex-1 text-center` middle lands the date at the centre of
+            *what is left*, which sits noticeably right of the screen's centre.
+            This is the actual middle.
+
+            `pointer-events-none` so it is not a hole in the logo's tap target:
+            the header's hidden sequence counts twenty-six taps on the logo, and
+            a transparent label lying across the row would swallow some of them
+            depending on where a thumb landed. */}
+        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-xs font-semibold text-primary">
+          {format(selectedDate, "EEE, MMM d")}
+        </span>
+
         <div className="flex items-center gap-1">
           {/* Left of the calendar. A button rather than an inline field: at this
               width a real input would crowd out the title, and the search needs

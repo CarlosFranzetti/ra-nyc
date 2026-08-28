@@ -122,30 +122,15 @@ export default function HomePage() {
           onSearchClick={() => setSearchOpen(true)}
         />
 
-        {/* The caption and the rail are one block, not two.
-            They used to be separate sections, each with its own border and its
-            own vertical padding, which spent about twenty pixels drawing a line
-            between two halves of a single statement: which day you are looking
-            at, and which days there are. A caption belongs to the thing it
-            captions. One border now, at the bottom of both. */}
-        <div className="border-b border-border/50 pb-1.5 pt-1.5">
-          <p className="shell flex items-center justify-center gap-2.5 pb-1 text-xs">
-            {/* The date leads, because it is what you are looking at; the count
-                answers a question you only ask once you know the night. A rule
-                between them rather than a middot — two facts, not a phrase. */}
-            <span className="font-semibold text-foreground">
-              {format(selectedDate, "EEE, MMM d")}
-            </span>
-            {hasEvents && (
-              <>
-                <span aria-hidden className="h-3 w-px bg-border" />
-                <span className="text-muted-foreground">
-                  {visibleEvents.length} event{visibleEvents.length !== 1 ? "s" : ""}
-                </span>
-              </>
-            )}
-          </p>
-
+        {/* Just the rail now.
+            The caption that used to sit above it — the date, a rule, the event
+            count — has been split between the two rows that were already there:
+            the date into the middle of the header, the count into the chip row
+            below. Both were facts with nowhere to live except a row of their
+            own, and that row cost about twenty-four pixels of the screen to
+            carry one line of small text. Nothing was dropped; it was re-housed,
+            and the listings start a row earlier for it. */}
+        <div className="border-b border-border/50 pb-1 pt-1">
           <div className="shell">
             <DatePicker selectedDate={selectedDate} onDateChange={setSelectedDate} />
           </div>
@@ -154,7 +139,12 @@ export default function HomePage() {
         {(hasEvents || data?.stale) && (
           <div className={cn("shell flex items-center justify-between gap-2 py-1.5", padX)}>
             {hasEvents ? (
-              <FilterChips active={filters} counts={counts} onToggle={toggleFilter} />
+              <FilterChips
+                active={filters}
+                counts={counts}
+                onToggle={toggleFilter}
+                total={visibleEvents.length}
+              />
             ) : (
               <span />
             )}
@@ -257,6 +247,11 @@ export default function HomePage() {
         <SearchSheet
           open={searchOpen}
           onOpenChange={setSearchOpen}
+          // The whole night, not `visibleEvents`: the chip filters belong to
+          // the listings screen, and silently carrying them into search would
+          // hide events from a list that has not been told it is filtered.
+          browsing={allEvents}
+          browsingLabel={format(selectedDate, "EEE, MMM d")}
           onSelect={(event) => {
             setSearchOpen(false);
             const day = event.date.slice(0, 10);

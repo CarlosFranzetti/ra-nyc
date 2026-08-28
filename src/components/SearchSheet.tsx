@@ -9,6 +9,15 @@ interface SearchSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (event: Event) => void;
+  /**
+   * The night the listings are currently showing, so an empty query has
+   * something to answer with. Search opened onto a wall of instruction text
+   * above the keyboard — a screenful of nothing, at the exact moment the panel
+   * is at its shortest. These are already fetched and already on screen behind
+   * the overlay, so showing them costs one render and no request.
+   */
+  browsing: Event[];
+  browsingLabel: string;
 }
 
 function Section({
@@ -48,7 +57,22 @@ function Section({
  * nothing under it looks like the search is broken rather than the artist
  * having nothing booked.
  */
-export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) {
+export function SearchSheet({
+  open,
+  onOpenChange,
+  onSelect,
+  browsing,
+  browsingLabel,
+}: SearchSheetProps) {
+  /**
+   * The query outlives the panel.
+   *
+   * This component is always rendered by HomePage and only returns null when
+   * closed, so its state survives a close — which is what makes reopening
+   * search land back on the last thing you looked for, results and all, rather
+   * than on an empty box. Closing search is usually "let me look at that one",
+   * not "I am done searching".
+   */
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const { data, isFetching, error, pending, enabled } = useSearch(query);
@@ -70,6 +94,13 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
   const focusInput = useCallback((node: HTMLInputElement | null) => {
     inputRef.current = node;
     node?.focus({ preventScroll: true });
+    // Reopening with the last query still in the box: select it rather than
+    // parking a caret at the end. The old results stay readable, and the first
+    // keystroke of a new search replaces the old one instead of appending to
+    // it — which is the whole reason a persisted query is usually annoying.
+    // `node.value` is already the query here; React sets props before it
+    // attaches refs.
+    if (node?.value) node.select();
   }, []);
 
   /**
@@ -103,8 +134,9 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
     data?.coverage && data.coverage.indexed < data.coverage.window * 0.9,
   );
 
-  // No mount when closed, which also means the field is freshly focused every
-  // time it opens rather than restored from wherever it was left.
+  // Renders nothing when closed, but this component is not unmounted — HomePage
+  // keeps it in the tree — so `query` above survives and comes back with the
+  // panel. Only the children go, which is what re-runs the focus ref on open.
   if (!open) return null;
 
   return (
@@ -185,21 +217,33 @@ export function SearchSheet({ open, onOpenChange, onSelect }: SearchSheetProps) 
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-3 py-4">
-          {!enabled && (
-            <p className="px-1 pt-6 text-center text-sm text-muted-foreground">
+        {/* pt-2, not py-4. This is the top of the screen with a keyboard under
+            it, so the first result should start immediately below the field —
+            sixteen pixels of nothing there is sixteen pixels of the one or two
+            rows that fit. */}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 pb-4 pt-2">
+          {/* Nothing typed yet: show the night being browsed rather than an
+              instruction. The placeholder in the field already says what to
+              type, and a list you can scroll and tap is a better answer to "I
+              opened search" than a sentence about minimum query length. */}
+          {!enabled && browsing.length > 0 && (
+            <Section title={browsingLabel} events={browsing} onSelect={onSelect} />
+          )}
+
+          {!enabled && browsing.length === 0 && (
+            <p className="px-1 pt-4 text-center text-sm text-muted-foreground">
               Type at least {MIN_QUERY} characters to search NYC listings.
             </p>
           )}
 
           {error && (
-            <p className="px-1 pt-6 text-center text-sm text-destructive">
+            <p className="px-1 pt-4 text-center text-sm text-destructive">
               {error.message}
             </p>
           )}
 
           {nothing && (
-            <div className="px-1 pt-6 text-center">
+            <div className="px-1 pt-4 text-center">
               <p className="text-sm text-foreground">No events found</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Nothing matching “{query.trim()}” in the last four months or the next six weeks.
