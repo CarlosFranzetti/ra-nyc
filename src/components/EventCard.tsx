@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Users, MapPin, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import { EventThumb } from "@/components/EventThumb";
 import { usePrefetchEventImage } from "@/hooks/useEvents";
 import { formatEventDay } from "@/lib/formatEventDay";
@@ -69,58 +69,74 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col justify-center">
-          {/* Two lines reserved, always: `min-h` as well as `line-clamp-2`.
-              Clamping alone caps a long title but lets a short one collapse to
-              one line, so a list mixing the two had cards of two heights and
-              the gaps between them looked arbitrary.
+          {/* Clamped at two lines, but no longer *reserving* two.
+              A `min-h-[2.5em]` used to hold a second line open under every
+              short title, because the card's height was set by its text and a
+              list mixing one- and two-line titles otherwise had cards of two
+              heights with arbitrary-looking gaps between them.
 
-              Sizing the *container* to the thumbnail was tried first and does
-              not work: `min-h-24` is density-scaled (96 × 0.86 ≈ 83px at
-              Default) while the text inside it is not, so a two-line title
-              overflows and the cards go uneven again — measured 98 vs 107. The
-              reserved line is the only thing that holds at every density.
+              Moving the head count up beside the time removed a row, and with
+              three rows instead of four the text column no longer reaches the
+              flyer's 80px at any density or text size — so the *flyer* sets the
+              height and every card is the same height without help. Measured
+              across both density extremes and the full text-size range: spread
+              0px everywhere except the largest text at Airy, which is 2px.
 
-              2.5em is exactly two lines at `leading-tight` (1.25 × 2), in em so
-              it keeps matching the text when the text-size preference moves.
-              2.25em was the first guess and left 4px between one- and two-line
-              cards — close enough to read as a bug rather than as a choice. */}
-          <h3 className="type-headline min-h-[2.5em] text-sm font-semibold text-foreground leading-tight line-clamp-2 group-hover:text-primary transition-colors">
+              What the reserved line cost was visible: an empty line under
+              "Body Hack" and "Rival Consoles", separating each title from its
+              own venue by more than the gap to the next card. */}
+          <h3 className="type-headline text-sm font-semibold text-foreground leading-tight line-clamp-2 group-hover:text-primary transition-colors">
             {event.title}
           </h3>
 
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          {/* Venue, then time and head count as one group on the right.
+              The head count used to be a fourth row of its own under the
+              lineup, which cost every card in the list ~18px to carry two
+              words. Beside the time it costs nothing: that row was half empty,
+              and "10pm | 39 going" is how the fact is spoken anyway — when it
+              starts, and how many are going. */}
+          <div className="mt-0.5 flex items-center gap-x-2 text-xs text-muted-foreground">
             {/* Where it is, is the thing you scan for after what it is — so the
                 venue gets its own hue and weight rather than sitting in the
-                same muted grey as the time and the head count. */}
-            <span className="flex items-center gap-0.5 min-w-0 font-semibold text-venue">
-              <MapPin className="h-[12px] w-[12px] flex-shrink-0" />
-              <span className="truncate">{event.venue.name}</span>
+                same muted grey as the time and the head count.
+
+                No pin icon any more. The icon indented the venue by about
+                fourteen pixels, so the two things you actually read down the
+                list — the title and the room — started at two different left
+                edges and the column had a kink in it. Colour and weight already
+                say this is the venue; the pin was saying it a second time and
+                charging alignment for it. */}
+            <span className="min-w-0 flex-1 truncate font-semibold text-venue">
+              {event.venue.name}
             </span>
-            {event.startTime && (
-              <span className="flex items-center gap-0.5">
-                <Clock className="h-[12px] w-[12px] flex-shrink-0" />
-                {showDate && `${formatEventDay(event.date)}, `}
-                {formatTime(event.startTime)}
-              </span>
-            )}
+
+            <span className="flex flex-shrink-0 items-center gap-1">
+              {event.startTime && (
+                <span className="flex items-center gap-0.5">
+                  <Clock className="h-[12px] w-[12px] flex-shrink-0" />
+                  {showDate && `${formatEventDay(event.date)}, `}
+                  {formatTime(event.startTime)}
+                </span>
+              )}
+              {event.startTime && event.attending > 0 && (
+                <span aria-hidden className="h-3 w-px bg-border" />
+              )}
+              {event.attending > 0 && (
+                <span className="whitespace-nowrap">
+                  {event.attending.toLocaleString()} going
+                </span>
+              )}
+            </span>
           </div>
 
-          {/* A size down from the venue line, and closer to it. The lineup and
-              the head count are the two things you read last — they should sit
-              under the venue as a block rather than as two more full-size rows
-              competing with it. */}
+          {/* A size down from the venue line, and closer to it. The lineup is
+              the thing you read last, so it sits under the venue as a footnote
+              rather than as another full-size row competing with it. */}
           {event.artists.length > 0 && (
             <p className="mt-1 text-[0.6875rem] text-muted-foreground line-clamp-1">
               {event.artists.slice(0, 3).map((a) => a.name).join(" · ")}
               {event.artists.length > 3 && ` +${event.artists.length - 3}`}
             </p>
-          )}
-
-          {event.attending > 0 && (
-            <div className="mt-0.5 flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
-              <Users className="h-[11px] w-[11px] flex-shrink-0" />
-              <span>{event.attending.toLocaleString()} going</span>
-            </div>
           )}
         </div>
       </article>

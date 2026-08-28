@@ -334,8 +334,8 @@
 .logo-word {
   font-size: 15px;
   /* Tracked out enough to read as a wordmark beside the block, and no further.
-     0.14em set the letters far enough apart that the eye stopped reading NYC
-     EVENTS as two words and started reading it as ten characters. */
+     0.14em set the letters far enough apart that the eye stopped reading the
+     word and started reading individual characters. */
   letter-spacing: 0.07em;
   /* Tracking adds a trailing space after the last letter that the eye reads as
      a gap before the icons; pulling it back keeps the lockup optically
