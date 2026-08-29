@@ -6,7 +6,7 @@ import { MAX_GAP_MS, NO_TAPS, TAPS_REQUIRED, tap } from "../../src/lib/secretTap
  *
  * All the interesting cases are about time — pausing mid-run, arming halfway
  * through, finishing a run that started before the panel was opened — and
- * driving twenty-six real taps through a DOM to find out what a gap of 1600ms
+ * driving seventeen real taps through a DOM to find out what a gap of 1600ms
  * does is a slow way to test arithmetic.
  */
 
@@ -25,7 +25,14 @@ function run(n: number, { armed = true, step = 100, from = NO_TAPS } = {}) {
 }
 
 describe("the logo unlock", () => {
-  it("opens on the twenty-sixth tap and not the twenty-fifth", () => {
+  it("takes seventeen taps", () => {
+    // Pinned, not derived: every other test here reads TAPS_REQUIRED, so they
+    // would all keep passing if the constant silently changed. The number is
+    // the feature.
+    expect(TAPS_REQUIRED).toBe(17);
+  });
+
+  it("opens on the last tap and not the one before it", () => {
     expect(run(TAPS_REQUIRED - 1).unlocked).toBe(false);
     expect(run(TAPS_REQUIRED).unlocked).toBe(true);
   });
@@ -39,7 +46,7 @@ describe("the logo unlock", () => {
   });
 
   it("throws away a run that was in progress when the sequence was disarmed", () => {
-    // Twenty-five taps banked, then one tap while disarmed. That tap must not
+    // A full run less one tap banked, then one tap while disarmed. That tap must not
     // merely fail to count — it must clear the bank, or the run could be
     // finished later without going back through the panel.
     const nearly = run(TAPS_REQUIRED - 1).state;
@@ -70,7 +77,7 @@ describe("the logo unlock", () => {
       unlocked = result.unlocked;
       // Exactly at the boundary every single time. `>` not `>=` in the
       // implementation is what makes this a complete run rather than
-      // twenty-six separate first taps.
+      // seventeen separate first taps.
       now += MAX_GAP_MS;
     }
     expect(unlocked).toBe(true);

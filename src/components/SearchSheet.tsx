@@ -3,7 +3,12 @@ import { createPortal } from "react-dom";
 import { Loader, Search, X } from "lucide-react";
 import { EventCard } from "@/components/EventCard";
 import { MIN_QUERY, useSearch } from "@/hooks/useSearch";
+import { loadRecent, remember, saveRecent } from "@/lib/recentSearches";
+import { cn } from "@/lib/utils";
 import type { Event } from "@/types/event";
+
+/** How long the close animation runs before the panel is actually removed. */
+const EXIT_MS = 240;
 
 interface SearchSheetProps {
   open: boolean;
@@ -78,6 +83,69 @@ export function SearchSheet({
   const { data, isFetching, error, pending, enabled } = useSearch(query);
 
   /**
+   * The last six searches, from this device.
+   *
+   * Read once on mount rather than on every open: this component is never
+   * unmounted, so "on mount" is once per page load, and the only writer is the
+   * effect below.
+   */
+  const [recent, setRecent] = useState<string[]>(() =>
+    loadRecent(typeof window === "undefined" ? null : window.localStorage),
+  );
+
+  /**
+   * A search is banked when it *returns*, not when it is typed.
+   *
+   * Recording on keystroke would bank "m", "ma", "mat" and "mati" on the way to
+   * "matias" and fill all six slots with prefixes of one search. `data.q` is
+   * the term the server actually answered, which only exists for a query that
+   * survived the debounce and completed — so the history is a list of searches
+   * that happened rather than of characters that were typed.
+   */
+  const answered = data?.q ?? "";
+  useEffect(() => {
+    if (!answered) return;
+    setRecent((current) => {
+      const next = remember(current, answered);
+      // `remember` is stable for a repeat of the most recent term, so this
+      // guards against an identical write on every refetch.
+      if (next.length === current.length && next[0] === current[0]) return current;
+      saveRecent(typeof window === "undefined" ? null : window.localStorage, next);
+      return next;
+    });
+  }, [answered]);
+
+  const clearRecent = () => {
+    setRecent([]);
+    saveRecent(typeof window === "undefined" ? null : window.localStorage, []);
+  };
+
+  /**
+   * Closing plays an animation, so the panel outlives the `open` prop.
+   *
+   * `open` going false starts the slide; a timer removes the panel when it has
+   * finished. Without this the overlay simply vanished — which, beside four
+   * vaul sheets that all slide out, read as the app dropping a frame rather
+   * than as a thing closing.
+   */
+  const [present, setPresent] = useState(open);
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setPresent(true);
+      setLeaving(false);
+      return undefined;
+    }
+    if (!present) return undefined;
+    setLeaving(true);
+    const timer = setTimeout(() => {
+      setPresent(false);
+      setLeaving(false);
+    }, EXIT_MS);
+    return () => clearTimeout(timer);
+  }, [open, present]);
+
+  /**
    * Focus the moment the field exists, not 380ms later.
    *
    * The old version waited for the slide-in to finish, on the theory that
@@ -135,9 +203,10 @@ export function SearchSheet({
   );
 
   // Renders nothing when closed, but this component is not unmounted — HomePage
-  // keeps it in the tree — so `query` above survives and comes back with the
-  // panel. Only the children go, which is what re-runs the focus ref on open.
-  if (!open) return null;
+  // keeps it in the tree — so `query` and `recent` above survive and come back
+  // with the panel. Only the children go, which is what re-runs the focus ref
+  // on open. `present` rather than `open`, so a close gets to animate first.
+  if (!present) return null;
 
   return (
     createPortal(
@@ -167,7 +236,10 @@ export function SearchSheet({
           top: "var(--vv-top, 0px)",
           height: "var(--vvh, 100dvh)",
         }}
-        className="fixed inset-x-0 z-[80] flex flex-col bg-background"
+        className={cn(
+          "fixed inset-x-0 z-[80] flex flex-col bg-background",
+          leaving ? "overlay-out" : "overlay-in",
+        )}
       >
         {/* The safe-area inset *plus* 8px, not `pt-safe` alone. This is now the
             literal top of the screen rather than the top of a panel floating
@@ -222,6 +294,49 @@ export function SearchSheet({
             sixteen pixels of nothing there is sixteen pixels of the one or two
             rows that fit. */}
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 pb-4 pt-2">
+          {/* What you looked for last, above what is on tonight.
+              Retyping a DJ's name to check whether anything new was announced
+              is the most repeated action this screen has, and it is the one a
+              phone keyboard is worst at.
+
+              Chips rather than a list: six of them fit in the height of two
+              result rows, and this sits above the night's listings without
+              pushing them off the screen. */}
+          {!enabled && recent.length > 0 && (
+            <section className="space-y-2">
+              <div className="flex items-baseline justify-between gap-2 px-1">
+                <h3 className="text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Recent
+                </h3>
+                {/* Text, not an icon. Clearing a history is a thing people want
+                    to be sure about before they tap it, and a small X beside
+                    six other tappable things is not sure about anything. */}
+                <button
+                  type="button"
+                  onClick={clearRecent}
+                  className="flex-shrink-0 text-[0.6875rem] text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors active:text-foreground"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 px-1">
+                {recent.map((term) => (
+                  <button
+                    key={term}
+                    type="button"
+                    onClick={() => {
+                      setQuery(term);
+                      inputRef.current?.focus();
+                    }}
+                    className="max-w-full flex-shrink-0 truncate rounded-full border border-border/70 px-2.5 py-1 text-[0.6875rem] leading-tight text-muted-foreground transition-colors active:border-primary active:text-primary"
+                  >
+                    {term}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Nothing typed yet: show the night being browsed rather than an
               instruction. The placeholder in the field already says what to
               type, and a list you can scroll and tap is a better answer to "I

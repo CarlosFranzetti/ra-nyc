@@ -1,22 +1,22 @@
 /**
  * The unlock sequence for the hidden screen.
  *
- * Open Customize, close it, then tap the logo twenty-six times in a row.
+ * Open Customize, close it, then tap the logo seventeen times in a row.
  *
  * Pure and separate from the component so the counting can be tested without a
- * browser — the interesting cases are all about *time*, and driving twenty-six
+ * browser — the interesting cases are all about *time*, and driving seventeen
  * taps through a real DOM to find out what happens when you pause in the middle
  * is a slow way to test arithmetic.
  */
 
 /** Taps required. Chosen by the owner; no significance beyond being a lot. */
-export const TAPS_REQUIRED = 26;
+export const TAPS_REQUIRED = 17;
 
 /**
  * How long a run survives between taps.
  *
  * "In a row" has to mean something, or the counter is a lifetime tally and the
- * screen eventually opens by accident — twenty-six taps on the app's title
+ * screen eventually opens by accident — seventeen taps on the app's title
  * across six months of use is not a secret, it is a trap. A second and a half
  * is far longer than the gap between deliberate repeated taps and far shorter
  * than the gap between two unrelated ones.

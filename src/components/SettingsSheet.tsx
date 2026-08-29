@@ -118,38 +118,6 @@ function StepSlider({
   );
 }
 
-function OptionButton({
-  active,
-  onClick,
-  label,
-  description,
-  labelClassName,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  description: string;
-  labelClassName?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "flex flex-col items-start gap-0.5 p-2.5 rounded-lg border transition-all duration-150 text-left active:scale-95",
-        active
-          ? "border-primary bg-primary/10 text-foreground"
-          : "border-border/50 bg-card hover:bg-accent active:bg-accent text-muted-foreground hover:text-foreground",
-      )}
-    >
-      <span className={cn("text-[0.8125rem] font-medium leading-tight", labelClassName)}>
-        {label}
-      </span>
-      <span className="text-[0.6875rem] leading-tight opacity-60">{description}</span>
-    </button>
-  );
-}
-
 /**
  * `onOpenChange` exists for one caller and one reason: the header watches this
  * panel closing, because that is the first half of the logo's unlock sequence.
@@ -183,6 +151,10 @@ export function SettingsSheet({
   const fontIndex = Math.max(
     0,
     TYPOGRAPHY_OPTIONS.findIndex((option) => option.value === typography),
+  );
+  const densityIndex = Math.max(
+    0,
+    DENSITY_OPTIONS.findIndex((option) => option.value === layoutDensity),
   );
 
   /**
@@ -266,16 +238,50 @@ export function SettingsSheet({
               ))}
             </OptionGroup>
 
-            <OptionGroup title="Density" columns={3}>
-              {DENSITY_OPTIONS.map((opt) => (
-                <OptionButton
-                  key={opt.value}
-                  active={layoutDensity === opt.value}
-                  onClick={() => setLayoutDensity(opt.value)}
-                  label={opt.label}
-                  description={opt.desc}
-                />
-              ))}
+            {/* A slider, like the two below it — the last of the three axes to
+                stop being a row of buttons.
+
+                Density is the same shape of choice as the other two: an
+                ordered ladder from tightest to loosest where "one step looser"
+                is as real a thought as "that one". Three buttons only ever
+                served the second, and made a ladder look like three unrelated
+                modes.
+
+                The names sit under the ticks rather than inside the control,
+                which is what the other two do, so the three settings now read
+                as one instrument with three strings instead of a stepper, a
+                slider and a grid. */}
+            <OptionGroup title="Density" columns={1}>
+              <StepSlider
+                label="Density"
+                count={DENSITY_OPTIONS.length}
+                index={densityIndex}
+                onChange={(next) => setLayoutDensity(DENSITY_OPTIONS[next]!.value)}
+                valueText={DENSITY_OPTIONS[densityIndex]!.label}
+              />
+              <div className="flex items-start justify-between gap-1 px-0.5">
+                {DENSITY_OPTIONS.map((opt, i) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setLayoutDensity(opt.value)}
+                    aria-pressed={layoutDensity === opt.value}
+                    className={cn(
+                      // Ends anchor to their own tick rather than centring,
+                      // which would push "Tight" left of where the track starts.
+                      "min-w-0 flex-1 text-[0.6875rem] leading-tight transition-colors",
+                      i === 0 && "text-left",
+                      i === DENSITY_OPTIONS.length - 1 && "text-right",
+                      i > 0 && i < DENSITY_OPTIONS.length - 1 && "text-center",
+                      layoutDensity === opt.value
+                        ? "font-semibold text-primary"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </OptionGroup>
 
             {/* A slider, like Text size, because it is the same shape of

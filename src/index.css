@@ -364,40 +364,39 @@
 :root {
   /* Matches .density-default. A fallback, for the frame before the preference
      class lands on <html>. */
-  --density: 0.7;
+  --density: 0.75;
   --text-scale: 1;
   --space: calc(var(--density) * (1 + (var(--text-scale) - 1) * 0.6));
 }
 
-/* The whole ladder comes down, keeping its shape.
-   0.6 / 0.86 / 1.12 became 0.42 / 0.7 / 0.95.
+/* The whole ladder comes down, keeping its shape, then back up 7%.
+   0.6 / 0.86 / 1.12 became 0.42 / 0.7 / 0.95, and is now 0.45 / 0.75 / 1.02.
 
-   The previous pass widened the gap between the ends because Tight and Airy
-   read as barely different. That held; the complaint since is simply that all
-   three sit too loose — Airy in particular fitted only four cards on a phone,
-   and a listings app that shows you four things is a listings app you scroll
-   more than you read.
+   An earlier pass widened the gap between the ends because Tight and Airy read
+   as barely different. That held. A later one shifted the whole ladder down
+   because all three sat too loose. That over-corrected slightly, so every rung
+   is multiplied by 1.07 here — the shape is untouched, the ratios between the
+   three are untouched, and the whole axis simply sits a notch higher.
 
-   So this shifts rather than widens, and the two properties worth preserving
-   both survive: the spacing between the ends is unchanged at 0.53, so the axis
-   still means something end to end, and the steps stay near-symmetric around
-   Default (0.28 down, 0.25 up) so one step tighter and one step airier are
-   still roughly equal and opposite moves.
+   The two properties worth preserving both still hold: the spread between the
+   ends stays proportional, so the axis means something end to end, and the
+   steps stay near-symmetric around Default so one tighter and one airier are
+   roughly equal and opposite moves.
 
-   Airy at 0.95 sits barely above the old Default of 0.86, and that is the
-   intended shape: what used to be the comfortable middle is now the loosest
-   this app goes. Two separate rounds have now ended in "less space", and the
-   one time it went the other way (1.188) the verdict was "sprawling". */
+   Airy at 1.02 sits a little above the old Default of 0.86, which is the
+   intended shape: what used to be the comfortable middle is the loosest this
+   app goes. The one time the ladder went materially higher (1.188) the verdict
+   was "sprawling". */
 .density-tight {
-  --density: 0.42;
+  --density: 0.45;
 }
 
 .density-default {
-  --density: 0.7;
+  --density: 0.75;
 }
 
 .density-airy {
-  --density: 0.95;
+  --density: 1.02;
 }
 
 /* Six steps, all upward, geometric at ~6% each so every tick feels like the
@@ -628,6 +627,76 @@ html {
   100% {
     background-position: 200% 0;
   }
+}
+
+/* The header caption trading places between the date and the night's size.
+
+   Fade plus a couple of pixels of lift, not a fade alone: two short strings
+   cross-fading in the same spot read as a flicker, and the small movement is
+   what tells the eye one thing left and another arrived. Kept under 4px so it
+   cannot be mistaken for the layout shifting.
+
+   Driven by remounting the span (React keys on the text), so the animation
+   runs from its first frame every time rather than needing to be reset. */
+@keyframes caption-swap {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.caption-swap {
+  animation: caption-swap 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Overlays that are not vaul drawers.
+
+   The event sheet, the artist sheet, the venue sheet and Customize are all
+   vaul, which animates itself. Search is a hand-written portal — it had to be,
+   because a bottom sheet is the wrong container for a text field on a phone —
+   and a hand-written portal appears and vanishes with no transition at all,
+   which next to four sheets that slide is the one overlay that reads as a
+   glitch.
+
+   Down and up rather than left and right: it is anchored to the top of the
+   visual viewport, so it belongs to that edge, and a panel that leaves toward
+   the edge it is attached to is the movement everything else here makes.
+
+   The exit is a class the component sets before it unmounts, one frame ahead
+   of the timer that removes it — see SearchSheet. Both are ~0.26s, short
+   enough that closing does not feel like waiting. */
+@keyframes overlay-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes overlay-slide-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+
+.overlay-in {
+  animation: overlay-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.overlay-out {
+  animation: overlay-slide-out 0.24s cubic-bezier(0.4, 0, 1, 1) both;
 }
 
 /* Staggered list entrance.
