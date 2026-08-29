@@ -290,25 +290,38 @@ check("but a tap past the end of the options still closes it",
 
 // ── the hidden screen
 //
-// Open Customize, close it, then tap the logo twenty-six times. The counting
+// Open Customize, close it, then tap the logo seventeen times. The counting
 // itself is unit-tested in tests/unit/secretTaps.test.ts; what this checks is
 // the wiring — that the panel closing is what arms it, that the logo is
 // actually a tap target, and that the thing which opens is on top of
 // everything rather than trapped inside the header's backdrop-filter.
+const TAPS = 17;
 const logo = page.locator(".logo");
-const boxes = () => page.locator('[aria-label="Add a box"]');
+const boxes = () => page.locator('[aria-label="More divisions"]');
+const tapLogo = async (times) => {
+  for (let i = 0; i < times; i++) await logo.click({ position: { x: 10, y: 10 } });
+};
+
+// One short of the sequence, first: a check that only ever taps the full count
+// cannot tell "opens on the seventeenth" from "opens whenever you tap it".
+await tapLogo(TAPS - 1);
+await page.waitForTimeout(300);
+check("sixteen taps do not open it", (await boxes().count()) === 0);
 
 // The panel is already closed by the check above, so the sequence is armed.
-for (let i = 0; i < 26; i++) await logo.click({ position: { x: 10, y: 10 } });
+// This continues the run rather than starting one — the taps are well inside
+// the 1.5s window — so it is the seventeenth that opens it.
+await tapLogo(1);
 await page.waitForTimeout(400);
-check("twenty-six taps after closing Customize open the hidden screen",
-  (await boxes().count()) === 1);
+check("the seventeenth tap opens the hidden screen", (await boxes().count()) === 1);
 
 // It has to sit above the transport bar's z-[70], and a portal is the only way
 // it can: the header it is triggered from has a backdrop-filter, which
 // contains fixed-position descendants.
 const layered = await page.evaluate(() => {
-  const el = document.querySelector('[aria-label="Add a box"]')?.closest("div.fixed");
+  const el = document
+    .querySelector('[aria-label="More divisions"]')
+    ?.closest("div.fixed");
   if (!el) return null;
   return {
     z: Number(getComputedStyle(el).zIndex),
@@ -320,15 +333,96 @@ check("it covers the app rather than sitting inside the header",
   layered !== null && layered.z >= 100 && layered.body && layered.full,
   JSON.stringify(layered));
 
-await page.locator('[aria-label="Close"]').click();
+const screen = await page.evaluate(() => {
+  const root = document
+    .querySelector('[aria-label="More divisions"]')
+    ?.closest("div.fixed");
+  if (!root) return null;
+  const rules = [...root.querySelectorAll("div")].filter((d) =>
+    d.className.includes("border-dotted"),
+  );
+  // Two columns side by side, so the rules split into exactly two distinct
+  // left edges.
+  const lefts = new Set(rules.map((d) => Math.round(d.getBoundingClientRect().left)));
+  const exits = root.querySelectorAll('[aria-label="Close"]').length;
+  const title = root.textContent?.trim() ?? "";
+  const stepper = document.querySelector('[aria-label="More divisions"]')
+    ?.getBoundingClientRect();
+  return {
+    rules: rules.length,
+    columns: lefts.size,
+    exits,
+    title,
+    // Everything the screen says apart from its own name. The original showed
+    // a count in the header and an index inside every box; the requirement is
+    // that none of that is left, so the strongest form of the check is that
+    // there is no other text at all — which also catches a stray label rather
+    // than only a stray digit.
+    //
+    // The name is stripped rather than scanned for digits, because "wO0tz!"
+    // contains a zero and a digit test would fail on the title itself.
+    rest: title.replace("wO0tz!", "").trim(),
+    stepperBottom: stepper ? Math.round(stepper.bottom) : 0,
+    stepperWidth: stepper ? Math.round(stepper.width) : 0,
+    windowHeight: window.innerHeight,
+    windowWidth: window.innerWidth,
+  };
+});
+
+check("the rules are drawn in two columns", screen?.columns === 2, `${screen?.columns}`);
+// 18 to 25 divisions, doubled by the second column.
+check("and the division count is inside 18–25",
+  screen !== null && screen.rules >= 36 && screen.rules <= 50 && screen.rules % 2 === 0,
+  `${screen?.rules} rules = ${(screen?.rules ?? 0) / 2} divisions`);
+check("there is an exit at each side", screen?.exits === 2, `${screen?.exits}`);
+check("the title reads wO0tz!", screen?.title.startsWith("wO0tz!"), screen?.title);
+check("and nothing on it is numbered or labelled but the title",
+  screen?.rest === "", JSON.stringify(screen?.rest));
+check("the stepper is along the bottom, not floating at one side",
+  screen !== null &&
+    screen.stepperBottom > screen.windowHeight * 0.8 &&
+    screen.stepperWidth > screen.windowWidth * 0.35,
+  screen ? `bottom ${screen.stepperBottom}/${screen.windowHeight}, width ${screen.stepperWidth}` : "");
+
+// Both exits work, so pick the one a right thumb lands on.
+await page.locator('[aria-label="Close"]').last().click();
 await page.waitForTimeout(300);
 check("and the exit closes it", (await boxes().count()) === 0);
 
 // Disarmed on the way in, so it cannot be reopened without the panel again.
-for (let i = 0; i < 26; i++) await logo.click({ position: { x: 10, y: 10 } });
+await tapLogo(TAPS);
 await page.waitForTimeout(300);
-check("tapping twenty-six more times does not reopen it",
+check("tapping seventeen more times does not reopen it",
   (await boxes().count()) === 0);
+
+// ── and none of it exists on a desktop
+//
+// A separate context with a fine pointer and no touch. The unlock is a
+// seventeen-tap run driven by swiping up and down; with a mouse it is neither
+// discoverable nor usable, so the trigger is gated on `pointer: coarse`.
+const desktop = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+const deskPage = await desktop.newPage();
+await deskPage.route("**/api/events*", (route) =>
+  route.fulfill({ contentType: "application/json", body: PAYLOAD }),
+);
+await deskPage.route("**/images.ra.co/**", (route) => route.abort());
+await deskPage.goto(BASE, { waitUntil: "domcontentloaded" });
+await deskPage.waitForSelector("text=Event number 0", { timeout: 20000 });
+check("the browser reports a fine pointer, so the gate is actually under test",
+  await deskPage.evaluate(() => !window.matchMedia("(pointer: coarse)").matches));
+
+await deskPage.click('button[aria-label="Customize"]');
+await deskPage.waitForTimeout(500);
+await deskPage.keyboard.press("Escape");
+await deskPage.waitForTimeout(500);
+const deskLogo = deskPage.locator(".logo");
+for (let i = 0; i < TAPS + 4; i++) {
+  await deskLogo.click({ position: { x: 10, y: 10 } });
+}
+await deskPage.waitForTimeout(400);
+check("the hidden screen cannot be opened on a desktop",
+  (await deskPage.locator('[aria-label="More divisions"]').count()) === 0);
+await desktop.close();
 
 await browser.close();
 server.kill("SIGTERM");

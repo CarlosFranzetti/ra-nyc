@@ -1,8 +1,9 @@
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { CalendarDays, Search } from "lucide-react";
 import { DividedBoxes } from "@/components/DividedBoxes";
 import { NO_TAPS, tap, type TapState } from "@/lib/secretTaps";
+import { cn } from "@/lib/utils";
 
 // react-day-picker is the heaviest dependency in the app and the calendar is
 // opened rarely, so it loads on demand.
@@ -17,15 +18,42 @@ interface HeaderProps {
   selectedDate: Date;
   onDateChange: (date: Date) => void;
   onSearchClick: () => void;
+  /** How many events the current filters leave, for the caption to alternate to. */
+  eventCount: number;
 }
 
-export function Header({ selectedDate, onDateChange, onSearchClick }: HeaderProps) {
+/** How long each face of the caption holds before it swaps. */
+const CAPTION_HOLD_MS = 6_000;
+
+/**
+ * Is this a phone?
+ *
+ * `pointer: coarse` rather than a width breakpoint: the hidden screen is a
+ * touch toy — it is unlocked by tapping a logo seventeen times and driven by
+ * swiping up and down — and none of that is a thing anybody does with a mouse.
+ * A narrow desktop window is still a desktop.
+ *
+ * Read once, outside the component: it is a property of the device, and
+ * re-evaluating it per render would be a media query per render for an answer
+ * that cannot change.
+ */
+const IS_TOUCH =
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(pointer: coarse)").matches;
+
+export function Header({
+  selectedDate,
+  onDateChange,
+  onSearchClick,
+  eventCount,
+}: HeaderProps) {
   /**
-   * The hidden screen: open Customize, close it, then tap the logo twenty-six
+   * The hidden screen: open Customize, close it, then tap the logo seventeen
    * times in a row. Nothing announces it and nothing counts down.
    *
-   * Both halves are refs rather than state on purpose. Twenty-five of every
-   * twenty-six taps change nothing anyone can see, and putting the counter in
+   * Both halves are refs rather than state on purpose. Sixteen of every
+   * seventeen taps change nothing anyone can see, and putting the counter in
    * state would re-render the header — and every date chip under it — once per
    * tap, to display the same thing. The one tap that matters flips `secret`,
    * which is state, because that one does change the screen.
@@ -35,6 +63,9 @@ export function Header({ selectedDate, onDateChange, onSearchClick }: HeaderProp
   const [secret, setSecret] = useState(false);
 
   const onLogoTap = () => {
+    // Phones only. Checked here rather than by hiding the trigger, because the
+    // trigger is the logo and the logo is not going anywhere.
+    if (!IS_TOUCH) return;
     const result = tap(taps.current, armed.current, Date.now());
     taps.current = result.state;
     if (result.unlocked) {
@@ -44,6 +75,39 @@ export function Header({ selectedDate, onDateChange, onSearchClick }: HeaderProp
       setSecret(true);
     }
   };
+
+  /**
+   * The caption alternates between the date and the night's size.
+   *
+   * Both are answers to "what am I looking at", and there is one slot in the
+   * middle of the header for them. Swapping on a timer means neither has to be
+   * given up and neither costs a row: the count used to sit in the filter row,
+   * where it was a number with no label competing with three chips.
+   *
+   * A tap swaps immediately and restarts the clock, so it is also a control —
+   * you never have to wait out a hold to see the other one.
+   */
+  const [showCount, setShowCount] = useState(false);
+  useEffect(() => {
+    // Nothing to alternate with until the day has loaded.
+    if (eventCount <= 0) {
+      setShowCount(false);
+      return undefined;
+    }
+    const timer = setInterval(
+      () => setShowCount((current) => !current),
+      CAPTION_HOLD_MS,
+    );
+    return () => clearInterval(timer);
+    // `showCount` deliberately absent: including it would clear and re-arm the
+    // interval on every swap, which is a new full-length hold each time and
+    // works — but a tap would then also silently restart it, and the reset is
+    // handled explicitly below so it is visible where it happens.
+  }, [eventCount]);
+
+  const caption = showCount
+    ? `${eventCount} event${eventCount !== 1 ? "s" : ""}`
+    : format(selectedDate, "EEE, MMM d");
 
   return (
     <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border/50 pt-safe">
@@ -86,13 +150,26 @@ export function Header({ selectedDate, onDateChange, onSearchClick }: HeaderProp
             *what is left*, which sits noticeably right of the screen's centre.
             This is the actual middle.
 
-            `pointer-events-none` so it is not a hole in the logo's tap target:
-            the header's hidden sequence counts twenty-six taps on the logo, and
-            a transparent label lying across the row would swallow some of them
-            depending on where a thumb landed. */}
-        <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-xs font-semibold text-primary">
-          {format(selectedDate, "EEE, MMM d")}
-        </span>
+            A button, not a span: it swaps the two captions on demand. It is
+            still `absolute` and still narrow, so it does not eat the logo's tap
+            target — which matters, because that target is counting to
+            seventeen. */}
+        <button
+          type="button"
+          onClick={() => {
+            setShowCount((current) => !current);
+          }}
+          aria-live="polite"
+          aria-label={`${caption}. Tap to switch between the date and the number of events.`}
+          className="absolute left-1/2 -translate-x-1/2 rounded px-2 py-0.5 text-xs font-semibold text-primary"
+        >
+          {/* Keyed on the text so React remounts the span on every swap, which
+              is what restarts the fade — a plain text change would swap the
+              characters with no transition to animate. */}
+          <span key={caption} className={cn("block", "caption-swap")}>
+            {caption}
+          </span>
+        </button>
 
         <div className="flex items-center gap-1">
           {/* Left of the calendar. A button rather than an inline field: at this

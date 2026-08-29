@@ -66,7 +66,13 @@ export default function HomePage() {
   // vertical gaps between siblings in one flow.
   const listClass = cn(
     "grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3",
-    layoutDensity === "tight" && "gap-1",
+    // Tight carries an extra 5% on top of the density multiplier, which the
+    // other two do not: at 0.45 the plain `gap-1` came out under two pixels,
+    // which is close enough to zero that neighbouring cards start reading as
+    // one block. Written as the scale times 1.05 rather than jumped to the next
+    // Tailwind step, because `gap-1.5` would be +50% and land Tight on top of
+    // Default.
+    layoutDensity === "tight" && "gap-[calc(4px*var(--space)*1.05)]",
     layoutDensity === "default" && "gap-2",
     layoutDensity === "airy" && "gap-3",
   );
@@ -120,16 +126,17 @@ export default function HomePage() {
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}
           onSearchClick={() => setSearchOpen(true)}
+          // The count the caption alternates to. Filtered, because it answers
+          // "how many am I looking at" rather than "how many exist".
+          eventCount={visibleEvents.length}
         />
 
         {/* Just the rail now.
             The caption that used to sit above it — the date, a rule, the event
-            count — has been split between the two rows that were already there:
-            the date into the middle of the header, the count into the chip row
-            below. Both were facts with nowhere to live except a row of their
-            own, and that row cost about twenty-four pixels of the screen to
-            carry one line of small text. Nothing was dropped; it was re-housed,
-            and the listings start a row earlier for it. */}
+            count — is gone, and both halves of it live in the header, where
+            they take turns in one slot. That row cost about twenty-four pixels
+            of the screen to carry one line of small text. Nothing was dropped;
+            it was re-housed, and the listings start a row earlier for it. */}
         <div className="border-b border-border/50 pb-1 pt-1">
           <div className="shell">
             <DatePicker selectedDate={selectedDate} onDateChange={setSelectedDate} />
@@ -139,12 +146,7 @@ export default function HomePage() {
         {(hasEvents || data?.stale) && (
           <div className={cn("shell flex items-center justify-between gap-2 py-1.5", padX)}>
             {hasEvents ? (
-              <FilterChips
-                active={filters}
-                counts={counts}
-                onToggle={toggleFilter}
-                total={visibleEvents.length}
-              />
+              <FilterChips active={filters} counts={counts} onToggle={toggleFilter} />
             ) : (
               <span />
             )}

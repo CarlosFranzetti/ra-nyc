@@ -370,8 +370,27 @@ check("search sheet closes on pick",
   (await page.locator('input[aria-label="Search events"]').count()) === 0);
 const detailsOpen = await page.locator('[role="dialog"]').count();
 check("the event opens", detailsOpen > 0);
-const jumped = await page.locator(`text=${new Date(`${FUTURE}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" })}`).first().count();
-check("listings jumped to the event's night", jumped > 0);
+// Read off the date rail's selected chip, not off the header caption.
+//
+// The caption used to be the only place the date appeared, so matching its
+// text was a fine proxy. It now alternates with the night's event count on a
+// timer, which makes "is the date on screen" a coin flip — this check failed
+// about half the time it ran, for a reason that had nothing to do with search.
+// The selected chip is the actual state being asserted anyway: it is what
+// "the listings jumped" means.
+const target = new Date(`${FUTURE}T12:00:00Z`);
+const wantDay = String(target.getUTCDate());
+const wantMonth = target
+  .toLocaleDateString("en-US", { month: "short", timeZone: "UTC" })
+  .toUpperCase();
+const chip = await page.evaluate(
+  () => document.querySelector("[data-selected='true']")?.textContent ?? "",
+);
+check(
+  "listings jumped to the event's night",
+  chip.includes(wantDay) && chip.toUpperCase().includes(wantMonth),
+  `rail is on "${chip}", wanted ${wantDay} ${wantMonth}`,
+);
 
 // ── venue map
 await page.route("**/api/venue*", (route) =>
