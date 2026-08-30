@@ -7,6 +7,7 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { useTheme } from "@/context/ThemeContext";
+import { hostOf, outbound } from "@/lib/analytics";
 import { DONATE } from "@/lib/donate";
 import { cn } from "@/lib/utils";
 import {
@@ -409,6 +410,9 @@ export function SettingsSheet({
                     href={target.url}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() =>
+                      outbound("donate", { host: hostOf(target.url) })
+                    }
                     className="font-bold text-foreground underline decoration-dotted underline-offset-2 transition-colors hover:text-primary"
                   >
                     {target.label}

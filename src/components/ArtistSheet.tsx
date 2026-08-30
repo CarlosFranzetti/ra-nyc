@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/drawer";
 import { usePlayer } from "@/context/PlayerContext";
 import { useArtist } from "@/hooks/useArtist";
+import { hostOf, outbound } from "@/lib/analytics";
 import { formatDuration } from "@/lib/formatDuration";
 import { cn } from "@/lib/utils";
 import type { Artist } from "@/types/event";
@@ -277,6 +278,12 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                           href={link.url}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={() =>
+                            outbound("artist-link", {
+                              host: hostOf(link.url),
+                              from: "artist-sheet",
+                            })
+                          }
                           className="flex items-center gap-3 px-3 py-2.5 transition-smooth hover:bg-accent active:bg-accent"
                         >
                           <span className="min-w-0 flex-1">

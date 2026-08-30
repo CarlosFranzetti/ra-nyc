@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { MapPin, Navigation, Ticket } from "lucide-react";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { useDistance } from "@/hooks/useDistance";
+import { hostOf, outbound } from "@/lib/analytics";
 import { LyftMark, UberMark } from "@/components/RideMarks";
 import { lyftLink, uberLink } from "@/lib/rideLinks";
 import { TILE_SIZE, tileMosaic } from "@/lib/tiles";
@@ -194,6 +195,7 @@ export function VenueSheet({
               target="_blank"
               rel="noopener noreferrer"
               aria-label={`Get an Uber to ${venue ?? "this venue"}`}
+              onClick={() => outbound("uber", { venue, from: "venue-sheet" })}
               className={rideClass}
             >
               <UberMark className="h-3.5 w-auto text-foreground" />
@@ -205,6 +207,7 @@ export function VenueSheet({
               target="_blank"
               rel="noopener noreferrer"
               aria-label={`Get a Lyft to ${venue ?? "this venue"}`}
+              onClick={() => outbound("lyft", { venue, from: "venue-sheet" })}
               className={rideClass}
             >
               <LyftMark className="h-3.5 w-auto text-foreground" />
@@ -216,6 +219,7 @@ export function VenueSheet({
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Show on maps"
+              onClick={() => outbound("maps", { venue, from: "venue-sheet" })}
               className={rideClass}
             >
               <Navigation className="h-3.5 w-3.5 text-primary" />
@@ -293,6 +297,13 @@ export function VenueSheet({
               href={ticketsUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() =>
+                outbound("tickets", {
+                  venue,
+                  host: hostOf(ticketsUrl),
+                  from: "venue-sheet",
+                })
+              }
               className="press flex items-center justify-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 py-2 text-xs font-medium text-primary"
             >
               <Ticket className="h-3.5 w-3.5" />
