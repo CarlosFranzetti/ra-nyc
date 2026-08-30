@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader, Pause, Play, SkipBack, SkipForward, Ticket, X } from "lucide-react";
 import { usePlayer } from "@/context/PlayerContext";
+import { hostOf, outbound } from "@/lib/analytics";
 import { formatClock } from "@/lib/formatClock";
 import { shouldOfferTickets } from "@/lib/tickets";
 import { cn } from "@/lib/utils";
@@ -229,6 +230,9 @@ export function PlayerBar() {
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`Tickets for ${source.label} on Resident Advisor`}
+            onClick={() =>
+              outbound("tickets", { host: hostOf(source.url), from: "player" })
+            }
             className="press flex flex-shrink-0 items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-1 text-[0.625rem] font-medium text-primary"
           >
             <Ticket className="h-3 w-3" />

@@ -66,13 +66,23 @@ export default function HomePage() {
   // vertical gaps between siblings in one flow.
   const listClass = cn(
     "grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3",
-    // Tight carries an extra 5% on top of the density multiplier, which the
-    // other two do not: at 0.45 the plain `gap-1` came out under two pixels,
-    // which is close enough to zero that neighbouring cards start reading as
-    // one block. Written as the scale times 1.05 rather than jumped to the next
-    // Tailwind step, because `gap-1.5` would be +50% and land Tight on top of
-    // Default.
-    layoutDensity === "tight" && "gap-[calc(4px*var(--space)*1.05)]",
+    // Tight's gap is 5% of a card, not 5% more of the gap it had.
+    //
+    // The first pass at "5% more space between events" multiplied the gap
+    // itself by 1.05, which is the literal reading and a useless one: the gap
+    // at Tight was 1.79px, so the change was nine hundredths of a pixel and
+    // rounded away to nothing on screen. A percentage is only meaningful
+    // against something you can see, and the thing being spaced is an event
+    // row — 89px at this density — so 5% of that is 4.5px.
+    //
+    // Still clearly the tightest rung: Default's gap is 6px and Airy's is 12.
+    // What it stops is cards abutting closely enough to read as one block,
+    // which is what under two pixels was doing.
+    //
+    // Literal px, like the flyer and the icons, rather than the density-scaled
+    // scale: this is a correction *to* what the scale produced at Tight, so
+    // running it back through the scale would undo it.
+    layoutDensity === "tight" && "gap-[4.5px]",
     layoutDensity === "default" && "gap-2",
     layoutDensity === "airy" && "gap-3",
   );

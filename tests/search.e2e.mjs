@@ -105,6 +105,16 @@ const context = await browser.newContext({
 const page = await context.newPage();
 page.on("pageerror", (error) => console.log("PAGEERROR:", error.message));
 
+// Stand in for Vercel's analytics script, which is not loaded here and would
+// not be worth waiting on if it were. `track()` calls `window.va("event", ...)`
+// and nothing else, so recording that is recording exactly what this app sends.
+await page.addInitScript(() => {
+  window.__events = [];
+  window.va = (kind, payload) => {
+    window.__events.push({ kind, payload });
+  };
+});
+
 let searchCalls = 0;
 await page.route("**/api/events*", (route) =>
   route.fulfill({
@@ -492,6 +502,54 @@ const rideOrder = await page.evaluate(() =>
 );
 check("the ways to get there are ordered Uber, Lyft, maps",
   rideOrder.join(",") === "uber,lyft,maps", rideOrder.join(",") || "none");
+
+// ── the outbound links are counted, and carry nothing they should not
+//
+// Every one of these leaves the app, so a tap is the last thing that can be
+// measured. The risk worth testing is not that the count is missing — it is
+// that the payload carries something it should not: the ride links have the
+// venue's coordinates in their query string, and sending the whole URL would
+// put a location in an analytics event.
+const tapped = async (selector) => {
+  await page.evaluate(() => { window.__events = []; });
+  await page.locator(selector).first().click({ modifiers: [] }).catch(() => {});
+  await page.waitForTimeout(200);
+  return page.evaluate(() => window.__events ?? []);
+};
+
+const uberEvents = await tapped('a[aria-label^="Get an Uber"]');
+check("tapping Uber is counted",
+  uberEvents.some((e) => e.kind === "event" && e.payload?.name === "uber"),
+  JSON.stringify(uberEvents.map((e) => e.payload?.name)));
+const uberEvent = uberEvents.find((e) => e.payload?.name === "uber");
+// The venue sheet was opened from the picked search result, so this is that
+// result's room rather than tonight's listing.
+check("and the event names the venue",
+  uberEvent?.payload?.data?.venue === "Nowadays",
+  JSON.stringify(uberEvent?.payload?.data));
+const lyftEvents = await tapped('a[aria-label^="Get a Lyft"]');
+check("tapping Lyft is counted",
+  lyftEvents.some((e) => e.payload?.name === "lyft"),
+  JSON.stringify(lyftEvents.map((e) => e.payload?.name)));
+
+const mapEvents = await tapped('a[aria-label="Show on maps"]');
+check("tapping maps is counted",
+  mapEvents.some((e) => e.payload?.name === "maps"),
+  JSON.stringify(mapEvents.map((e) => e.payload?.name)));
+
+// Every event, not just the Uber one.
+//
+// The first version of this checked only the Uber payload, and a sabotage run
+// proved that was worth nothing: leaking the whole Lyft URL — coordinates and
+// all — into its event went completely undetected while this still passed.
+// The rule is about what the app sends, so it has to be checked over
+// everything the app sent.
+const allPayloads = JSON.stringify(
+  [...uberEvents, ...lyftEvents, ...mapEvents].map((e) => e.payload?.data ?? {}),
+);
+check("and no outbound event carries a URL or a coordinate",
+  allPayloads.match(/40\.7|-73\.|https?:/) === null,
+  allPayloads);
 
 // Getting there is the next thing you do after finding out where it is.
 const uber = page.locator('a[aria-label^="Get an Uber"]');

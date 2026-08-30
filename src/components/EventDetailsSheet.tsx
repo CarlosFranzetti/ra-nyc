@@ -21,6 +21,7 @@ import {
 import { EventThumb } from "@/components/EventThumb";
 import { usePrefetchArtist } from "@/hooks/useArtist";
 import { useEventPreview } from "@/hooks/useEventPreview";
+import { hostOf, outbound } from "@/lib/analytics";
 import { formatTime } from "@/lib/formatTime";
 import { cn } from "@/lib/utils";
 import type { Artist, Event } from "@/types/event";
@@ -331,6 +332,14 @@ export function EventDetailsSheet({
                 href={event.url}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() =>
+                  outbound("tickets", {
+                    eventId: event.id,
+                    venue: event.venue.name,
+                    host: hostOf(event.url),
+                    from: "event-sheet",
+                  })
+                }
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground transition-smooth hover:opacity-90 active:scale-[0.99]"
               >
                 View on RA
