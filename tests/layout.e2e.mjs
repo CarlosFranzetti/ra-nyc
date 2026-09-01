@@ -384,6 +384,37 @@ check("density still moves spacing on its own",
 check("and does not move type",
   tight.rootFontSize === airy.rootFontSize, `${tight.rootFontSize}px`);
 
+// ── the opening scan covers the coming week
+//
+// The rail's own prefetch only ever warms where you have already been. This is
+// what covers where you are going — and, more to the point, what *refreshes*
+// nights whose cached copy predates whatever was announced since.
+{
+  const asked = new Set();
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const p = await ctx.newPage();
+  await p.route("**/api/events*", (route) => {
+    const date = new URL(route.request().url()).searchParams.get("date");
+    if (date) asked.add(date);
+    return route.fulfill({ contentType: "application/json", body: PAYLOAD });
+  });
+  await p.route("**/images.ra.co/**", (route) => route.abort());
+  await p.goto(BASE, { waitUntil: "domcontentloaded" });
+  await p.waitForSelector("article", { timeout: 20000 });
+  await p.waitForTimeout(1500);
+
+  const today = new Date();
+  const wanted = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  const missing = wanted.filter((d) => !asked.has(d));
+  check("opening the app scans the coming week", missing.length === 0,
+    missing.length ? `never asked for ${missing.join(", ")}` : `${asked.size} days asked for`);
+  await ctx.close();
+}
+
 await browser.close();
 shutdown();
 

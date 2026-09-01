@@ -21,6 +21,9 @@
  *   network updates them if it can. This is the rule that actually makes the
  *   app usable offline. A day with no saved copy at all degrades to a
  *   well-formed empty response rather than an error — see `handleEvents`.
+ *   When the refreshed copy differs from the one that was served, every open
+ *   tab is told so it can show it — see `announceUpdate`, and the note there
+ *   about the bug that came from not doing it.
  * - **RA flyers** (`images.ra.co`, direct, and `/api/image`, our own proxy
  *   fallback) — cache first, capped at `MAX_IMG_ENTRIES` with the oldest
  *   *touch* evicted first. This is the one deliberate exception to leaving
@@ -153,24 +156,109 @@ async function handleAsset(request) {
   return response;
 }
 
-async function handleEvents(request) {
+/**
+ * Tells every open tab that a day it may be looking at has changed.
+ *
+ * This is the other half of stale-while-revalidate, and it was missing.
+ * Returning the cached copy and refreshing in the background is right — it is
+ * what makes a day you have opened before appear instantly — but *only* if
+ * something eventually shows you the refreshed copy. Without this the fresh
+ * answer sat in the cache, unseen, until the app happened to fetch that day
+ * again, which with a five-minute staleTime and no refetch-on-focus could be
+ * the next session.
+ *
+ * The symptom was a new event missing from a day that search could find: search
+ * reads the database, the day listing read a cached copy from before the party
+ * was announced, and the two disagreed for as long as the cache survived.
+ */
+async function announceUpdate(request) {
+  const date = new URL(request.url).searchParams.get("date") ?? "";
+  const clients = await self.clients.matchAll({ type: "window" });
+  for (const client of clients) {
+    client.postMessage({ type: "events-updated", date });
+  }
+}
+
+/**
+ * `settled` is called when the background refresh finishes.
+ *
+ * The refresh runs *after* the cached response has been handed back, so by then
+ * the browser is free to kill the worker, and a dangling promise is not a
+ * reason to keep it alive. `event.waitUntil` is — but it has to be called while
+ * the event is still being dispatched, and by the time this function has
+ * awaited `caches.open` that moment has passed. So the fetch listener opens a
+ * lifetime promise synchronously and hands the resolver down here to close.
+ *
+ * This is belt-and-braces rather than the fix for the bug that prompted it: the
+ * refresh was failing for a different reason (see the note on cloning below),
+ * and a killed worker would have been the next thing to go wrong.
+ */
+async function handleEvents(request, settled) {
   const cache = await caches.open(DATA_CACHE);
   const cached = await cache.match(request);
 
-  const network = fetch(request)
-    .then((response) => {
+  // Cloned here, not later, and this is the subtle one.
+  //
+  // `cached` is about to be handed to the page, which reads its body — and a
+  // Response whose body has been read cannot be cloned. The comparison below
+  // runs after that, so cloning there raced the page and lost, throwing
+  // "Response body is already used" into a `.catch` that returns null. The
+  // refresh then silently did nothing, which looked exactly like the refresh
+  // never being attempted.
+  const previous = cached ? cached.clone() : null;
+
+  // `cache: "no-store"`, and it is the difference between this working and not.
+  //
+  // `/api/events` is served `public, max-age=60`, so a plain `fetch` here can
+  // be answered by the *browser's* HTTP cache — with the very bytes this
+  // revalidation exists to replace. The refresh then quietly confirms the stale
+  // copy is current, and nothing ever changes. That is the whole bug reproduced
+  // one layer down, and it is what made the test for it fail.
+  //
+  // It costs a real request, which is what a revalidation is supposed to be,
+  // and it still lands on Vercel's edge cache rather than on RA.
+  const network = fetch(request, { cache: "no-store" })
+    .then(async (response) => {
       // Never cache the degraded answer the API serves when RA is down — it
       // would pin a stale day in place long after RA recovered.
-      if (response.ok) {
-        cache.put(request, response.clone());
-        void trim(DATA_CACHE, MAX_DATA_ENTRIES);
-      }
+      if (!response.ok) return response;
+
+      // Read once, then rebuild — rather than cloning twice.
+      //
+      // A Response may only be cloned while its body is untouched, and this
+      // needs the bytes twice: once to compare against what was cached, once to
+      // store. Two clones plus a read is a trap, because reading the first
+      // locks the original and the second `clone()` throws "Response body is
+      // already used" — into a `.catch` that returns null, so the refresh
+      // silently stopped happening and looked exactly like a refresh that was
+      // never attempted. This cost several rounds to find. One clone, taken
+      // before anything reads it, and everything downstream works from text.
+      const text = await response.clone().text();
+
+      const before = previous ? await previous.text().catch(() => null) : null;
+      // Only wake the page when the answer actually changed. Most revalidations
+      // return identical listings, and a message on every one would invalidate
+      // a query — and re-render the list under a thumb — for nothing.
+      const changed = before !== null && before !== text;
+
+      await cache.put(
+        request,
+        new Response(text, {
+          status: response.status,
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+        }),
+      );
+      void trim(DATA_CACHE, MAX_DATA_ENTRIES);
+      if (changed) await announceUpdate(request);
+
       return response;
     })
-    .catch(() => null);
+    .catch(() => null)
+    .finally(settled);
 
   if (cached) {
     // Refresh behind the scenes; the caller gets the cached copy immediately.
+    // The worker is held open for it by the lifetime promise — see above.
     void network;
     return cached;
   }
@@ -266,7 +354,15 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.pathname === "/api/events") {
-    event.respondWith(handleEvents(request));
+    // Opened *synchronously*, while this listener is still on the stack, which
+    // is the only point at which `waitUntil` may be called. It resolves when
+    // the background refresh settles, and until then the worker stays alive to
+    // finish it.
+    let close;
+    event.waitUntil(new Promise((resolve) => {
+      close = resolve;
+    }));
+    event.respondWith(handleEvents(request, close));
     return;
   }
 

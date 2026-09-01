@@ -15,7 +15,7 @@ import { SearchSheet } from "@/components/SearchSheet";
 import { VenueSheet } from "@/components/VenueSheet";
 import { SplashScreen } from "@/components/SplashScreen";
 import { useTheme } from "@/context/ThemeContext";
-import { useEvents } from "@/hooks/useEvents";
+import { useEventCacheUpdates, useEvents, useWeekScan } from "@/hooks/useEvents";
 import { applyFilters, filterCounts, type FilterKey } from "@/lib/filters";
 import { currentNight } from "@/lib/night";
 import { cn } from "@/lib/utils";
@@ -39,6 +39,13 @@ export default function HomePage() {
   const { layoutDensity } = useTheme();
   const dateString = format(selectedDate, "yyyy-MM-dd");
   const { data, isLoading, isFetching, error, refetch } = useEvents(dateString);
+
+  // Go and ask about the coming week once, on open, and take the answer when
+  // the service worker says a day it served from cache has since changed.
+  // Together these are what stop a night you looked at last week coming back
+  // from disk missing everything announced since — see the notes on both.
+  useWeekScan();
+  useEventCacheUpdates();
 
   // Re-keying the list on date change restarts the stagger animation, so a new
   // day animates in rather than swapping silently.

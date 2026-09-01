@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, format } from "date-fns";
 import { proxiedImageUrl } from "@/lib/images";
+import { currentNight } from "@/lib/night";
 import type { EventsResponse } from "@/types/event";
 
 const STALE_TIME = 5 * 60 * 1000;
@@ -52,6 +53,91 @@ export function useEvents(date: string) {
     // upstream timeout that spins for ~45s before the user is told anything.
     retry: 1,
   });
+}
+
+/**
+ * How many nights ahead the opening scan covers, tonight included.
+ *
+ * A week, because that is the unit people plan a night out in — "what's on this
+ * week" is the question, and answering it should not require tapping seven
+ * chips and waiting at each one.
+ */
+export const SCAN_DAYS = 7;
+
+/**
+ * Refreshes the coming week once, on load.
+ *
+ * `useEvents` already warms the two days either side of wherever you are, which
+ * makes stepping along the rail instant but only ever covers where you have
+ * already been. This covers where you are going.
+ *
+ * The more important half is that it *refreshes*. Days are served
+ * stale-while-revalidate by the service worker and the query cache is persisted
+ * to localStorage, so a day you looked at last week comes back from disk,
+ * through a worker that hands you its saved copy — two layers of stale, neither
+ * of which had anything that showed you the fresh answer when it arrived. A
+ * party announced since was simply missing, while search — which reads the
+ * database — could find it. That is exactly the report this fixes, alongside
+ * `announceUpdate` in the service worker.
+ *
+ * `refetchQueries`, not `prefetchQuery`: prefetch respects `staleTime` and does
+ * nothing for a day the cache thinks is fresh, which on a cold load restored
+ * from disk is most of them. The point here is to go and ask.
+ *
+ * Fired once per mount rather than on every date change — stepping through the
+ * rail should not re-scan the week each time.
+ */
+export function useWeekScan(): void {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const today = currentNight();
+    for (let offset = 0; offset < SCAN_DAYS; offset += 1) {
+      const day = format(addDays(today, offset), "yyyy-MM-dd");
+      void queryClient.refetchQueries({ queryKey: ["events", day], exact: true });
+      // A day nobody has ever loaded has no query to refetch, so seed it.
+      void queryClient.prefetchQuery({
+        queryKey: ["events", day],
+        queryFn: () => fetchEvents(day),
+        staleTime: STALE_TIME,
+      });
+    }
+  }, [queryClient]);
+}
+
+/**
+ * Shows the refreshed copy when the service worker says one arrived.
+ *
+ * The worker posts `events-updated` only when a revalidation actually changed
+ * the day's listings, so this invalidates one query rather than polling. React
+ * Query then refetches — and gets the copy the worker has just cached — so the
+ * list corrects itself in place instead of on your next visit.
+ */
+export function useEventCacheUpdates(): void {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return undefined;
+
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; date?: string } | null;
+      if (data?.type !== "events-updated" || !data.date) return;
+      void queryClient.invalidateQueries({
+        queryKey: ["events", data.date],
+        exact: true,
+      });
+    };
+
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    // Required, and easy to miss: a ServiceWorkerContainer only starts
+    // delivering queued messages automatically when something assigns to
+    // `onmessage`. With `addEventListener` alone the queue is never started and
+    // nothing is ever delivered — the listener is attached, correct, and mute.
+    // This cost a test run to find, which is the only reason it was found.
+    navigator.serviceWorker.startMessages();
+
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [queryClient]);
 }
 
 /** Prefetch on hover / touchstart, before the tap actually lands. */

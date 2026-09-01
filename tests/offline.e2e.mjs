@@ -72,10 +72,32 @@ const PIXEL_PNG = Buffer.from(
   "base64",
 );
 const FLYER_URL = "https://images.ra.co/does-not-resolve-in-this-sandbox.jpg";
+/**
+ * Set once the test wants the server to answer with a day that has grown since
+ * it was cached — a party announced after somebody last opened that night,
+ * which is the exact shape of the bug this covers.
+ */
+let announcedSince = false;
+
+const extraEvent = {
+  id: "e2",
+  title: "Newly Announced",
+  date: `${TODAY}T00:00:00.000`,
+  startTime: `${TODAY}T23:00:00.000`,
+  endTime: null,
+  url: "https://ra.co/events/2",
+  imageUrl: null,
+  venue: { name: "feedbk", area: "New York" },
+  artists: [],
+  attending: 25,
+  isPick: false,
+  pickBlurb: null,
+};
+
 const payload = (stale) =>
   JSON.stringify({
     date: TODAY,
-    count: 1,
+    count: announcedSince ? 2 : 1,
     stale,
     events: [
       {
@@ -97,6 +119,7 @@ const payload = (stale) =>
         isPick: false,
         pickBlurb: null,
       },
+      ...(announcedSince ? [extraEvent] : []),
     ],
   });
 
@@ -193,6 +216,45 @@ const proxiedFlyer = await page.evaluate(async (flyerUrl) => {
 }, FLYER_URL);
 check("the flyer's proxied fallback landed in the image cache", proxiedFlyer);
 
+// ── a day that changed after it was cached corrects itself
+//
+// This is the other half of stale-while-revalidate, and its absence was a real
+// reported bug: a new party was missing from a night the listings showed, while
+// search — which reads the database rather than the cache — could find it.
+//
+// The worker was serving its saved copy and refreshing behind it, but nothing
+// ever showed the refreshed copy, so the day stayed as it was when it was first
+// opened. The fetch below is what a visit does: it comes back from cache
+// instantly, the worker notices upstream has changed, and the page corrects
+// itself in place rather than on some later visit.
+announcedSince = true;
+await page.evaluate((day) => {
+  void fetch(`/api/events?date=${day}`);
+}, TODAY);
+const corrected = await page
+  .waitForSelector("text=Newly Announced", { timeout: 10000 })
+  .then(() => true)
+  .catch(() => false);
+check("a night that grew since it was cached corrects itself, with no reload",
+  corrected);
+
+// And the cached copy is the new one, so the next cold start is right too.
+const cachedNow = await page.evaluate(async (day) => {
+  const names = await caches.keys();
+  const data = names.find((n) => n.startsWith("ra-data"));
+  const cache = await caches.open(data);
+  // By date, not `keys[0]`: the opening week scan leaves seven days in here,
+  // and the first of them is not necessarily the one that changed.
+  const key = (await cache.keys()).find((k) => k.url.includes(`date=${day}`));
+  if (!key) return false;
+  return (await (await cache.match(key)).text()).includes("Newly Announced");
+}, TODAY);
+check("and the saved copy was updated too", cachedNow);
+
+// Back to the one-event day for the offline checks below, so what they assert
+// is unchanged by the block above.
+announcedSince = false;
+
 // ── the actual test: no network at all
 await context.setOffline(true);
 const offlinePage = await context.newPage();
@@ -224,6 +286,11 @@ await offlinePage.close();
 await context.setOffline(false);
 
 // ── third-party and non-events API requests must not be intercepted
+//
+// Settled first: the correction check above deliberately causes a refetch, and
+// an in-flight `/api/events` landing after the counter is sampled would be
+// read as this endpoint having been fetched when it was not.
+await page.waitForTimeout(1500);
 const before = apiHits;
 await page.evaluate(() => fetch("/api/search?q=test").then((r) => r.text()));
 check("only /api/events is cached, other endpoints stay network-only",
