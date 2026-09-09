@@ -55,6 +55,28 @@ interface PlayerContextValue {
    * instead of waiting for the whole lineup — the rest arrive behind the music.
    */
   appendSets(sets: ArtistSet[]): void;
+  /**
+   * The `+` next to every play button: put this at the end of the playlist.
+   *
+   * With something already playing this is purely additive — the music does not
+   * change. With nothing playing there is nothing to queue *behind*, so it
+   * starts: a transport bar showing a track the listener has to press play on
+   * again is a worse answer than the obvious one.
+   */
+  enqueue(sets: ArtistSet[], name?: string | null): void;
+  /**
+   * The play button, once a playlist exists: play this now and keep the rest.
+   *
+   * The set goes in immediately after whatever is playing and becomes current,
+   * so the queue you built carries on behind it. Before this, tapping play
+   * anywhere replaced the whole queue, which quietly threw away a playlist
+   * somebody had just assembled.
+   */
+  playNext(set: ArtistSet, name?: string | null): void;
+  /** Jump straight to a position in the playlist. */
+  jumpTo(position: number): void;
+  /** Take a set out of the playlist. */
+  removeAt(position: number): void;
   toggle(): void;
   next(): void;
   previous(): void;
@@ -104,6 +126,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const current = queue[index] ?? null;
   const hasNext = index < queue.length - 1;
   const hasPrevious = index > 0;
+
+  // `stop` is declared below, and `removeAt` above needs it when the last set
+  // is taken out of the playlist. A ref keeps the two from having to be
+  // declared in dependency order.
+  const stopRef = useRef<() => void>(() => undefined);
 
   // A ref, because the adapter's onEnded closure is created once per track and
   // would otherwise capture the queue as it was when that track started.
@@ -285,6 +312,84 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  /**
+   * How two sets are told apart across the queue.
+   *
+   * By URL where there is one, because the same recording legitimately arrives
+   * twice — a b2b resolved from each of its two DJs is one upload with two
+   * artist ids, and queueing it twice would play it twice in a row.
+   */
+  const keyOf = (set: ArtistSet) => set.url || set.id;
+
+  const enqueue = useCallback(
+    (sets: ArtistSet[], name: string | null = null) => {
+      if (sets.length === 0) return;
+      // Nothing playing: there is no "behind" to add to, so this is a start.
+      if (queue.length === 0) {
+        playSets(sets, 0, name);
+        return;
+      }
+      appendSets(sets);
+    },
+    [queue.length, playSets, appendSets],
+  );
+
+  const playNext = useCallback(
+    (set: ArtistSet, name: string | null = null) => {
+      if (queue.length === 0) {
+        playSets([set], 0, name);
+        return;
+      }
+
+      const key = keyOf(set);
+      // Already the live set — resume rather than splicing a second copy of it
+      // in beside itself.
+      if (current && keyOf(current) === key) {
+        handleRef.current?.play();
+        return;
+      }
+
+      // Straight after the current one, with the tail behind it. Any copy of
+      // this set already waiting further down is dropped, or skipping forward
+      // would reach it a second time.
+      setQueue([
+        ...queue.slice(0, index + 1),
+        set,
+        ...queue.slice(index + 1).filter((queued) => keyOf(queued) !== key),
+      ]);
+      setIndex(index + 1);
+      if (name) setArtistName(name);
+    },
+    [queue, index, current, playSets],
+  );
+
+  const jumpTo = useCallback(
+    (position: number) => {
+      if (position < 0 || position >= queue.length) return;
+      setIndex(position);
+    },
+    [queue.length],
+  );
+
+  const removeAt = useCallback(
+    (position: number) => {
+      if (position < 0 || position >= queue.length) return;
+      const remaining = queue.filter((_, i) => i !== position);
+      if (remaining.length === 0) {
+        stopRef.current();
+        return;
+      }
+      setQueue(remaining);
+      // Removing something earlier in the list shifts everything after it down,
+      // so the playhead has to move with it or the wrong track becomes current.
+      // Removing the live one leaves the index where it is, which now points at
+      // what was next — the same thing skipping forward would have done.
+      if (position < index) setIndex(index - 1);
+      else if (position === index) setIndex(Math.min(index, remaining.length - 1));
+    },
+    [queue, index],
+  );
+
   const toggle = useCallback(() => {
     const handle = handleRef.current;
     if (!handle) return;
@@ -327,6 +432,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setDuration(null);
     setError(null);
   }, []);
+  stopRef.current = stop;
 
   useEffect(() => {
     if (!current) {
@@ -366,6 +472,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       hasPrevious,
       playSets,
       appendSets,
+      enqueue,
+      playNext,
+      jumpTo,
+      removeAt,
       toggle,
       next,
       previous,
@@ -390,6 +500,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       hasPrevious,
       playSets,
       appendSets,
+      enqueue,
+      playNext,
+      jumpTo,
+      removeAt,
       toggle,
       next,
       previous,

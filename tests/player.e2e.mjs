@@ -393,6 +393,73 @@ const expandedRows = await page
   .count();
 check("expanding reveals the whole list", expandedRows === SET_COUNT, `${expandedRows} rows`);
 
+// ── the playlist
+//
+// "Preview the night" and an artist's catalogue are both queues, and until now
+// a queue was something you could only walk forwards through. These are the
+// three things a playlist has to be able to do: show itself, take something
+// out, and take something back in — none of which may interrupt the music.
+const playlistToggle = page.locator('button[aria-label="Show playlist"]');
+check("the transport offers a playlist", (await playlistToggle.count()) === 1);
+
+await playlistToggle.click();
+await page.waitForTimeout(300);
+const rows = () => page.locator('[aria-label="Playlist"] li');
+check("it lists the whole queue", (await rows().count()) === SET_COUNT,
+  `${await rows().count()} rows`);
+
+const nowPlaying = async () =>
+  (await page.locator(".player-live p").first().textContent()) ?? "";
+const beforeEdit = await nowPlaying();
+
+// Removing something further down must not disturb what is playing.
+await page.locator('[aria-label^="Remove Set Number"]').last().click();
+await page.waitForTimeout(300);
+check("a queued set can be taken out", (await rows().count()) === SET_COUNT - 1,
+  `${await rows().count()} rows`);
+check("and removing it does not change what is playing",
+  (await nowPlaying()) === beforeEdit, await nowPlaying());
+
+// And put back, from the `+` beside its play button. It goes to the end.
+await page.locator(`text=Add Set Number ${SET_COUNT} to the playlist`).first()
+  .click({ timeout: 5000 })
+  .catch(async () => {
+    await page.locator(`button[aria-label="Add Set Number ${SET_COUNT} to the playlist"]`).click();
+  });
+await page.waitForTimeout(400);
+check("the + puts a set back on the end", (await rows().count()) === SET_COUNT,
+  `${await rows().count()} rows`);
+check("and adding does not change what is playing either",
+  (await nowPlaying()) === beforeEdit, await nowPlaying());
+
+// The reported ask: hitting play on a set keeps the playlist behind it. The
+// chosen set slots in immediately *after* the one playing — under the old
+// behaviour it replaced the queue outright, which threw the playlist away.
+await page.locator('button[aria-label="Play Set Number 5"]').click();
+await page.waitForTimeout(900);
+
+// One check, not two. A row count alone cannot tell the two behaviours apart —
+// replacing the queue with the same artist's nine sets also leaves nine rows —
+// so counting rows here would be an assertion that cannot fail. What separates
+// them is *where* the chosen set ends up: spliced in behind the one that was
+// playing, rather than found at its original place in the catalogue.
+//
+// Measured relative to what was playing rather than at a fixed row: the live
+// set was at row 1, not row 0, and an earlier version of this failed on that
+// arithmetic rather than on the behaviour.
+const titles = (await rows().allTextContents()).map((t) => t.trim());
+const wasAt = titles.indexOf(beforeEdit.trim());
+check(
+  "playing a set keeps the playlist and slots it in behind what was playing",
+  titles.length === SET_COUNT &&
+    wasAt !== -1 &&
+    (titles[wasAt + 1] ?? "").includes("Set Number 5"),
+  `${titles.length} rows: ${beforeEdit.trim()} then ${titles[wasAt + 1] ?? "(nothing)"}`,
+);
+
+await page.locator('button[aria-label="Hide playlist"]').click();
+await page.waitForTimeout(250);
+
 // ── the point of the feature: dismiss everything, playback continues
 const beforeDismiss = await at();
 await page.locator('button[aria-label="Back to event"]').click();
@@ -409,8 +476,14 @@ check("survives event sheet dismissal", afterEvent > afterArtist && dialogs === 
   `${afterArtist}s -> ${afterEvent}s, dialogs=${dialogs}`);
 
 // ── transport walks the full catalogue, past what the sheet was showing
-for (let i = 0; i < SET_COUNT - 2; i += 1) {
-  await page.locator('button[aria-label="Next mix"]').click();
+// Until the control disables, rather than a fixed number of taps. The playlist
+// checks above legitimately move the playhead, and a hard-coded count silently
+// depends on where they left it — it broke by one click, which is a test
+// asserting its own arithmetic rather than the transport's behaviour.
+for (let i = 0; i < SET_COUNT + 2; i += 1) {
+  const skip = page.locator('button[aria-label="Next mix"]');
+  if (await skip.isDisabled()) break;
+  await skip.click();
   await page.waitForTimeout(180);
 }
 await page.waitForTimeout(400);

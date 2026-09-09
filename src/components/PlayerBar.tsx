@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader, Pause, Play, SkipBack, SkipForward, Ticket, X } from "lucide-react";
+import {
+  ListMusic,
+  Loader,
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  Ticket,
+  X,
+} from "lucide-react";
 import { usePlayer } from "@/context/PlayerContext";
 import { hostOf, outbound } from "@/lib/analytics";
 import { formatClock } from "@/lib/formatClock";
@@ -48,11 +57,22 @@ export function PlayerBar() {
     previous,
     seek,
     stop,
+    jumpTo,
+    removeAt,
   } = usePlayer();
 
   const ticketsVisible = shouldOfferTickets(source, listened);
 
   const barRef = useRef<HTMLDivElement>(null);
+  /**
+   * The playlist panel, closed by default.
+   *
+   * Closed, because the transport's job at rest is to say what is playing and
+   * let you stop it — a list open over the listings would be a fifth of the
+   * screen spent on something you asked for once. Opening it is one tap and it
+   * stays open until you close it.
+   */
+  const [listOpen, setListOpen] = useState(false);
   // While dragging, the thumb follows the finger instead of the playhead —
   // otherwise incoming progress events fight the drag and it stutters.
   const [scrubbing, setScrubbing] = useState<number | null>(null);
@@ -78,6 +98,10 @@ export function PlayerBar() {
       root.style.setProperty("--player-h", "0px");
     };
   }, [active]);
+
+  // The panel is meaningless with a single set, and the button that opens it
+  // would be a control that reveals a list of one.
+  const hasPlaylist = queue.length > 1;
 
   if (!current) return null;
 
@@ -134,6 +158,72 @@ export function PlayerBar() {
          the *top* edge only, which Tailwind cannot express. */
       className="player-live pointer-events-auto fixed inset-x-0 bottom-0 z-[70] border-t-2 border-primary/70 bg-background/95 pb-safe backdrop-blur-lg"
     >
+      {/* The playlist.
+
+          Above the transport rather than below it: the controls stay where the
+          thumb already expects them, and the list grows upward into the page
+          instead of pushing the buttons around. Capped and scrollable, because
+          a preview of a twelve-name bill would otherwise be the whole screen.
+
+          `--player-h` is measured from this element's box, so the page and the
+          sheets reserve room for the panel too and nothing ends up underneath
+          it while it is open. */}
+      {hasPlaylist && listOpen && (
+        <div className="shell max-h-[38vh] overflow-y-auto overscroll-contain border-b border-border/50 px-2 py-1.5">
+          <ul aria-label="Playlist" className="space-y-0.5">
+            {queue.map((set, position) => {
+              const live = position === index;
+              return (
+                <li key={`${set.id}-${position}`} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => jumpTo(position)}
+                    aria-current={live ? "true" : undefined}
+                    className={cn(
+                      "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-smooth active:scale-[0.99]",
+                      live ? "bg-secondary" : "hover:bg-accent active:bg-accent",
+                    )}
+                  >
+                    {/* The live row is marked by the same triangle the transport
+                        uses rather than by a number: a position in a queue you
+                        can reorder by deleting is not a fact worth printing. */}
+                    <span className="flex h-3 w-3 flex-shrink-0 items-center justify-center">
+                      {live ? (
+                        <Play className="h-2.5 w-2.5 fill-primary text-primary" />
+                      ) : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={cn(
+                          "block truncate text-[0.6875rem] leading-tight",
+                          live ? "font-medium text-foreground" : "text-muted-foreground",
+                        )}
+                      >
+                        {set.title}
+                      </span>
+                    </span>
+                  </button>
+
+                  {/* No remove on the live row. Taking away what is currently
+                      playing is a different action from tidying the queue, and
+                      the transport already has a stop button for it. */}
+                  {!live && (
+                    <button
+                      type="button"
+                      onClick={() => removeAt(position)}
+                      aria-label={`Remove ${set.title} from the playlist`}
+                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       <div className="shell flex items-center gap-2 px-3 pt-2">
         {/* `shown`, not `position`. While you are dragging, the thumb follows
             your finger and the playhead does not move until you let go — so
@@ -238,6 +328,27 @@ export function PlayerBar() {
             <Ticket className="h-3 w-3" />
             Tickets
           </a>
+        )}
+
+        {hasPlaylist && (
+          <button
+            onClick={() => setListOpen((open) => !open)}
+            aria-label={listOpen ? "Hide playlist" : "Show playlist"}
+            aria-expanded={listOpen}
+            className={cn(
+              controlClass,
+              "relative",
+              listOpen ? "text-primary" : "text-muted-foreground",
+            )}
+          >
+            <ListMusic className="h-4 w-4" />
+            {/* How many are waiting, which is the one number worth having on a
+                closed panel — it is the difference between "there is a queue"
+                and "there is a queue with nine things in it". */}
+            <span className="absolute -right-0.5 -top-0.5 rounded-full bg-primary px-1 text-[0.5rem] font-semibold leading-[0.9rem] text-primary-foreground">
+              {queue.length}
+            </span>
+          </button>
         )}
 
         <button

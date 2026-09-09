@@ -9,6 +9,7 @@ import {
   Loader,
   MapPin,
   Play,
+  Plus,
   Users,
   X,
 } from "lucide-react";
@@ -21,6 +22,7 @@ import {
 import { EventThumb } from "@/components/EventThumb";
 import { usePrefetchArtist } from "@/hooks/useArtist";
 import { useEventPreview } from "@/hooks/useEventPreview";
+import { NIGHT_KEY, usePlaylistAdd } from "@/hooks/usePlaylistAdd";
 import { hostOf, outbound } from "@/lib/analytics";
 import { formatTime } from "@/lib/formatTime";
 import { cn } from "@/lib/utils";
@@ -62,6 +64,7 @@ export function EventDetailsSheet({
 }: EventDetailsSheetProps) {
   const prefetchArtist = usePrefetchArtist();
   const preview = useEventPreview();
+  const playlist = usePlaylistAdd();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [blurbExpanded, setBlurbExpanded] = useState(false);
@@ -277,44 +280,86 @@ export function EventDetailsSheet({
                     do on a phone. One obvious button is the same idea without
                     the ambush — and it keeps playback tied to a real user
                     gesture, which is also what browsers require. */}
-                <button
-                  onClick={() => preview.start(event)}
-                  disabled={preview.preparing}
-                  // h-[2.3rem]: the 2.5rem this replaced, less 8%. A fixed
-                  // height rather than padding so the spinner and the triangle
-                  // cannot change it between states.
-                  className="press mb-2 flex h-[2.3rem] w-full items-center justify-center gap-1.5 rounded-lg border border-primary/50 bg-card text-[0.8125rem] font-medium text-foreground disabled:opacity-60"
-                >
-                  {preview.preparing ? (
-                    <Loader className="h-3.5 w-3.5 animate-spin text-play" />
-                  ) : (
-                    <Play className="h-3.5 w-3.5 fill-play text-play" />
-                  )}
-                  {preview.preparing ? "Finding sets…" : "Preview the night"}
-                </button>
+                {/* Play, and beside it add.
+                    The preview starts a new playlist — it is a different night,
+                    and "preview *this*" means this. The `+` is for when you are
+                    already listening and want the bill to follow rather than
+                    replace it. */}
+                <div className="mb-2 flex items-stretch gap-1.5">
+                  <button
+                    onClick={() => preview.start(event)}
+                    disabled={preview.preparing}
+                    // h-[2.3rem]: the 2.5rem this replaced, less 8%. A fixed
+                    // height rather than padding so the spinner and the triangle
+                    // cannot change it between states.
+                    className="press flex h-[2.3rem] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-primary/50 bg-card text-[0.8125rem] font-medium text-foreground disabled:opacity-60"
+                  >
+                    {preview.preparing ? (
+                      <Loader className="h-3.5 w-3.5 animate-spin text-play" />
+                    ) : (
+                      <Play className="h-3.5 w-3.5 fill-play text-play" />
+                    )}
+                    {preview.preparing ? "Finding sets…" : "Preview the night"}
+                  </button>
+
+                  <button
+                    onClick={() => playlist.addNight(event)}
+                    disabled={playlist.pending !== null}
+                    aria-label="Add the whole lineup to the playlist"
+                    className="press flex h-[2.3rem] w-[2.3rem] flex-shrink-0 items-center justify-center rounded-lg border border-border/60 bg-card text-muted-foreground disabled:opacity-60"
+                  >
+                    {playlist.pending === NIGHT_KEY ? (
+                      <Loader className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
                 {preview.empty && (
                   <p className="mb-2 text-center text-[0.6875rem] text-muted-foreground">
                     No sets found for this lineup.
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  {artists.map((artist) => (
-                    <button
-                      key={artist.id || artist.name}
-                      onClick={() => onSelectArtist(artist)}
-                      onPointerDown={() => prefetchArtist(artist.id, artist.name)}
-                      onTouchStart={() => prefetchArtist(artist.id, artist.name)}
-                      onMouseEnter={() => prefetchArtist(artist.id, artist.name)}
-                      className="flex items-center gap-1 rounded-full border border-border/60 bg-secondary px-2 py-0.5 text-xs text-secondary-foreground transition-smooth hover:border-primary hover:text-primary active:scale-95"
-                    >
-                      {/* A name on its own does not look like a control. The
-                          same green triangle as the preview button says these
-                          make sound too, and says it in one glyph rather than
-                          the caption above that people were not reading. */}
-                      <Play className="h-2.5 w-2.5 flex-shrink-0 fill-play text-play" />
-                      {artist.name}
-                    </button>
-                  ))}
+                  {/* Two controls per chip, so it is a `div` rather than the
+                      single button it was — a button inside a button is invalid
+                      markup and the inner one stops being reachable. */}
+                  {artists.map((artist) => {
+                    const key = artist.id || artist.name;
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-stretch overflow-hidden rounded-full border border-border/60 bg-secondary text-xs text-secondary-foreground"
+                      >
+                        <button
+                          onClick={() => onSelectArtist(artist)}
+                          onPointerDown={() => prefetchArtist(artist.id, artist.name)}
+                          onTouchStart={() => prefetchArtist(artist.id, artist.name)}
+                          onMouseEnter={() => prefetchArtist(artist.id, artist.name)}
+                          className="flex items-center gap-1 py-0.5 pl-2 pr-1 transition-smooth hover:text-primary active:scale-95"
+                        >
+                          {/* A name on its own does not look like a control. The
+                              same green triangle as the preview button says these
+                              make sound too, and says it in one glyph rather than
+                              the caption above that people were not reading. */}
+                          <Play className="h-2.5 w-2.5 flex-shrink-0 fill-play text-play" />
+                          {artist.name}
+                        </button>
+                        <button
+                          onClick={() => playlist.addArtist(event, artist)}
+                          disabled={playlist.pending !== null}
+                          aria-label={`Add ${artist.name} to the playlist`}
+                          className="flex flex-shrink-0 items-center border-l border-border/60 px-1.5 text-muted-foreground transition-smooth hover:text-primary active:scale-95 disabled:opacity-50"
+                        >
+                          {playlist.pending === key ? (
+                            <Loader className="h-2.5 w-2.5 animate-spin" />
+                          ) : (
+                            <Plus className="h-3 w-3" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
                   {hiddenArtists > 0 && (
                     <button
                       onClick={() => setLineupExpanded(true)}
