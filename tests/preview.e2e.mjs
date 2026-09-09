@@ -219,9 +219,16 @@ const bar = await page.evaluate(() => {
 check("the transport names the party, not just the provider",
   bar.includes("Mister Sunday"), bar.slice(0, 80));
 
+// Read off the transport's own subtitle, not the whole page.
+//
+// This used to scan `document.body.textContent`, which concatenates every node
+// with no separator — so the playlist button's count badge sitting next to the
+// subtitle turned "1 of 3" followed by "3" into "1 of 33". The number was right
+// on screen and wrong in the test.
 const queued = await page.evaluate(() => {
-  const text = document.body.textContent ?? "";
-  const match = text.match(/(\d+) of (\d+)/);
+  const lines = document.querySelectorAll(".player-live p");
+  const subtitle = lines[1]?.textContent ?? "";
+  const match = subtitle.match(/(\d+) of (\d+)/);
   return match ? Number(match[2]) : 0;
 });
 check("the rest of the lineup lands in the queue behind the music",

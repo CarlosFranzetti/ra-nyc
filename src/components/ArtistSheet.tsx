@@ -7,6 +7,7 @@ import {
   Music,
   Pause,
   Play,
+  Plus,
 } from "lucide-react";
 import {
   Drawer,
@@ -60,7 +61,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
  */
 export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
   const { data, isLoading, error } = useArtist(artist?.id, artist?.name ?? "");
-  const { playSets, toggle, isCurrent, playing } = usePlayer();
+  const { playSets, playNext, enqueue, queue, toggle, isCurrent, playing } =
+    usePlayer();
   const [bioExpanded, setBioExpanded] = useState(false);
   const [allSetsShown, setAllSetsShown] = useState(false);
 
@@ -167,23 +169,35 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                         .filter(Boolean)
                         .join(" · ");
                       return (
-                        <button
+                        /* A row rather than one big button, because there are
+                           now two things you can do with a set: hear it, or
+                           keep it for later. */
+                        <div
                           key={set.id}
-                          onClick={() =>
+                          className={cn(
+                            "flex items-stretch gap-1 rounded-lg border transition-smooth",
                             live
-                              ? toggle()
-                              : playSets(sets, position, artist?.name ?? null)
-                          }
+                              ? "border-primary/50 bg-secondary"
+                              : "border-border/50 bg-card hover:bg-accent",
+                          )}
+                        >
+                        <button
+                          onClick={() => {
+                            if (live) return toggle();
+                            // With a playlist running, playing a set slots it in
+                            // after the current one and the rest carries on
+                            // behind it. With nothing playing, the artist's whole
+                            // catalogue becomes the queue, which is what you want
+                            // when you opened their page to listen to them.
+                            return queue.length > 0
+                              ? playNext(set, artist?.name ?? null)
+                              : playSets(sets, position, artist?.name ?? null);
+                          }}
                           aria-pressed={live}
                           aria-label={
                             live && playing ? `Pause ${set.title}` : `Play ${set.title}`
                           }
-                          className={cn(
-                            "flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-smooth active:scale-[0.99]",
-                            live
-                              ? "border-primary/50 bg-secondary"
-                              : "border-border/50 bg-card hover:bg-accent active:bg-accent",
-                          )}
+                          className="flex min-w-0 flex-1 items-center gap-3 p-2.5 text-left active:scale-[0.99]"
                         >
                           <span
                             className={cn(
@@ -214,6 +228,21 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                             )}
                           />
                         </button>
+
+                        {/* Not on the live row: adding what is already playing
+                            to the end of the queue is a request nobody makes,
+                            and a control that does nothing useful is worse than
+                            no control. */}
+                        {!live && (
+                          <button
+                            onClick={() => enqueue([set], artist?.name ?? null)}
+                            aria-label={`Add ${set.title} to the playlist`}
+                            className="flex w-10 flex-shrink-0 items-center justify-center border-l border-border/50 text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        )}
+                        </div>
                       );
                     })}
                   </div>
