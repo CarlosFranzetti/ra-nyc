@@ -16,8 +16,15 @@ import { shouldOfferTickets } from "@/lib/tickets";
 import { cn } from "@/lib/utils";
 import { PROVIDER_LABELS } from "@/types/artist";
 
+/**
+ * Every transport button, at the one size the whole app uses for a control.
+ *
+ * `.tap` is 44px in literal px — see index.css. These were 32px, which is
+ * comfortable with a mouse and mean with a thumb, on the one row of the app
+ * most likely to be used one-handed and walking.
+ */
 const controlClass =
-  "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-foreground " +
+  "tap rounded-full text-foreground " +
   "transition-smooth active:scale-90 disabled:opacity-30 disabled:active:scale-100";
 
 /**
@@ -180,7 +187,7 @@ export function PlayerBar() {
                     onClick={() => jumpTo(position)}
                     aria-current={live ? "true" : undefined}
                     className={cn(
-                      "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-smooth active:scale-[0.99]",
+                      "tap-row min-w-0 flex-1 gap-2 rounded-md px-2 text-left transition-smooth active:scale-[0.99]",
                       live ? "bg-secondary" : "hover:bg-accent active:bg-accent",
                     )}
                   >
@@ -212,7 +219,7 @@ export function PlayerBar() {
                       type="button"
                       onClick={() => removeAt(position)}
                       aria-label={`Remove ${set.title} from the playlist`}
-                      className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
+                      className="tap rounded-full text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
                     >
                       <X className="h-3 w-3" />
                     </button>

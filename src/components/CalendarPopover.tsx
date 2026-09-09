@@ -54,7 +54,7 @@ export function CalendarPopover({
       <Popover.Trigger asChild>
         <button
           aria-label="Pick a date"
-          className="p-[5px] rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
+          className="tap rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
         >
           <CalendarDays className="h-[20px] w-[20px]" />
         </button>
@@ -80,18 +80,21 @@ export function CalendarPopover({
             // `2rem`, and rem is exactly what this component is opting out of.
             styles={{
               month_caption: { fontSize: px(14) },
-              weekday: { width: px(32), fontSize: px(10) },
-              day: { width: px(32), height: px(32), fontSize: px(12) },
-              day_button: { width: px(32), height: px(32) },
+              weekday: { width: px(36), fontSize: px(10) },
+              day: { width: px(36), height: px(36), fontSize: px(12) },
+              day_button: { width: px(36), height: px(36) },
             }}
             classNames={{
               months: "text-popover-foreground",
               month_caption: "flex justify-center py-1 font-semibold",
               nav: "flex items-center justify-between absolute inset-x-1 top-1",
+              // tap-grow rather than `.tap`: 44px boxes here would collide with
+              // the month caption between them, so the visible arrows stay put
+              // and their touch area is grown invisibly. See index.css.
               button_previous:
-                "p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent",
+                "tap-grow p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent",
               button_next:
-                "p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent",
+                "tap-grow p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent",
               month_grid: "w-full border-collapse mt-1",
               weekdays: "flex",
               weekday: "font-medium uppercase text-muted-foreground",

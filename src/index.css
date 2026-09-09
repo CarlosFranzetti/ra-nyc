@@ -411,6 +411,62 @@
 .text-size-5 { --text-scale: 1.338; }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Tap targets.
+
+   One size for a control you press, and it does not move.
+
+   The app had five different sizes for "an icon button" — 30px in the header,
+   32px in the transport, 28px for a playlist's remove, 40px beside a set, and
+   about 22px on a lineup chip's `+`. Nothing was *wrong* with any one of them
+   individually, which is how it happened: each was chosen to suit the row it
+   sat in. The result is that the same gesture needs a different amount of
+   accuracy depending on where you happen to be, and the smallest of them were
+   genuinely hard to hit on a moving train.
+
+   44px is the figure both Apple and Google publish as the smallest target a
+   thumb hits reliably, and it is not a coincidence that it is roughly the width
+   of one.
+
+   **In literal px, never the density-scaled scale.** This is the same rule the
+   flyer and the icons already follow, for the same reason: how big a control is
+   is not a matter of taste about how much air the layout has, and Density at
+   Tight had been shrinking some of these below 30px. Text size cannot move them
+   either — a button that grows with the type is a button whose position you
+   have to re-learn every time you change a preference.
+
+   `.tap` is the whole control. `.tap-grow` is for the few that must *look*
+   small — a chip's `+`, sat in a wrapped row — where the visible box stays as
+   laid out and the touch area is grown around it invisibly. The inset is 6px
+   rather than the 10 it would like, because the rows it appears in are 6px
+   apart and a target that overlaps its neighbour steals taps from it.
+   ───────────────────────────────────────────────────────────────────────────── */
+.tap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+}
+
+/* Same rule, height only — for controls in a row that sets its own width. */
+.tap-row {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.tap-grow {
+  position: relative;
+}
+
+.tap-grow::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    The Text size slider.
 
    A native `input[type=range]`, not six buttons and a pair of steppers. The

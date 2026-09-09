@@ -160,7 +160,7 @@ export function EventDetailsSheet({
         <DrawerClose asChild>
           <button
             aria-label="Close"
-            className="absolute right-3 top-4 z-20 rounded-full bg-background/80 p-2 text-foreground backdrop-blur-sm transition-transform active:scale-95"
+            className="tap absolute right-3 top-4 z-20 rounded-full bg-background/80 text-foreground backdrop-blur-sm transition-transform active:scale-95"
           >
             <X className="h-5 w-5" />
           </button>
@@ -252,7 +252,7 @@ export function EventDetailsSheet({
                 map, which is the question a venue name actually raises. */}
             <button
               onClick={() => onSelectVenue(event.venue.name)}
-              className="-mx-1 flex items-center gap-2 rounded-md px-1 py-0.5 text-left text-sm font-semibold text-venue transition-smooth active:scale-[0.98] active:bg-accent"
+              className="tap-row -mx-1 gap-2 rounded-md px-1 text-left text-sm font-semibold text-venue transition-smooth active:scale-[0.98] active:bg-accent"
             >
               <MapPin className="h-4 w-4 flex-shrink-0" />
               <span className="underline decoration-venue/30 underline-offset-4">
@@ -289,10 +289,12 @@ export function EventDetailsSheet({
                   <button
                     onClick={() => preview.start(event)}
                     disabled={preview.preparing}
-                    // h-[2.3rem]: the 2.5rem this replaced, less 8%. A fixed
-                    // height rather than padding so the spinner and the triangle
-                    // cannot change it between states.
-                    className="press flex h-[2.3rem] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-primary/50 bg-card text-[0.8125rem] font-medium text-foreground disabled:opacity-60"
+                    // A fixed height rather than padding, so the spinner and
+                    // the triangle cannot change it between states — and in
+                    // literal px rather than the 2.3rem it was, so the Text size
+                    // preference cannot either. At the tightest setting that rem
+                    // came out 37px; this is the 44 every control uses.
+                    className="press flex h-[44px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-primary/50 bg-card text-[0.8125rem] font-medium text-foreground disabled:opacity-60"
                   >
                     {preview.preparing ? (
                       <Loader className="h-3.5 w-3.5 animate-spin text-play" />
@@ -306,7 +308,7 @@ export function EventDetailsSheet({
                     onClick={() => playlist.addNight(event)}
                     disabled={playlist.pending !== null}
                     aria-label="Add the whole lineup to the playlist"
-                    className="press flex h-[2.3rem] w-[2.3rem] flex-shrink-0 items-center justify-center rounded-lg border border-border/60 bg-card text-muted-foreground disabled:opacity-60"
+                    className="press flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-lg border border-border/60 bg-card text-muted-foreground disabled:opacity-60"
                   >
                     {playlist.pending === NIGHT_KEY ? (
                       <Loader className="h-3.5 w-3.5 animate-spin" />
@@ -329,14 +331,18 @@ export function EventDetailsSheet({
                     return (
                       <div
                         key={key}
-                        className="flex items-stretch overflow-hidden rounded-full border border-border/60 bg-secondary text-xs text-secondary-foreground"
+                        // min-h in literal px, like every other control: a
+                        // chip is small by nature but it is still a thing you
+                        // press, and at 22px it was the least reliable target
+                        // in the app.
+                        className="flex min-h-[34px] items-stretch overflow-hidden rounded-full border border-border/60 bg-secondary text-xs text-secondary-foreground"
                       >
                         <button
                           onClick={() => onSelectArtist(artist)}
                           onPointerDown={() => prefetchArtist(artist.id, artist.name)}
                           onTouchStart={() => prefetchArtist(artist.id, artist.name)}
                           onMouseEnter={() => prefetchArtist(artist.id, artist.name)}
-                          className="flex items-center gap-1 py-0.5 pl-2 pr-1 transition-smooth hover:text-primary active:scale-95"
+                          className="flex items-center gap-1 pl-3 pr-2 transition-smooth hover:text-primary active:scale-95"
                         >
                           {/* A name on its own does not look like a control. The
                               same green triangle as the preview button says these
@@ -349,12 +355,12 @@ export function EventDetailsSheet({
                           onClick={() => playlist.addArtist(event, artist)}
                           disabled={playlist.pending !== null}
                           aria-label={`Add ${artist.name} to the playlist`}
-                          className="flex flex-shrink-0 items-center border-l border-border/60 px-1.5 text-muted-foreground transition-smooth hover:text-primary active:scale-95 disabled:opacity-50"
+                          className="flex w-[34px] flex-shrink-0 items-center justify-center border-l border-border/60 text-muted-foreground transition-smooth hover:text-primary active:scale-95 disabled:opacity-50"
                         >
                           {playlist.pending === key ? (
                             <Loader className="h-2.5 w-2.5 animate-spin" />
                           ) : (
-                            <Plus className="h-3 w-3" />
+                            <Plus className="h-3.5 w-3.5" />
                           )}
                         </button>
                       </div>
@@ -363,7 +369,7 @@ export function EventDetailsSheet({
                   {hiddenArtists > 0 && (
                     <button
                       onClick={() => setLineupExpanded(true)}
-                      className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground active:scale-95"
+                      className="flex min-h-[34px] items-center rounded-full border border-dashed border-border px-3 text-xs text-muted-foreground active:scale-95"
                     >
                       +{hiddenArtists} more
                     </button>
@@ -385,7 +391,7 @@ export function EventDetailsSheet({
                     from: "event-sheet",
                   })
                 }
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground transition-smooth hover:opacity-90 active:scale-[0.99]"
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-smooth hover:opacity-90 active:scale-[0.99]"
               >
                 View on RA
                 <ExternalLink className="h-4 w-4" />

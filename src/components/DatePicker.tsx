@@ -124,11 +124,18 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
               isToday ? `Today, ${format(date, "d MMMM")}` : format(date, "EEEE d MMMM")
             }
             className={cn(
-              // 2.28rem is 3.25 less thirty percent. Still rem, so it tracks
-              // the text-size preference — the chips get narrower, not
-              // permanently 36px regardless of how big the type inside them is.
-              // Type sizes are untouched; only the box around them moved.
-              "flex w-[2.28rem] flex-shrink-0 snap-start flex-col items-center rounded-md border py-1.5 transition-all duration-200 active:scale-95",
+              // Literal px, box and type both — the rail is a row of controls,
+              // not text you read, and it now follows the same rule as the
+              // transport, the header icons and the calendar: a control is a
+              // constant size whatever the preferences say.
+              //
+              // It used to be 2.28rem wide with rem type inside, which tracked
+              // the Text size preference. That reads well as a principle and
+              // badly as a control: at the tightest setting the chips were
+              // 36x46 and at the loosest 49x68, so the thing you tap to change
+              // day changed size and position depending on preferences set for
+              // reading listings. 44px is the width every other control uses.
+              "flex w-[44px] flex-shrink-0 snap-start flex-col items-center rounded-md border py-[6px] transition-all duration-200 active:scale-95",
               isSelected
                 // Filled, ringed and slightly raised. On a rail where every
                 // chip looks alike, one of those three alone reads as a hover
@@ -151,8 +158,8 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
                 // size is what keeps it on one line — wrapping would make this
                 // chip taller than its neighbours and put a step in the rail.
                 isToday
-                  ? "text-[0.4375rem] tracking-tight"
-                  : "text-[0.5rem] tracking-wide",
+                  ? "text-[7px] tracking-tight"
+                  : "text-[8px] tracking-wide",
                 isSelected ? "text-primary-foreground" : "text-muted-foreground",
               )}
             >
@@ -160,13 +167,13 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
             </span>
             <span
               className={cn(
-                "text-xs font-semibold",
+                "text-[13px] font-semibold",
                 isSelected ? "text-primary-foreground" : "text-foreground",
               )}
             >
               {format(date, "d")}
             </span>
-            <span className="text-[0.4375rem] uppercase tracking-wider opacity-60">
+            <span className="text-[7px] uppercase tracking-wider opacity-60">
               {format(date, "MMM")}
             </span>
           </button>

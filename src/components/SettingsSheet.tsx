@@ -189,7 +189,7 @@ export function SettingsSheet({
       <DrawerTrigger asChild>
         <button
           aria-label="Customize"
-          className="p-[5px] rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
+          className="tap rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
         >
           <Settings className="h-[20px] w-[20px]" />
         </button>
