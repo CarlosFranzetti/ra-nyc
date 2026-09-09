@@ -116,7 +116,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
           <button
             onClick={() => onOpenChange(false)}
             aria-label="Back to event"
-            className="-ml-1 flex items-center gap-1 rounded-md py-1 pl-1 pr-2 text-sm text-muted-foreground transition-smooth active:scale-95 active:text-foreground"
+            className="tap-row -ml-1 gap-1 rounded-md pl-1 pr-3 text-sm text-muted-foreground transition-smooth active:scale-95 active:text-foreground"
           >
             <ChevronLeft className="h-5 w-5" />
             Back
@@ -237,7 +237,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                           <button
                             onClick={() => enqueue([set], artist?.name ?? null)}
                             aria-label={`Add ${set.title} to the playlist`}
-                            className="flex w-10 flex-shrink-0 items-center justify-center border-l border-border/50 text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
+                            className="tap border-l border-border/50 text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
                           >
                             <Plus className="h-4 w-4" />
                           </button>

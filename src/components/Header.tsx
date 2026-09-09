@@ -118,7 +118,7 @@ export function Header({
           Airy it was taking 22px above the wordmark — a quarter of the header —
           to separate a title from a browser toolbar it is already separated
           from. Small and constant is the whole requirement. */}
-      <div className="shell relative flex items-center justify-between px-4 py-[5px]">
+      <div className="shell relative flex items-center justify-between px-3">
         {/* A logo, not a heading — so it is deliberately outside every
             preference axis. It used to inherit the `type-*` class from <html>,
             which meant the app's own name was rendered in whichever typeface
@@ -161,7 +161,7 @@ export function Header({
           }}
           aria-live="polite"
           aria-label={`${caption}. Tap to switch between the date and the number of events.`}
-          className="absolute left-1/2 -translate-x-1/2 rounded px-2 py-0.5 text-xs font-semibold text-primary"
+          className="tap-row absolute left-1/2 -translate-x-1/2 justify-center rounded px-2 text-xs font-semibold text-primary"
         >
           {/* Keyed on the text so React remounts the span on every swap, which
               is what restarts the fade — a plain text change would swap the
@@ -178,13 +178,13 @@ export function Header({
           <button
             onClick={onSearchClick}
             aria-label="Search events"
-            className="p-[5px] rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
+            className="tap rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
           >
             <Search className="h-[20px] w-[20px]" />
           </button>
           <Suspense
             fallback={
-              <span className="p-2 text-muted-foreground">
+              <span className="tap text-muted-foreground">
                 <CalendarDays className="h-[20px] w-[20px]" />
               </span>
             }

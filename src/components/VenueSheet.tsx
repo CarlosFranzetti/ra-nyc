@@ -134,7 +134,9 @@ export function VenueSheet({
       : [];
 
   const rideClass =
-    "flex flex-col items-center justify-center gap-1 rounded-lg border border-border/50 bg-card py-2.5 text-[0.6875rem] font-medium text-foreground transition-smooth active:scale-[0.98] active:bg-accent";
+    // min-h in literal px: these three are the whole point of the sheet
+    // and they are pressed on a street, one-handed.
+    "flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-lg border border-border/50 bg-card py-2 text-[0.6875rem] font-medium text-foreground transition-smooth active:scale-[0.98] active:bg-accent";
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>

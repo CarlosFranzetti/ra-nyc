@@ -275,7 +275,10 @@ export function SearchSheet({
                   inputRef.current?.focus();
                 }}
                 aria-label="Clear search"
-                className="flex-shrink-0 text-muted-foreground active:scale-90"
+                // tap-grow, not `.tap`: a 44px box inside the field would push
+                // the field's own height around it. The glyph stays 16px and
+                // the touch area is grown invisibly — see index.css.
+                className="tap-grow -mr-1 flex-shrink-0 p-1 text-muted-foreground active:scale-90"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -283,7 +286,7 @@ export function SearchSheet({
           </div>
           <button
             onClick={() => onOpenChange(false)}
-            className="flex-shrink-0 rounded-md px-1 py-1 text-sm text-muted-foreground transition-smooth active:scale-95 active:text-foreground"
+            className="tap-row flex-shrink-0 justify-center rounded-md px-2 text-sm text-muted-foreground transition-smooth active:scale-95 active:text-foreground"
           >
             Cancel
           </button>
@@ -314,7 +317,7 @@ export function SearchSheet({
                 <button
                   type="button"
                   onClick={clearRecent}
-                  className="flex-shrink-0 text-[0.6875rem] text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors active:text-foreground"
+                  className="tap-grow flex-shrink-0 px-1 text-[0.6875rem] text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors active:text-foreground"
                 >
                   Clear
                 </button>
@@ -328,7 +331,7 @@ export function SearchSheet({
                       setQuery(term);
                       inputRef.current?.focus();
                     }}
-                    className="max-w-full flex-shrink-0 truncate rounded-full border border-border/70 px-2.5 py-1 text-[0.6875rem] leading-tight text-muted-foreground transition-colors active:border-primary active:text-primary"
+                    className="flex min-h-[34px] max-w-full flex-shrink-0 items-center truncate rounded-full border border-border/70 px-3 text-[0.6875rem] leading-tight text-muted-foreground transition-colors active:border-primary active:text-primary"
                   >
                     {term}
                   </button>

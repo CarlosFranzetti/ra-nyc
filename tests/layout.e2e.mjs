@@ -415,6 +415,151 @@ check("and does not move type",
   await ctx.close();
 }
 
+// ── tap targets: big enough, and the same size whatever the preferences say
+//
+// The app had five different sizes for "an icon button", the smallest of them
+// about 22px. Two properties are asserted here, and the second is the one that
+// keeps drifting back: a control must be a usable size, *and* it must not be a
+// function of the Density or Text size preferences. Both of those scale the
+// spacing scale, and several controls were sized out of it — so picking Tight
+// shrank the things you press.
+{
+  /**
+   * Everything on screen you can press, with its real touch area.
+   *
+   * `getBoundingClientRect` does not include a pseudo-element that overflows
+   * its box, and `.tap-grow` grows a small control's touch area by exactly
+   * that means — so the 6px inset it declares is added back here. Without
+   * that, the controls that are deliberately small-but-padded would read as
+   * failures.
+   */
+  const measure = (density, size) => async () => {
+    const ctx = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    const p = await ctx.newPage();
+    await p.route("**/api/events*", (route) =>
+      route.fulfill({ contentType: "application/json", body: PAYLOAD }),
+    );
+    await p.route("**/images.ra.co/**", (route) => route.abort());
+    await p.addInitScript(
+      ([d, t]) =>
+        localStorage.setItem(
+          "ra-theme-settings",
+          JSON.stringify({
+            colorTheme: "neon",
+            layoutDensity: d,
+            typography: "system",
+            textSize: t,
+          }),
+        ),
+      [density, size],
+    );
+    await p.goto(BASE, { waitUntil: "domcontentloaded" });
+    await p.waitForSelector("article", { timeout: 20000 });
+    await p.waitForTimeout(600);
+
+    // Open the event sheet too, so the controls added with the playlist — the
+    // lineup chips and their `+` — are on screen and measured.
+    await p.locator("article").first().click();
+    await p.waitForTimeout(700);
+
+    const found = await p.evaluate(() => {
+      const GROW = 6; // matches `.tap-grow` in index.css
+      const out = [];
+      for (const el of document.querySelectorAll(
+        'button, a[href], [role="button"]',
+      )) {
+        const box = el.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) continue;
+        if (getComputedStyle(el).visibility === "hidden") continue;
+        const grow = el.classList.contains("tap-grow") ? GROW * 2 : 0;
+        out.push({
+          label:
+            el.getAttribute("aria-label") ||
+            (el.textContent ?? "").trim().slice(0, 24) ||
+            el.tagName.toLowerCase(),
+          w: Math.round(box.width + grow),
+          h: Math.round(box.height + grow),
+          // An event card is a whole row of content that happens to be
+          // tappable, not a control — it *should* grow with density and text
+          // size, and every other listing does. Tagged rather than dropped, so
+          // it still has to clear the size floor.
+          row: Boolean(el.querySelector("article")),
+        });
+      }
+      return out;
+    });
+    await ctx.close();
+    return found;
+  };
+
+  const worst = await measure("tight", "0")();
+  // 32px is the floor asserted rather than 44, deliberately: a wrapped chip is
+  // 34px tall and several hundred wide, and demanding 44 in both directions
+  // would mean either square chips or an exemption list that quietly grows
+  // until the check means nothing. 32 is the number every control in the app
+  // now clears at the tightest setting, so a regression trips it.
+  const FLOOR = 32;
+  const small = worst.filter((c) => c.w < FLOOR || c.h < FLOOR);
+  check(
+    "every control is a usable size at the tightest setting",
+    small.length === 0,
+    small.length
+      ? small.map((c) => `${c.label} ${c.w}x${c.h}`).join("; ")
+      : `${worst.length} controls, smallest ${Math.min(
+          ...worst.map((c) => Math.min(c.w, c.h)),
+        )}px`,
+  );
+
+  // And constant: the same controls, at the loosest density and the largest
+  // text, measure the same. This is what stops a control being sized out of the
+  // spacing scale again.
+  const loosest = await measure("airy", "5")();
+  // Height, not width.
+  //
+  // A control carrying a word — a filter chip, the header's caption — *should*
+  // get wider when the type does, and asserting otherwise would be demanding
+  // that text overflow its own button. Height is the dimension that decides
+  // whether a thumb lands on it and whether the row above shifts, and it is the
+  // one that was being sized out of the density scale.
+  const byLabel = new Map(worst.map((c) => [c.label, c]));
+  const moved = loosest.filter((c) => {
+    if (c.row) return false;
+    const before = byLabel.get(c.label);
+    return before && before.h !== c.h;
+  });
+  check(
+    "and the same height at every density and text size",
+    moved.length === 0,
+    moved.length
+      ? moved
+          .slice(0, 4)
+          .map((c) => `${c.label} ${byLabel.get(c.label).h} -> ${c.h}`)
+          .join("; ")
+      : `${loosest.length} controls unchanged`,
+  );
+
+  // The icon-only controls are square and fixed in both dimensions, since they
+  // carry no text to grow. Checked by name, so this cannot be satisfied by a
+  // control quietly disappearing from the screen.
+  const ICONS = ["Search events", "Pick a date", "Customize"];
+  const square = (list) =>
+    ICONS.map((name) => list.find((c) => c.label === name)).map(
+      (c) => `${c?.w}x${c?.h}`,
+    );
+  const tightIcons = square(worst);
+  const airyIcons = square(loosest);
+  check(
+    "and the header's icon buttons are 44px square either way",
+    tightIcons.every((size) => size === "44x44") &&
+      airyIcons.join() === tightIcons.join(),
+    `${tightIcons.join(", ")} / ${airyIcons.join(", ")}`,
+  );
+}
+
 await browser.close();
 shutdown();
 

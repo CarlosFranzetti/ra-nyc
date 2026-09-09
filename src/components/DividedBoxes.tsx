@@ -114,7 +114,7 @@ export function DividedBoxes({ onExit }: { onExit: () => void }) {
         <button
           onClick={onExit}
           aria-label="Close"
-          className="-ml-1 rounded-full p-1 text-muted-foreground transition-smooth active:scale-90 active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="tap -ml-1 rounded-full text-muted-foreground transition-smooth active:scale-90 active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <X size={18} strokeWidth={2.5} />
         </button>
@@ -129,7 +129,7 @@ export function DividedBoxes({ onExit }: { onExit: () => void }) {
         <button
           onClick={onExit}
           aria-label="Close"
-          className="-mr-1 rounded-full p-1 text-muted-foreground transition-smooth active:scale-90 active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="tap -mr-1 rounded-full text-muted-foreground transition-smooth active:scale-90 active:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <X size={18} strokeWidth={2.5} />
         </button>
