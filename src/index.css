@@ -171,7 +171,7 @@
 
      Base        IBM Plex Sans, at the app's own size
      Midnight    the system face, a step larger
-     Late night  Barlow Semi Condensed, larger again and narrower
+     Late        Barlow Semi Condensed, larger again and narrower
 
    The names are the hour, which is the honest way to describe what the setting
    is for. Nobody picks a typeface; they pick how hard it currently is to read
@@ -186,7 +186,7 @@
    literal px, for the reasons written next to `.tap` — so the ladder buys type
    size without the buttons wandering.
 
-   ## Why Late night is *narrower*
+   ## Why Late is *narrower*
 
    That is the part that makes the third rung possible at all. A wider face at
    +12% would push two-line titles to three and undo the legibility it just
@@ -216,7 +216,7 @@
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-.type-latenight {
+.type-late {
   --type-scale: 1.12;
   /* 'Arial Narrow' last: if the webfont never arrives, something narrow beats
      something wide, because the layout above has been built around the width. */
@@ -238,11 +238,11 @@
 .type-base h3,
 .type-base .type-headline,
 .type-base.type-headline,
-.type-latenight h1,
-.type-latenight h2,
-.type-latenight h3,
-.type-latenight .type-headline,
-.type-latenight.type-headline {
+.type-late h1,
+.type-late h2,
+.type-late h3,
+.type-late .type-headline,
+.type-late.type-headline {
   font-weight: 600;
 }
 
@@ -258,11 +258,11 @@
    large x-height is what makes a condensed face hard to read at length, and
    this is a listings app where titles run long — the rung that exists to be
    *readable* is the last one that should be set tight. */
-.type-latenight h1,
-.type-latenight h2,
-.type-latenight h3,
-.type-latenight .type-headline,
-.type-latenight.type-headline {
+.type-late h1,
+.type-late h2,
+.type-late h3,
+.type-late .type-headline,
+.type-late.type-headline {
   letter-spacing: 0.008em;
   line-height: 1.25;
 }
@@ -1041,4 +1041,31 @@ html {
 [data-vaul-overlay] {
   animation-duration: 0.525s;
   animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* The transport arriving and leaving.
+
+   Everything else that appears over the listings slides; the bar did not,
+   because it is mounted by state rather than by a sheet library and nothing was
+   ever written for it. Beside four sheets that all slide, an element that
+   materialises between two frames reads as a dropped frame — and the transport
+   is the one surface that most needs to announce itself, because it appears
+   without being opened.
+
+   Enter only. There is no exit here: the bar unmounts the instant `current`
+   goes null, and holding it on screen for an exit would mean holding a
+   transport for a set that has already stopped. */
+@keyframes player-enter {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.player-enter {
+  animation: player-enter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

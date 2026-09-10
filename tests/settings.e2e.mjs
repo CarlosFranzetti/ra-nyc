@@ -246,8 +246,8 @@ const face = () =>
 
 await fontSlider.click({ position: { x: (await fontSlider.boundingBox()).width - 4, y: 14 } });
 await page.waitForTimeout(250);
-check("sliding it to the end selects the late night face",
-  (await face()) === "type-latenight", (await face()) ?? "none");
+check("sliding it to the end selects the Late face",
+  (await face()) === "type-late", (await face()) ?? "none");
 
 await fontSlider.click({ position: { x: 2, y: 14 } });
 await page.waitForTimeout(250);

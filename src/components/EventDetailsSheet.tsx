@@ -299,7 +299,7 @@ export function EventDetailsSheet({
                     {preview.preparing ? (
                       <Loader className="h-3.5 w-3.5 animate-spin text-play" />
                     ) : (
-                      <Play className="h-3.5 w-3.5 fill-play text-play" />
+                      <Play className="h-4 w-4 fill-play text-play" />
                     )}
                     {preview.preparing ? "Finding sets…" : "Preview the night"}
                   </button>
@@ -313,7 +313,7 @@ export function EventDetailsSheet({
                     {playlist.pending === NIGHT_KEY ? (
                       <Loader className="h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Plus className="h-4 w-4" />
+                      <Plus className="h-5 w-5" />
                     )}
                   </button>
                 </div>
@@ -348,7 +348,7 @@ export function EventDetailsSheet({
                               same green triangle as the preview button says these
                               make sound too, and says it in one glyph rather than
                               the caption above that people were not reading. */}
-                          <Play className="h-2.5 w-2.5 flex-shrink-0 fill-play text-play" />
+                          <Play className="h-3 w-3 flex-shrink-0 fill-play text-play" />
                           {artist.name}
                         </button>
                         <button
@@ -360,7 +360,7 @@ export function EventDetailsSheet({
                           {playlist.pending === key ? (
                             <Loader className="h-2.5 w-2.5 animate-spin" />
                           ) : (
-                            <Plus className="h-3.5 w-3.5" />
+                            <Plus className="h-4 w-4" />
                           )}
                         </button>
                       </div>

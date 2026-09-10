@@ -315,8 +315,8 @@ check("Midnight hands over to the system face",
 // Body as well as headings: this slot used to be a heading-only pairing with a
 // display face, and it is not one any more — a night mode that only enlarges
 // titles has missed the point.
-const late = await measure({ width: 390, height: 844, typography: "latenight" });
-check("Late night reaches headings", late.titleFont === "Barlow Semi Condensed",
+const late = await measure({ width: 390, height: 844, typography: "late" });
+check("Late reaches headings", late.titleFont === "Barlow Semi Condensed",
   late.titleFont);
 check("and body text too, unlike the display face it replaced",
   late.bodyFont === "Barlow Semi Condensed", late.bodyFont);
@@ -443,7 +443,10 @@ check("and does not move type",
   await p.route("**/images.ra.co/**", (route) => route.abort());
   await p.goto(BASE, { waitUntil: "domcontentloaded" });
   await p.waitForSelector("article", { timeout: 20000 });
-  await p.waitForTimeout(1500);
+  // Long enough for an idle callback. The scan deliberately waits for the
+  // browser to go idle — with a 2s timeout as its backstop — so it is not
+  // competing with the first paint, and a 1.5s wait here raced it.
+  await p.waitForTimeout(3500);
 
   // From the *night*, not the calendar date.
   //
