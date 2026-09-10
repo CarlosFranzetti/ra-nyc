@@ -87,7 +87,7 @@ function readSettings(): ThemeSettings {
   const defaults: ThemeSettings = {
     colorTheme,
     layoutDensity: "default",
-    typography: "system",
+    typography: "base",
     textSize: "0",
   };
 
@@ -99,7 +99,7 @@ function readSettings(): ThemeSettings {
     return {
       colorTheme,
       layoutDensity: oneOf(DENSITIES, parsed.layoutDensity, "default"),
-      typography: oneOf(TYPOGRAPHIES, parsed.typography, "system"),
+      typography: oneOf(TYPOGRAPHIES, parsed.typography, "base"),
       // Both of these unions were renamed, so anyone carrying the old values
       // ("larger", "display") lands on the fallback rather than on a class that
       // does not exist. `oneOf` already did that; it is the reason the rename

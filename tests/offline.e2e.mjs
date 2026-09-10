@@ -63,7 +63,28 @@ const TYPES = {
   ".webmanifest": "application/manifest+json", ".txt": "text/plain",
 };
 
-const TODAY = new Date().toISOString().slice(0, 10);
+/**
+ * The night, not the calendar date.
+ *
+ * The app opens on the night in progress, which before 3:30am is yesterday —
+ * see lib/night.ts. This file used `toISOString().slice(0, 10)`, so between
+ * midnight and 3:30am it asked the worker to refresh a day the app was not
+ * looking at: the message arrived, the right query was invalidated, and the
+ * list on screen — a different day — correctly did not change. The test read
+ * that as the correction failing.
+ *
+ * A second copy of the rollover rather than an import, like the size ladder in
+ * the settings suite: a change to it has to be meant.
+ */
+const TODAY = (() => {
+  const now = new Date();
+  const night = new Date(now);
+  if (now.getHours() * 60 + now.getMinutes() < 3 * 60 + 30) {
+    night.setDate(night.getDate() - 1);
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${night.getFullYear()}-${pad(night.getMonth() + 1)}-${pad(night.getDate())}`;
+})();
 // The smallest possible valid PNG (a 1x1 transparent pixel) — enough for the
 // browser to treat it as a real image (decodes, paints, no broken-image icon)
 // without needing real flyer bytes.
