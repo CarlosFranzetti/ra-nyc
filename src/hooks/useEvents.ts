@@ -80,9 +80,12 @@ export const SCAN_DAYS = 7;
  * database — could find it. That is exactly the report this fixes, alongside
  * `announceUpdate` in the service worker.
  *
- * `refetchQueries`, not `prefetchQuery`: prefetch respects `staleTime` and does
- * nothing for a day the cache thinks is fresh, which on a cold load restored
- * from disk is most of them. The point here is to go and ask.
+ * Which of the two React Query calls is used depends on whether the day is
+ * already in the cache, and that distinction matters: `prefetchQuery` respects
+ * `staleTime` and so does nothing for a day the cache believes is fresh — which
+ * on a cold load restored from disk is most of them — while `refetchQueries`
+ * does nothing for a day that has no query yet. Each covers what the other
+ * cannot. See the note inside for why they are no longer both fired at once.
  *
  * Fired once per mount rather than on every date change — stepping through the
  * rail should not re-scan the week each time.
@@ -92,16 +95,51 @@ export function useWeekScan(): void {
 
   useEffect(() => {
     const today = currentNight();
-    for (let offset = 0; offset < SCAN_DAYS; offset += 1) {
-      const day = format(addDays(today, offset), "yyyy-MM-dd");
-      void queryClient.refetchQueries({ queryKey: ["events", day], exact: true });
-      // A day nobody has ever loaded has no query to refetch, so seed it.
-      void queryClient.prefetchQuery({
-        queryKey: ["events", day],
-        queryFn: () => fetchEvents(day),
-        staleTime: STALE_TIME,
-      });
+    const days = Array.from({ length: SCAN_DAYS }, (_, offset) =>
+      format(addDays(today, offset), "yyyy-MM-dd"),
+    );
+
+    /**
+     * Off the critical path, and one request per day rather than two.
+     *
+     * The first version fired fourteen requests synchronously on mount — a
+     * `refetchQueries` *and* a `prefetchQuery` for each of seven days — while
+     * the night you are actually looking at was still loading. On a phone that
+     * is the scan competing with the screen, and the screen loses: the app got
+     * visibly slower to become useful, which is the opposite of the point.
+     *
+     * Two changes. `refetchQueries` is asked for only when there is a query to
+     * refetch, and `prefetchQuery` only when there is not — they were doing the
+     * same job twice, and React Query deduped the overlap by luck rather than
+     * by design. And the whole thing waits for the browser to be idle, so the
+     * first paint and the current day's fetch have the network to themselves.
+     *
+     * `requestIdleCallback` where it exists, a timeout where it does not —
+     * Safari only shipped it recently and this has to degrade rather than not
+     * run at all.
+     */
+    const scan = () => {
+      for (const day of days) {
+        const key = ["events", day];
+        if (queryClient.getQueryData(key)) {
+          void queryClient.refetchQueries({ queryKey: key, exact: true });
+        } else {
+          void queryClient.prefetchQuery({
+            queryKey: key,
+            queryFn: () => fetchEvents(day),
+            staleTime: STALE_TIME,
+          });
+        }
+      }
+    };
+
+    const idle = window.requestIdleCallback;
+    if (typeof idle === "function") {
+      const handle = idle(scan, { timeout: 2_000 });
+      return () => window.cancelIdleCallback?.(handle);
     }
+    const timer = setTimeout(scan, 600);
+    return () => clearTimeout(timer);
   }, [queryClient]);
 }
 

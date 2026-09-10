@@ -208,9 +208,9 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                             )}
                           >
                             {live && playing ? (
-                              <Pause className="h-3.5 w-3.5" />
+                              <Pause className="h-[18px] w-[18px]" />
                             ) : (
-                              <Play className="h-3.5 w-3.5" />
+                              <Play className="h-[18px] w-[18px]" />
                             )}
                           </span>
                           <span className="min-w-0 flex-1">
@@ -239,7 +239,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                             aria-label={`Add ${set.title} to the playlist`}
                             className="tap border-l border-border/50 text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
                           >
-                            <Plus className="h-4 w-4" />
+                            <Plus className="h-5 w-5" />
                           </button>
                         )}
                         </div>

@@ -163,7 +163,15 @@ export function PlayerBar() {
 
          `player-live` sits in index.css because the glow is a box-shadow off
          the *top* edge only, which Tailwind cannot express. */
-      className="player-live pointer-events-auto fixed inset-x-0 bottom-0 z-[70] border-t-2 border-primary/70 bg-background/95 pb-safe backdrop-blur-lg"
+      className={cn(
+        // Slides up when a set starts and back down when it stops, like every
+        // other surface in the app. It used to appear and vanish between two
+        // frames, which beside four sheets that slide read as a glitch — and a
+        // transport that materialises over the listings without warning is the
+        // one element that most needs to announce itself arriving.
+        "player-live pointer-events-auto fixed inset-x-0 bottom-0 z-[70] border-t-2 border-primary/70 bg-background/95 pb-safe backdrop-blur-lg",
+        "player-enter",
+      )}
     >
       {/* The playlist.
 
@@ -231,15 +239,22 @@ export function PlayerBar() {
         </div>
       )}
 
-      <div className="shell flex items-center gap-2 px-3 pt-2">
-        {/* `shown`, not `position`. While you are dragging, the thumb follows
-            your finger and the playhead does not move until you let go — so
-            reading the raw position here meant the number sat still under a
-            handle that was travelling, which looks like the scrubber is
-            ignoring you. */}
-        <span className="w-9 flex-shrink-0 text-right text-[0.5625rem] tabular-nums text-muted-foreground">
-          {formatClock(shown)}
-        </span>
+      {/* Progress, as the bar's own top edge.
+
+          It used to be a row of its own: two 36px clock labels flanking a
+          track, about 26px of a 60px transport spent on a number nobody reads
+          while walking. The elapsed time is a *reference*, not a control, and
+          the control it was attached to works perfectly well as a line.
+
+          So the line is the line. Full width, three pixels, sitting on the
+          bar's top edge where the eye already is because the accent border is
+          there — and the clocks appear only while you are actually dragging,
+          which is the one moment the number matters. That is the whole saving:
+          a row back, and the scrubber is now wider than it has ever been.
+
+          The input keeps a 20px hit area (see `.player-range`) despite the 3px
+          track, because a three-pixel target is not a target. */}
+      <div className="relative">
         <input
           type="range"
           min={0}
@@ -252,38 +267,52 @@ export function PlayerBar() {
           onPointerCancel={commitScrub}
           onKeyUp={commitScrub}
           aria-label="Seek"
+          aria-valuetext={`${formatClock(shown)} of ${formatClock(duration)}`}
           style={{ "--progress": `${percent}%` } as React.CSSProperties}
-          className="player-range min-w-0 flex-1"
+          className="player-range absolute inset-x-0 -top-[9px] z-10 w-full"
         />
-        <span className="w-9 flex-shrink-0 text-[0.5625rem] tabular-nums text-muted-foreground">
-          {formatClock(duration)}
-        </span>
+
+        {/* Only while dragging. A clock that is always on screen is a clock you
+            stop seeing; one that appears under your thumb at the moment you ask
+            for it is an answer. */}
+        {scrubbing !== null && (
+          <div className="pointer-events-none absolute inset-x-0 -top-7 flex justify-center">
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-[0.625rem] font-medium tabular-nums text-foreground shadow-lg">
+              {formatClock(shown)} / {formatClock(duration)}
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="shell flex items-center gap-1 px-2 pb-1.5">
+      {/* No vertical padding: the 56px play button sets the row's height on its
+          own, and padding on top of it was making the bar *taller* than the two
+          rows it replaced — which is the opposite of the point. 56px against
+          the 60 it used to be, with a play button nearly twice the size. */}
+      <div className="shell flex items-center gap-1 px-2">
         <button
           onClick={previous}
           disabled={!hasPrevious}
           aria-label="Previous mix"
           className={controlClass}
         >
-          <SkipBack className="h-4 w-4" />
+          <SkipBack className="h-[18px] w-[18px]" />
         </button>
 
+        {/* The one control on this bar anybody aims at in a hurry, so it is the
+            one that is bigger than the standard 44 rather than equal to it.
+            56px with a 24px glyph — the icon was 16px inside 32px, which is a
+            play button drawn at the size of a label. */}
         <button
           onClick={toggle}
           aria-label={playing ? "Pause" : "Play"}
-          className={cn(
-            controlClass,
-            "bg-primary text-primary-foreground active:bg-primary",
-          )}
+          className="flex h-[56px] w-[56px] flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-smooth active:scale-90 active:bg-primary"
         >
           {loading ? (
-            <Loader className="h-4 w-4 animate-spin" />
+            <Loader className="h-6 w-6 animate-spin" />
           ) : playing ? (
-            <Pause className="h-4 w-4" />
+            <Pause className="h-6 w-6" />
           ) : (
-            <Play className="h-4 w-4" />
+            <Play className="h-6 w-6" />
           )}
         </button>
 
@@ -293,16 +322,16 @@ export function PlayerBar() {
           aria-label="Next mix"
           className={controlClass}
         >
-          <SkipForward className="h-4 w-4" />
+          <SkipForward className="h-[18px] w-[18px]" />
         </button>
 
         <div className="mx-1 min-w-0 flex-1">
-          <p className="truncate text-[0.75rem] font-medium leading-tight text-foreground">
+          <p className="truncate text-[0.8125rem] font-medium leading-tight text-foreground">
             {current.title}
           </p>
           <p
             className={cn(
-              "truncate text-[0.625rem] leading-tight",
+              "truncate text-[0.6875rem] leading-tight",
               error ? "text-destructive" : "text-muted-foreground",
             )}
           >
@@ -316,11 +345,7 @@ export function PlayerBar() {
             so a phone paused in a pocket never gets here. That is the whole
             ethic of it: at a minute in, "where do I get tickets" is a question
             the listener now has, and answering it is help. Shown at the start it
-            would be an advert, and the app would have to be ignored to be used.
-
-            Deliberately a small link rather than a banner or a sheet: it takes
-            no space from the transport, interrupts nothing, and costs one tap
-            to ignore forever by simply not tapping it. */}
+            would be an advert, and the app would have to be ignored to be used. */}
         {ticketsVisible && source && (
           <a
             href={source.url}
@@ -348,11 +373,11 @@ export function PlayerBar() {
               listOpen ? "text-primary" : "text-muted-foreground",
             )}
           >
-            <ListMusic className="h-4 w-4" />
+            <ListMusic className="h-[18px] w-[18px]" />
             {/* How many are waiting, which is the one number worth having on a
                 closed panel — it is the difference between "there is a queue"
                 and "there is a queue with nine things in it". */}
-            <span className="absolute -right-0.5 -top-0.5 rounded-full bg-primary px-1 text-[0.5rem] font-semibold leading-[0.9rem] text-primary-foreground">
+            <span className="absolute right-0 top-0.5 rounded-full bg-primary px-1 text-[0.5rem] font-semibold leading-[0.9rem] text-primary-foreground">
               {queue.length}
             </span>
           </button>

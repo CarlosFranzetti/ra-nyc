@@ -1,6 +1,6 @@
 export const COLOR_THEMES = ["neon", "vapor", "matrix", "sunset"] as const;
 export const DENSITIES = ["tight", "default", "airy"] as const;
-export const TYPOGRAPHIES = ["base", "midnight", "latenight"] as const;
+export const TYPOGRAPHIES = ["base", "midnight", "late"] as const;
 
 /**
  * Six steps, not three, and the old default is now step 0 — the smallest.
@@ -61,7 +61,7 @@ export const DENSITY_OPTIONS: { value: LayoutDensity; label: string; desc: strin
  *
  *   Base        IBM Plex Sans at the app's own size. Where it starts.
  *   Midnight    the system face, a step larger.
- *   Late night  Barlow Semi Condensed, larger again — and narrower, which is
+ *   Late        Barlow Semi Condensed, larger again — and narrower, which is
  *               the only reason a third and larger rung fits at all.
  *
  * Fjalla One went with the old shape, and with it the "Impact but lighter"
@@ -86,5 +86,5 @@ export const TYPOGRAPHY_OPTIONS: {
 }[] = [
   { value: "base", label: "Base", desc: "Open & distinct", className: "type-base" },
   { value: "midnight", label: "Midnight", desc: "A step larger", className: "type-midnight" },
-  { value: "latenight", label: "Late night", desc: "Largest & narrow", className: "type-latenight" },
+  { value: "late", label: "Late", desc: "Largest & narrow", className: "type-late" },
 ];
