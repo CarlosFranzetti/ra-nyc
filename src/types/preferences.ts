@@ -1,6 +1,6 @@
 export const COLOR_THEMES = ["neon", "vapor", "matrix", "sunset"] as const;
 export const DENSITIES = ["tight", "default", "airy"] as const;
-export const TYPOGRAPHIES = ["system", "legible", "condensed"] as const;
+export const TYPOGRAPHIES = ["base", "midnight", "latenight"] as const;
 
 /**
  * Six steps, not three, and the old default is now step 0 — the smallest.
@@ -50,25 +50,29 @@ export const DENSITY_OPTIONS: { value: LayoutDensity; label: string; desc: strin
 ];
 
 /**
- * Three faces that cannot be mistaken for each other at a glance, ordered from
- * least to most departure from the system default.
+ * Three rungs of a legibility ladder, not three flavours of typeface.
  *
- * The third (Condensed) slot has been reaching for the same thing throughout —
- * Impact, at less than Impact's weight — and missed it twice. Anton missed on
- * weight: a genuine poster face is too much ink for a screen you read at 2am.
- * Oswald then held the weight and missed on shape, being Alternate Gothic
- * rather than a grotesque — narrower, finer, and more elegant than the thing it
- * was standing in for. Fjalla One has the proportions and stops short of the
- * weight. Full reasoning in index.css next to `.type-condensed`.
+ * The old set was System / Legible / Condensed — chosen so the three could not
+ * be mistaken for one another at a glance, which is the right goal for a font
+ * *picker* and the wrong one for this. Nobody browsing a listings app at 2am
+ * outside a warehouse wants to pick a typeface; they want the screen to get
+ * easier to read. So the axis is now how late it is, and every step up is both
+ * a more readable face and a larger one — see index.css for the sizes.
  *
- * The middle (Legible) slot had its own near-miss: Atkinson Hyperlegible is
- * genuinely designed so letters can't be confused with each other, but next to
- * system-ui at listing sizes it read as "the same font, slightly rounder" —
- * distinct on close reading, not at a glance. IBM Plex Sans replaced it: built
- * for the same job — dense UI text, not headlines — but with an a and an l
- * that read as a different typeface immediately rather than on inspection.
- * Full reasoning, including why Space Grotesk was deliberately skipped rather
- * than retried, is in index.css next to `.type-legible`.
+ *   Base        IBM Plex Sans at the app's own size. Where it starts.
+ *   Midnight    the system face, a step larger.
+ *   Late night  Barlow Semi Condensed, larger again — and narrower, which is
+ *               the only reason a third and larger rung fits at all.
+ *
+ * Fjalla One went with the old shape, and with it the "Impact but lighter"
+ * display slot that eight faces had been through. It answered the question that
+ * used to be asked here and not the one being asked now: a poster face set 12%
+ * larger is not a night mode.
+ *
+ * The stored values changed with the names, so a preference saved under the old
+ * ones no longer matches and falls back to the default — see `oneOf` in
+ * ThemeContext. That is one silent reset per person, once, in exchange for
+ * stored values that mean what they say.
  *
  * Each preview renders in its own face, which is the only honest way to show a
  * font picker.
@@ -80,7 +84,7 @@ export const TYPOGRAPHY_OPTIONS: {
   /** Applied to the option's own label, so the button shows what it sells. */
   className: string;
 }[] = [
-  { value: "system", label: "System", desc: "Clean & native", className: "type-system" },
-  { value: "legible", label: "Legible", desc: "Open & distinct", className: "type-legible" },
-  { value: "condensed", label: "Condensed", desc: "Tall & narrow", className: "type-condensed type-headline" },
+  { value: "base", label: "Base", desc: "Open & distinct", className: "type-base" },
+  { value: "midnight", label: "Midnight", desc: "A step larger", className: "type-midnight" },
+  { value: "latenight", label: "Late night", desc: "Largest & narrow", className: "type-latenight" },
 ];

@@ -93,7 +93,7 @@ for (let attempt = 0; ; attempt += 1) {
 const browser = await chromium.launch({ executablePath: findChromium() });
 
 /** Loads the app at a viewport with preferences pre-seeded, and measures it. */
-async function measure({ width, height, density = "default", textSize = "0", typography = "legible" }) {
+async function measure({ width, height, density = "default", textSize = "0", typography = "base" }) {
   const context = await browser.newContext({ viewport: { width, height } });
   const page = await context.newPage();
   await page.route("**/api/events*", (route) =>
@@ -110,6 +110,15 @@ async function measure({ width, height, density = "default", textSize = "0", typ
   );
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("text=Event number 0", { timeout: 20000 });
+  // The webfonts load async (`media="print" onload` in index.html), and
+  // `getComputedStyle` reports the *declared* family whether or not the file
+  // ever arrived. So a width probe taken before they land measures the fallback
+  // and reads identical for every face — which is exactly what it did, while
+  // the family assertions beside it passed and looked like proof.
+  //
+  // `.then(() => true)` because `document.fonts.ready` resolves to a
+  // FontFaceSet, which Playwright cannot serialise back across the boundary.
+  await page.evaluate(() => document.fonts.ready.then(() => true));
   await page.waitForTimeout(900);
 
   const out = await page.evaluate(() => {
@@ -290,29 +299,58 @@ check("desktop type is larger than phone type",
   desktop.rootFontSize > phone.rootFontSize,
   `${phone.rootFontSize}px vs ${desktop.rootFontSize}px`);
 
-// ── typography preference actually applies
-check("the legible preference selects a distinct family",
+// ── typography is a legibility ladder, not three flavours
+//
+// Base / Midnight / Late night, each rung a more readable face *and* a larger
+// one. The three properties below are the whole feature, and the third is the
+// one that makes the third rung possible at all.
+check("Base sets a distinct family",
   phone.titleFont === "IBM Plex Sans", phone.titleFont);
-const systemType = await measure({ width: 390, height: 844, typography: "system" });
-check("and the system preference does not", systemType.titleFont !== "IBM Plex Sans",
-  systemType.titleFont);
 
-// Condensed is a heading-only pairing, so the family has to be asserted on a
-// heading and the body checked separately — that split is the whole option.
-const condensed = await measure({ width: 390, height: 844, typography: "condensed" });
-check("the condensed preference reaches headings", condensed.titleFont === "Fjalla One",
-  condensed.titleFont);
-check("and leaves body text to the system sans",
-  condensed.bodyFont !== "Fjalla One", condensed.bodyFont);
+const midnight = await measure({ width: 390, height: 844, typography: "midnight" });
+check("Midnight hands over to the system face",
+  midnight.titleFont !== "IBM Plex Sans" && midnight.titleFont !== "Barlow Semi Condensed",
+  midnight.titleFont);
 
-// Anton came out of this slot because it ships one weight and that weight is a
-// poster. Fjalla One also ships one weight, and this is the assertion that the
-// distinction is real: 400, not the 600 the headline rules ask for elsewhere.
-// If that ever reads back as 600 the browser is synthesising a bold from a
-// family that has none, which is the smeared outline this slot exists to avoid.
-check("neither display face sets headings at full bold",
-  phone.titleWeight === "600" && condensed.titleWeight === "400",
-  `legible ${phone.titleWeight}, condensed ${condensed.titleWeight}`);
+// Body as well as headings: this slot used to be a heading-only pairing with a
+// display face, and it is not one any more — a night mode that only enlarges
+// titles has missed the point.
+const late = await measure({ width: 390, height: 844, typography: "latenight" });
+check("Late night reaches headings", late.titleFont === "Barlow Semi Condensed",
+  late.titleFont);
+check("and body text too, unlike the display face it replaced",
+  late.bodyFont === "Barlow Semi Condensed", late.bodyFont);
+
+// Each rung larger than the last. This is what `--type-scale` buys, and it is
+// the half of the request that a font swap alone would not deliver.
+check("each rung is larger than the one before it",
+  phone.rootFontSize < midnight.rootFontSize &&
+    midnight.rootFontSize < late.rootFontSize,
+  `${phone.rootFontSize} < ${midnight.rootFontSize} < ${late.rootFontSize}`);
+
+// Three different faces, which is what a ladder of three rungs requires and
+// what a deleted rule would silently undo.
+//
+// **The "narrower" half is deliberately not asserted here, and that is a real
+// gap rather than an oversight.** Measuring it needs the webfont to actually
+// render, and this sandbox cannot fetch it: Chromium has no proxy configured
+// and fonts.googleapis.com comes back ERR_CONNECTION_RESET, so every face falls
+// back to the same system sans and a width probe reads identical for all three
+// — which it did, while the family assertions above passed and made it look
+// measured. Even with the font, the comparison would be against headless
+// Linux's system sans rather than the phone's, so the number would not mean
+// what it claimed. Barlow Semi Condensed's advance widths are a published
+// property of the typeface; this checks that the app asks for it.
+const families = [phone.titleFont, midnight.titleFont, late.titleFont];
+check("the three rungs are three different faces",
+  new Set(families).size === 3, families.join(", "));
+
+// Semibold on both webfont rungs, never 700: at full bold a column of titles
+// reads as a stack of bars. Both families ship a real 600, so this also
+// asserts the browser is not synthesising one.
+check("headings are semibold, not bold",
+  phone.titleWeight === "600" && late.titleWeight === "600",
+  `base ${phone.titleWeight}, late night ${late.titleWeight}`);
 
 // ── density moves air, not objects
 //
@@ -347,8 +385,12 @@ const larger = await measure({ width: 390, height: 844, textSize: "5" });
 // the app's own name changed with the settings. Asserted across typography,
 // text size and viewport at once, because each of those is a separate way to
 // break it and any one of them turns the wordmark back into a heading.
+// Across all three rungs, not just two — the ladder now changes the root font
+// size as well as the family, so there are two separate ways for the wordmark
+// to get dragged along with it.
 check("the logo ignores the typography preference",
-  phone.logo === systemType.logo, `${phone.logo}  vs  ${systemType.logo}`);
+  phone.logo === midnight.logo && phone.logo === late.logo,
+  `${phone.logo}  vs  ${midnight.logo}  vs  ${late.logo}`);
 check("and the text size preference",
   smaller.logo === larger.logo && smaller.logo === phone.logo,
   `${smaller.logo}  vs  ${larger.logo}`);
@@ -403,9 +445,22 @@ check("and does not move type",
   await p.waitForSelector("article", { timeout: 20000 });
   await p.waitForTimeout(1500);
 
-  const today = new Date();
+  // From the *night*, not the calendar date.
+  //
+  // Before 3:30am the night in progress is yesterday's — see lib/night.ts, and
+  // the whole app is built on it. This check assumed today's date and so was
+  // correct only between 3:30am and midnight; run at 00:46 it demanded a day
+  // the scan was right not to fetch. A second copy of the rollover rather than
+  // an import, like the size ladder in the settings suite: a change to it has
+  // to be meant.
+  const ROLLOVER_MINUTES = 3 * 60 + 30;
+  const now = new Date();
+  const night = new Date(now);
+  if (now.getHours() * 60 + now.getMinutes() < ROLLOVER_MINUTES) {
+    night.setDate(night.getDate() - 1);
+  }
   const wanted = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(today);
+    const d = new Date(night);
     d.setDate(d.getDate() + i);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
@@ -451,7 +506,7 @@ check("and does not move type",
           JSON.stringify({
             colorTheme: "neon",
             layoutDensity: d,
-            typography: "system",
+            typography: "base",
             textSize: t,
           }),
         ),

@@ -246,18 +246,18 @@ const face = () =>
 
 await fontSlider.click({ position: { x: (await fontSlider.boundingBox()).width - 4, y: 14 } });
 await page.waitForTimeout(250);
-check("sliding it to the end selects the condensed face",
-  (await face()) === "type-condensed", (await face()) ?? "none");
+check("sliding it to the end selects the late night face",
+  (await face()) === "type-latenight", (await face()) ?? "none");
 
 await fontSlider.click({ position: { x: 2, y: 14 } });
 await page.waitForTimeout(250);
-check("and back to the start returns to the system face",
-  (await face()) === "type-system", (await face()) ?? "none");
+check("and back to the start returns to the base face",
+  (await face()) === "type-base", (await face()) ?? "none");
 
 // The names under the track are still the picker, not decoration.
-await page.locator('button[aria-pressed]:has-text("Legible")').click();
+await page.locator('button[aria-pressed]:has-text("Midnight")').click();
 await page.waitForTimeout(250);
-check("tapping a name under the track picks it too", (await face()) === "type-legible",
+check("tapping a name under the track picks it too", (await face()) === "type-midnight",
   (await face()) ?? "none");
 
 // ── the panel must survive being used
