@@ -618,6 +618,133 @@ check("and does not move type",
   );
 }
 
+// ── one size system: a type ladder, and glyphs that answer to the right knob
+//
+// Three rules, and every size in the app is meant to be one of them:
+//
+//   type scales with the Text size and typography preferences
+//   air scales with Density, at 60% strength
+//   controls and the glyphs inside them do not scale at all
+//
+// Both checks below are for the same failure, which is the one this codebase
+// actually had: a size picked locally, in whatever unit was nearest to hand,
+// landing on a scale that answers to a preference nobody meant it to answer to.
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p = await ctx.newPage();
+  await p.route("**/api/events*", (route) =>
+    route.fulfill({ contentType: "application/json", body: PAYLOAD }),
+  );
+  await p.route("**/images.ra.co/**", (route) => route.abort());
+
+  /**
+   * Every rendered font size and every glyph box, at one density.
+   *
+   * Read off the DOM rather than out of the source, deliberately. A grep for
+   * `text-sm` proves what was typed; this proves what the browser drew, which
+   * is the thing that was wrong — `h-4 w-4` reads as a constant and resolved to
+   * a variable.
+   */
+  const sample = async (density) => {
+    await p.addInitScript(
+      (d) =>
+        localStorage.setItem(
+          "ra-theme-settings",
+          JSON.stringify({
+            colorTheme: "neon",
+            layoutDensity: d,
+            typography: "base",
+            textSize: "0",
+          }),
+        ),
+      density,
+    );
+    await p.goto(BASE, { waitUntil: "domcontentloaded" });
+    await p.waitForSelector("article", { timeout: 20000 });
+    await p.locator("article").first().click();
+    await p.waitForTimeout(700);
+    return p.evaluate(() => {
+      const sizes = new Set();
+      const glyphs = {};
+      for (const el of document.querySelectorAll("body *")) {
+        const style = getComputedStyle(el);
+        if (style.visibility === "hidden" || !el.getBoundingClientRect().width) continue;
+        // Only elements that actually render their own text, so an inherited
+        // size is not counted at every level of the tree it passes through.
+        const owns = [...el.childNodes].some(
+          (n) => n.nodeType === 3 && n.textContent.trim(),
+        );
+        if (owns) sizes.add(Math.round(parseFloat(style.fontSize) * 100) / 100);
+        if (el.tagName.toLowerCase() === "svg") {
+          const box = el.getBoundingClientRect();
+          const key =
+            (el.closest("[aria-label]")?.getAttribute("aria-label") ??
+              el.parentElement?.textContent?.trim().slice(0, 20) ??
+              "svg") + `#${Object.keys(glyphs).length}`;
+          glyphs[key] = Math.round(box.width * 10) / 10;
+        }
+      }
+      return { sizes: [...sizes].sort((a, b) => a - b), glyphs };
+    });
+  };
+
+  const tightSample = await sample("tight");
+  const airySample = await sample("airy");
+  await ctx.close();
+
+  /**
+   * The ladder is six rungs. A handful of sizes are allowed past it, each for a
+   * written reason, and the list is short on purpose — an exemption list that
+   * grows is a rule that has stopped meaning anything.
+   *
+   * - **7 / 8 / 13** — the date rail's chips. A fixed 44px control with three
+   *   lines of label crammed into it; see the note in DatePicker.
+   * - **12** — the hidden screen's title, specified as "one pixel larger" by
+   *   the person who asked for it.
+   * - **15** — `.logo-word`. The wordmark opts out of all four preference axes
+   *   on purpose (see index.css): it is the one fixed mark on the screen, and a
+   *   mark that resizes with a reading preference is not a mark. `.logo-mark`
+   *   is 14 and lands on the ladder by coincidence rather than by rule.
+   * - **28 / 60** — the two flyer-fallback initials, decoration filling a box.
+   *
+   * Found by this check on its first run, which is the argument for reading
+   * sizes off the DOM: 15px is set in plain CSS on a class, so no amount of
+   * grepping the markup for `text-*` would have turned it up.
+   */
+  const LADDER = [10, 12, 14, 16, 20, 26];
+  const EXEMPT = [7, 8, 12, 13, 15, 28, 60];
+  const strays = tightSample.sizes.filter(
+    (s) => !LADDER.includes(s) && !EXEMPT.includes(s),
+  );
+  check(
+    "every rendered type size is one of the six rungs",
+    strays.length === 0,
+    strays.length
+      ? `off-ladder: ${strays.join(", ")}px`
+      : `${tightSample.sizes.length} distinct sizes, all on the ladder`,
+  );
+
+  // And the one that was actually broken. `h-4 w-4` is Tailwind's ordinary way
+  // to size an icon, and in this project it resolved through the `spacing`
+  // scale — which multiplies by Density. Thirty-eight glyphs were on it, so a
+  // clock, a pin, a chevron and a chip's `+` all shrank by more than half when
+  // you asked for a denser list. Nobody typed that; it is what the default
+  // meant here.
+  const moved = Object.entries(airySample.glyphs).filter(
+    ([key, w]) => tightSample.glyphs[key] !== undefined && tightSample.glyphs[key] !== w,
+  );
+  check(
+    "and no glyph changes size with Density",
+    moved.length === 0,
+    moved.length
+      ? moved
+          .slice(0, 5)
+          .map(([k, w]) => `${k} ${tightSample.glyphs[k]} -> ${w}`)
+          .join("; ")
+      : `${Object.keys(airySample.glyphs).length} glyphs unchanged tight -> airy`,
+  );
+}
+
 await browser.close();
 shutdown();
 

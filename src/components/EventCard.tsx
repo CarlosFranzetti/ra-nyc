@@ -65,7 +65,7 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
           />
 
           {event.isPick && (
-            <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-[0.5625rem] font-semibold px-1.5 py-0.5 rounded glow-primary-sm text-glow">
+            <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-micro font-semibold px-1.5 py-0.5 rounded glow-primary-sm text-glow">
               PICK
             </div>
           )}
@@ -88,7 +88,7 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
               What the reserved line cost was visible: an empty line under
               "Body Hack" and "Rival Consoles", separating each title from its
               own venue by more than the gap to the next card. */}
-          <h3 className="type-headline text-sm font-semibold text-foreground leading-tight line-clamp-2 group-hover:text-primary transition-colors">
+          <h3 className="type-headline text-body font-semibold text-foreground line-clamp-2 group-hover:text-primary transition-colors">
             {event.title}
           </h3>
 
@@ -99,7 +99,20 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
               held to the right edge it forms a column you can read straight
               down the list rather than a number that starts somewhere
               different on every card. */}
-          <div className="mt-0.5 flex items-center gap-x-2 text-xs text-muted-foreground">
+          {/* Wraps, and only ever at the top of the size ladder.
+              Three facts share this line and the venue is the flexible one, so
+              at the largest text it was the one that paid: "Nowadays" came out
+              as "No…", "Basement" as "Ba…". A room name clipped to two letters
+              is not a smaller version of the information, it is the absence of
+              it — and the rung where that happened is the one that exists for
+              people who need the type big, which makes it exactly the wrong
+              place to drop a word.
+
+              `flex-wrap` costs nothing at every other setting (the row has
+              spare width and stays on one line) and at the largest it lets the
+              head count fall to a second line instead of squeezing the venue
+              out. `gap-y` so the two lines do not touch when it does. */}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-meta text-muted-foreground">
             {/* Where it is, is the thing you scan for after what it is — so the
                 venue gets its own hue and weight rather than sitting in the
                 same muted grey as the time and the head count.
@@ -120,8 +133,8 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
                 right edge by `ml-auto`, in the same column down the whole
                 list. */}
             {event.startTime && (
-              <span className="flex flex-shrink-0 items-center gap-0.5">
-                <Clock className="h-[12px] w-[12px] flex-shrink-0" />
+              <span className="icon-row flex-shrink-0">
+                <Clock className="icon-text" />
                 {showDate && `${formatEventDay(event.date)}, `}
                 {formatTime(event.startTime)}
               </span>
@@ -138,7 +151,7 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
               the thing you read last, so it sits under the venue as a footnote
               rather than as another full-size row competing with it. */}
           {event.artists.length > 0 && (
-            <p className="mt-1 text-[0.6875rem] text-muted-foreground line-clamp-1">
+            <p className="mt-1 text-meta text-muted-foreground line-clamp-1">
               {event.artists.slice(0, 3).map((a) => a.name).join(" · ")}
               {event.artists.length > 3 && ` +${event.artists.length - 3}`}
             </p>

@@ -27,7 +27,7 @@ export function EventThumb({
   alt,
   fallbackLabel,
   className,
-  fallbackTextClass = "text-xl",
+  fallbackTextClass = "text-title",
   eager = false,
 }: EventThumbProps) {
   const [stage, setStage] = useState<Stage>("direct");
