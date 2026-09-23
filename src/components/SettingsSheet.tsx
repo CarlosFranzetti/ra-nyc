@@ -28,7 +28,7 @@ function OptionGroup({
 }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+      <h3 className="text-meta font-semibold uppercase tracking-wider text-muted-foreground px-1">
         {title}
       </h3>
       <div
@@ -199,7 +199,7 @@ export function SettingsSheet({
         {/* min-h-full so the dead space below the options is still a close
             target, rather than only the content box being tappable. */}
         <div className="min-h-full p-4 pt-safe" onClick={closeUnlessOption}>
-          <DrawerTitle className="text-base font-semibold text-foreground">
+          <DrawerTitle className="text-lead font-semibold text-foreground">
             Customize
           </DrawerTitle>
 
@@ -234,7 +234,7 @@ export function SettingsSheet({
                     )}
                     style={{ background: opt.color }}
                   />
-                  <span className="text-[0.625rem] font-medium">{opt.label}</span>
+                  <span className="text-micro font-medium">{opt.label}</span>
                 </button>
               ))}
             </OptionGroup>
@@ -270,7 +270,7 @@ export function SettingsSheet({
                     className={cn(
                       // Ends anchor to their own tick rather than centring,
                       // which would push "Tight" left of where the track starts.
-                      "min-w-0 flex-1 text-[0.6875rem] leading-tight transition-colors",
+                      "min-w-0 flex-1 text-meta transition-colors",
                       i === 0 && "text-left",
                       i === DENSITY_OPTIONS.length - 1 && "text-right",
                       i > 0 && i < DENSITY_OPTIONS.length - 1 && "text-center",
@@ -320,7 +320,7 @@ export function SettingsSheet({
                       // The ends anchor to their own tick rather than centring,
                       // which would push "System" left of where the track starts
                       // and "Condensed" past where it ends.
-                      "min-w-0 flex-1 text-[0.6875rem] leading-tight transition-colors",
+                      "min-w-0 flex-1 text-meta transition-colors",
                       i === 0 && "text-left",
                       i === TYPOGRAPHY_OPTIONS.length - 1 && "text-right",
                       i > 0 && i < TYPOGRAPHY_OPTIONS.length - 1 && "text-center",
@@ -379,7 +379,7 @@ export function SettingsSheet({
               </div>
             </OptionGroup>
 
-            <p className="px-1 text-[0.6875rem] leading-snug text-muted-foreground">
+            <p className="px-1 text-meta leading-snug text-muted-foreground">
               Swipe the list left or right to change day. The colour theme is
               random each time you open the app.
             </p>
@@ -395,9 +395,9 @@ export function SettingsSheet({
                 cannot scan a code with the camera behind it, so every tap was
                 a detour through a picture on the way to the link underneath. */}
             {DONATE.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/40 px-1 pt-3 pb-safe text-sm">
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
-                  <Heart className="h-3.5 w-3.5 flex-shrink-0" />
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/40 px-1 pt-3 pb-safe text-body">
+                <span className="icon-row text-meta text-muted-foreground/70">
+                  <Heart className="icon-text" />
                   Free, no ads.
                 </span>
                 {/* Bigger and bold than the caption beside them, because they

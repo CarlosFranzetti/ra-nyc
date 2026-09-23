@@ -2294,6 +2294,86 @@ outcome (field visible, panel ending where the keyboard begins) rather than the
 mechanism, which is why they survived the container being replaced underneath
 them.
 
+### 3.x · One size system: three knobs, and each one moves what it says
+
+Two complaints, and the second was hiding under the first: *the transport's
+buttons are too big to fit*, and *make sizes consistent throughout — font,
+spacing, font size — it should be changeable but it should always make sense*.
+
+**What "consistent" turned out to mean.** The app had **eleven type sizes**
+across sixty-eight usages: five arbitrary rem values written inline (0.5,
+0.5625, 0.625, 0.6875, 0.8125) alongside six of Tailwind's own. Several were one
+pixel apart. That is not a scale, it is sixty-eight local decisions, none of
+them made twice the same way — two subtitles a pixel different is not a design,
+it is a diff nobody noticed. They collapse to **six rungs**, named for the job
+rather than the size: `micro / meta / body / lead / title / display`. Sixty of
+the sixty-eight keep the exact pixel size they had; the rest move by a pixel or
+two. What is bought is that there is now somewhere for the next one to go, and
+the line-height rides with the rung instead of being re-decided as
+`leading-tight` at each call site.
+
+**The bug under it, which is the real find.** Tailwind points `width`, `height`
+and `min-*` at the same `spacing` scale as `padding` and `gap` — and this
+project rewrote `spacing` to multiply by `--space`, the Density preference. So
+`h-4 w-4`, the most ordinary way in the world to size an icon, meant *16px at
+Airy and 7px at Tight*. **Thirty-eight glyphs were on that scale**: the clock
+before a start time, the pin before a venue, the chevron on a disclosure, the
+`+` on every lineup chip. Ask for a denser list and they shrank by more than
+half, because "denser list" and "smaller icons" were the same variable.
+
+This is the same bug as *§ Density moves air, not objects*, and it is worth
+being precise about why it came back. That round diagnosed it correctly and
+fixed it **by hand, per component** — flyer 80px, header 40px, "icons
+20/12/11". The default still pointed the wrong way, so every component written
+afterwards re-acquired it by typing the obvious thing. It is fixed at the config
+now: `width`, `height`, `minWidth`, `minHeight` are literal px; only `padding`,
+`margin` and `gap` answer to Density.
+
+So there are three rules, and every size in the app is one of them:
+
+| | scales with | |
+| --- | --- | --- |
+| **type** | Text size × typography rung | six rungs, rem |
+| **air** | Density, at 60% of the type scale | padding / margin / gap, px |
+| **controls and their glyphs** | nothing | literal px |
+
+With one deliberate crossing: a glyph *inside a line of text* — the clock, the
+pin, the headphone — is set in `em` (`.icon-text`), so it tracks the words it
+sits against rather than freezing at 14px while the type goes to 19px. That
+matters most at the top of the ladder, which exists precisely for reading a
+phone at 4am, and where a frozen pin beside enlarged type is the kind of detail
+that makes a screen feel wrong without anyone being able to say why. Glyphs
+inside a *control* stay put, because the control does: two sizes, 20px for the
+one primary action on a screen and 18px for everything else.
+
+**The transport.** 56px with a 24px glyph won the argument about being easy to
+hit and then kept going: 56 plus four 44s plus six equal gaps left the title
+**128px of a 390px screen**, so the thing the bar exists to tell you was the
+thing it had no room for. Now 48/20 — a step above the 44 standard rather than a
+different scale — and the row is three groups instead of seven peers: the
+transport's buttons sit flush (their 44px boxes already hold them apart), and
+the space goes where it separates one *kind* of thing from another. The title
+gets ~168px. Its secondary glyphs were 18 / 16 / 12 for three controls of the
+same kind, which is most of why the row read as cluttered rather than merely
+crowded; all three are 18 now.
+
+**And the ring that was not a border.** The bar shipped looking like Next had an
+outline and Previous did not. It was iOS Safari's focus ring, left drawn around
+whatever was last tapped, and the app declared no focus policy at all — which is
+not the same as nothing happening, it just means every browser's own idea. Now:
+nothing for a pointer (`:focus:not(:focus-visible)`), a real `--ring` outline
+for a keyboard. Not the blunt `outline: none` that used to be the standard fix
+and takes keyboard users' only cue with it.
+
+**Two new checks**, both in `layout.e2e.mjs`, and both read off the DOM rather
+than the source — a grep for `text-sm` proves what was typed, and what was typed
+was fine; `h-4 w-4` *reads* as a constant and resolved to a variable. One asserts
+every rendered type size is one of the six rungs (four written exemptions: the
+date rail's three-line label inside a fixed 44px chip, the hidden screen's
+title, and the two flyer-fallback initials, which are decoration filling a box).
+The other renders the app at Tight and at Airy and asserts **no glyph changes
+size** between them.
+
 ## 4 · Map of the code
 
 ```

@@ -39,7 +39,7 @@ const COLLAPSED_SETS = 6;
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="px-1 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
+    <h3 className="px-1 text-meta font-semibold uppercase tracking-wider text-muted-foreground">
       {children}
     </h3>
   );
@@ -116,12 +116,12 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
           <button
             onClick={() => onOpenChange(false)}
             aria-label="Back to event"
-            className="tap-row -ml-1 gap-1 rounded-md pl-1 pr-3 text-sm text-muted-foreground transition-smooth active:scale-95 active:text-foreground"
+            className="tap-row -ml-1 gap-[0.35em] rounded-md pl-1 pr-3 text-body text-muted-foreground transition-smooth active:scale-95 active:text-foreground"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="icon-text" />
             Back
           </button>
-          <DrawerTitle className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
+          <DrawerTitle className="min-w-0 flex-1 truncate text-lead font-semibold text-foreground">
             {artist?.name ?? "Artist"}
           </DrawerTitle>
         </div>
@@ -136,7 +136,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
           )}
 
           {error && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
+            <p className="py-6 text-center text-body text-muted-foreground">
               {error.message}
             </p>
           )}
@@ -152,7 +152,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                     <SectionLabel>
                       {sets.length > 1 ? `${sets.length} sets` : "Set"}
                     </SectionLabel>
-                    <span className="text-[0.625rem] uppercase tracking-wide text-muted-foreground/70">
+                    <span className="text-micro uppercase tracking-wide text-muted-foreground/70">
                       Plays below
                     </span>
                   </div>
@@ -214,16 +214,16 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                             )}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[0.8125rem] text-foreground">
+                            <span className="block truncate text-body text-foreground">
                               {set.title}
                             </span>
-                            <span className="block truncate text-[0.6875rem] text-muted-foreground">
+                            <span className="block truncate text-meta text-muted-foreground">
                               {meta}
                             </span>
                           </span>
                           <Icon
                             className={cn(
-                              "h-3.5 w-3.5 flex-shrink-0",
+                              "icon-text",
                               live ? "text-primary" : "text-muted-foreground/70",
                             )}
                           />
@@ -239,7 +239,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                             aria-label={`Add ${set.title} to the playlist`}
                             className="tap border-l border-border/50 text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
                           >
-                            <Plus className="h-5 w-5" />
+                            <Plus className="h-[18px] w-[18px]" />
                           </button>
                         )}
                         </div>
@@ -250,7 +250,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                   {sets.length > COLLAPSED_SETS && (
                     <button
                       onClick={() => setAllSetsShown((shown) => !shown)}
-                      className="px-1 text-xs font-medium text-primary active:opacity-70"
+                      className="px-1 text-meta font-medium text-primary active:opacity-70"
                     >
                       {allSetsShown
                         ? "Show fewer"
@@ -260,9 +260,9 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                 </section>
               ) : (
                 <section className="rounded-lg border border-border/50 bg-card p-4 text-center">
-                  <Music className="mx-auto mb-2 h-5 w-5 text-muted-foreground" />
-                  <p className="text-sm text-foreground">No sets found</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  <Music className="icon-text mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-body text-foreground">No sets found</p>
+                  <p className="mt-1 text-meta text-muted-foreground">
                     Nothing matched this name closely enough to be sure it&apos;s
                     them.
                   </p>
@@ -274,13 +274,13 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                 <section className="space-y-2">
                   <div className="flex items-baseline justify-between gap-2">
                     <SectionLabel>Bio</SectionLabel>
-                    <span className="text-[0.625rem] uppercase tracking-wide text-muted-foreground/70">
+                    <span className="text-micro uppercase tracking-wide text-muted-foreground/70">
                       {data.bio.source}
                     </span>
                   </div>
                   <p
                     className={cn(
-                      "whitespace-pre-line text-sm leading-relaxed text-muted-foreground",
+                      "whitespace-pre-line text-body leading-relaxed text-muted-foreground",
                       !bioExpanded && "line-clamp-6",
                     )}
                   >
@@ -289,7 +289,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                   {data.bio.text.length > 300 && (
                     <button
                       onClick={() => setBioExpanded((v) => !v)}
-                      className="text-xs font-medium text-primary active:opacity-70"
+                      className="text-meta font-medium text-primary active:opacity-70"
                     >
                       {bioExpanded ? "Show less" : "Show more"}
                     </button>
@@ -316,14 +316,14 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                           className="flex items-center gap-3 px-3 py-2.5 transition-smooth hover:bg-accent active:bg-accent"
                         >
                           <span className="min-w-0 flex-1">
-                            <span className="block text-[0.8125rem] text-foreground">
+                            <span className="block text-body text-foreground">
                               {link.label}
                             </span>
-                            <span className="block text-[0.6875rem] text-muted-foreground">
+                            <span className="block text-meta text-muted-foreground">
                               {link.detail}
                             </span>
                           </span>
-                          <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
+                          <ExternalLink className="icon-text text-muted-foreground/60" />
                         </a>
                       </li>
                     ))}
@@ -331,7 +331,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                 </section>
               )}
 
-              <p className="pb-safe px-1 text-[0.6875rem] leading-relaxed text-muted-foreground/60">
+              <p className="pb-safe px-1 text-meta leading-relaxed text-muted-foreground/60">
                 Swipe down or tap Back to return to the event.
               </p>
             </>

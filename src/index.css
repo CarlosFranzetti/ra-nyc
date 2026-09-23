@@ -458,6 +458,89 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Glyphs.
+
+   Two rules, and which one applies depends on what the glyph is *for*.
+
+   **A glyph inside a control does not move.** It is part of the button, and
+   the button is a constant size for the reasons written above `.tap`. These
+   are sized in literal px at the call site — 20px for the one primary action
+   on a screen, 18px for every secondary control — and there are exactly two of
+   those numbers.
+
+   **A glyph inside a line of text moves with the text.** A clock before a
+   start time, a pin before a venue, a headphone before a lineup: these are
+   punctuation, not controls. Set in `em`, so they are always the same size
+   relative to the words they sit against — which is the only definition of
+   "the right size" that survives a preference that makes the words 34% bigger.
+   That top rung exists for reading a phone at 4am, and a 14px pin frozen
+   beside 19px type is exactly the kind of detail that makes a screen feel
+   wrong without anyone being able to say why.
+
+   1.1em rather than 1em: a lucide glyph is drawn inside its box with a margin,
+   so at 1em it optically reads a size smaller than the cap height beside it.
+
+   Both rules were previously one accident. `h-4 w-4` — Tailwind's default way
+   to size an icon, and what thirty-eight glyphs in this app used — resolves
+   through the `spacing` scale, which this project rewrote to multiply by the
+   Density preference. So every glyph tracked Density: 16px at Airy, 7px at
+   Tight. See the note above `FIXED` in tailwind.config.ts, which is where that
+   is now cut.
+   ───────────────────────────────────────────────────────────────────────────── */
+.icon-text {
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
+}
+
+/**
+ * The row an `.icon-text` sits in, and the other half of the same idea.
+ *
+ * The gap between a glyph and the word it labels is not layout air — it is
+ * word spacing, and it belongs to the text run rather than to the page. Set
+ * with the spacing scale it answered to Density, and `gap-0.5` at Tight
+ * (2px x 0.45) came out at **nine tenths of a pixel**: the clock and the
+ * "10pm" it labels were touching. Density is meant to decide how much room the
+ * listings have, not to weld a glyph to a numeral.
+ *
+ * In `em`, so it tracks the text on both sides of it — the same rule, and the
+ * same reason, as the glyph itself.
+ */
+.icon-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Focus.
+
+   The app declared nothing here, which is not the same as declaring nothing
+   happens: it means every browser's own idea of a focus ring, and Safari's
+   idea on iOS is to leave one drawn around whatever you last tapped. The
+   transport shipped looking like the Next button had a border and the
+   Previous button did not — the "border" was a focus ring left over from the
+   tap that started the set.
+
+   So: nothing for a pointer, a real ring for a keyboard. `:focus-visible` is
+   the browser's own answer to "did this focus come from a keyboard", and it is
+   the whole reason not to reach for the blunt `outline: none` that used to be
+   the standard fix and takes keyboard users' only cue with it.
+
+   The ring is `--ring`, which every theme already defines, and it is drawn
+   outside the box with an offset so it reads on a filled button as well as a
+   bare one.
+   ───────────────────────────────────────────────────────────────────────────── */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    The Text size slider.
 
    A native `input[type=range]`, not six buttons and a pair of steppers. The

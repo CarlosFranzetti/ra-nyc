@@ -161,7 +161,22 @@ export function Header({
           }}
           aria-live="polite"
           aria-label={`${caption}. Tap to switch between the date and the number of events.`}
-          className="tap-row absolute left-1/2 -translate-x-1/2 justify-center rounded px-2 text-xs font-semibold text-primary"
+          /* Size pinned in literal px, like everything else in this row.
+
+             It is a *control* — tapping it swaps the date for the count — and
+             controls do not scale with the reading preferences, for the reasons
+             written above `.tap`. It used to be on the type ladder, and at the
+             largest text size it grew wide enough to run underneath the search
+             icon: absolutely centred text and a fixed icon cluster grow towards
+             each other, and one of them is not allowed to move. A date legible
+             at every setting is not worth a header that collides with itself,
+             and the date is on the rail immediately below this in type that is
+             larger still.
+
+             `max-w-[40%]` and `truncate` are the backstop rather than the fix:
+             the caption can now never reach the cluster whatever it is asked to
+             render. */
+          className="tap-row absolute left-1/2 max-w-[40%] -translate-x-1/2 justify-center truncate rounded px-2 text-[12px] font-semibold leading-none text-primary"
         >
           {/* Keyed on the text so React remounts the span on every swap, which
               is what restarts the fade — a plain text change would swap the

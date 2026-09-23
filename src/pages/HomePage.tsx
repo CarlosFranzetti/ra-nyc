@@ -172,8 +172,8 @@ export default function HomePage() {
                 are hours old are indistinguishable from listings that are
                 current, and the app would be confidently wrong about tonight. */}
             {data?.stale && (
-              <span className="flex flex-shrink-0 items-center gap-1 text-[0.6875rem] text-muted-foreground/70">
-                <CloudOff className="h-3 w-3" />
+              <span className="icon-row flex-shrink-0 text-meta text-muted-foreground/70">
+                <CloudOff className="icon-text" />
                 Saved listings
               </span>
             )}
@@ -197,13 +197,13 @@ export default function HomePage() {
               <EmptyState />
             ) : filteredOut ? (
               <div className="py-10 text-center">
-                <p className="text-sm text-muted-foreground">
+                <p className="text-body text-muted-foreground">
                   Nothing tonight matches those filters.
                 </p>
                 <button
                   type="button"
                   onClick={() => setFilters([])}
-                  className="mt-2 text-xs text-primary underline underline-offset-4"
+                  className="mt-2 text-meta text-primary underline underline-offset-4"
                 >
                   Clear filters
                 </button>

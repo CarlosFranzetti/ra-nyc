@@ -6,8 +6,8 @@ export function EmptyState() {
       <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
         <Calendar className="w-8 h-8 text-muted-foreground" />
       </div>
-      <h3 className="text-lg font-semibold text-foreground">No events found</h3>
-      <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+      <h3 className="text-title font-semibold text-foreground">No events found</h3>
+      <p className="text-body text-muted-foreground mt-1 max-w-xs">
         There are no events listed for this date. Try checking another day.
       </p>
     </div>

@@ -162,7 +162,7 @@ export function EventDetailsSheet({
             aria-label="Close"
             className="tap absolute right-3 top-4 z-20 rounded-full bg-background/80 text-foreground backdrop-blur-sm transition-transform active:scale-95"
           >
-            <X className="h-5 w-5" />
+            <X className="h-[18px] w-[18px]" />
           </button>
         </DrawerClose>
 
@@ -197,23 +197,29 @@ export function EventDetailsSheet({
               expanded ? "aspect-auto h-24" : "aspect-square max-h-[40vh]",
             )}
           >
+            {/* `fallbackTextClass` is off the type ladder on purpose, and it is
+                the only place in the app that is. This is not text — it is a
+                venue initial filling the hole where a flyer should be, sized to
+                its box rather than to anything you read. The box is two very
+                different sizes (a 40vh square collapsed, a 96px strip
+                expanded), so the letter is too. */}
             <EventThumb
               imageUrl={event.imageUrl}
               alt={event.title}
               fallbackLabel={event.venue.name}
-              fallbackTextClass={expanded ? "text-3xl" : "text-6xl"}
+              fallbackTextClass={expanded ? "text-[1.75rem]" : "text-[3.75rem]"}
               eager
             />
           </div>
 
           <div className="space-y-4 px-4 py-5">
             {event.isPick && (
-              <div className="glow-primary-sm inline-block rounded bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground">
+              <div className="glow-primary-sm inline-block rounded bg-primary px-2 py-1 text-meta font-semibold text-primary-foreground">
                 RA PICK
               </div>
             )}
 
-            <DrawerTitle className="text-left text-xl font-bold leading-tight text-foreground">
+            <DrawerTitle className="text-left text-title font-bold text-foreground">
               {event.title}
             </DrawerTitle>
 
@@ -221,7 +227,7 @@ export function EventDetailsSheet({
               <div>
                 <p
                   className={cn(
-                    "text-sm italic text-muted-foreground",
+                    "text-body italic text-muted-foreground",
                     !blurbExpanded && "line-clamp-3",
                   )}
                 >
@@ -230,7 +236,7 @@ export function EventDetailsSheet({
                 {event.pickBlurb.length > 180 && (
                   <button
                     onClick={() => setBlurbExpanded((v) => !v)}
-                    className="mt-1 text-xs font-medium text-primary active:opacity-70"
+                    className="mt-1 text-meta font-medium text-primary active:opacity-70"
                   >
                     {blurbExpanded ? "Show less" : "Show more"}
                   </button>
@@ -238,8 +244,8 @@ export function EventDetailsSheet({
               </div>
             )}
 
-            <div className="flex items-center gap-2 text-sm text-foreground">
-              <Clock className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+            <div className="icon-row text-body text-foreground">
+              <Clock className="icon-text text-muted-foreground" />
               <span>
                 {formatDate(event.date)}
                 {event.startTime && ` · ${formatTime(event.startTime)}`}
@@ -252,25 +258,25 @@ export function EventDetailsSheet({
                 map, which is the question a venue name actually raises. */}
             <button
               onClick={() => onSelectVenue(event.venue.name)}
-              className="tap-row -mx-1 gap-2 rounded-md px-1 text-left text-sm font-semibold text-venue transition-smooth active:scale-[0.98] active:bg-accent"
+              className="tap-row -mx-1 gap-[0.35em] rounded-md px-1 text-left text-body font-semibold text-venue transition-smooth active:scale-[0.98] active:bg-accent"
             >
-              <MapPin className="h-4 w-4 flex-shrink-0" />
+              <MapPin className="icon-text" />
               <span className="underline decoration-venue/30 underline-offset-4">
                 {event.venue.name}
               </span>
             </button>
 
             {event.attending > 0 && (
-              <div className="flex items-center gap-2 text-sm text-foreground">
-                <Users className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+              <div className="icon-row text-body text-foreground">
+                <Users className="icon-text text-muted-foreground" />
                 <span>{event.attending.toLocaleString()} going</span>
               </div>
             )}
 
             {event.artists.length > 0 && (
               <div className="border-t border-border pt-3">
-                <h3 className="mb-1.5 flex items-center gap-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <Headphones className="h-3 w-3" />
+                <h3 className="icon-row mb-1.5 text-meta font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Headphones className="icon-text" />
                   Lineup — tap to hear a set
                 </h3>
 
@@ -294,12 +300,12 @@ export function EventDetailsSheet({
                     // literal px rather than the 2.3rem it was, so the Text size
                     // preference cannot either. At the tightest setting that rem
                     // came out 37px; this is the 44 every control uses.
-                    className="press flex h-[44px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-primary/50 bg-card text-[0.8125rem] font-medium text-foreground disabled:opacity-60"
+                    className="press icon-row h-[44px] min-w-0 flex-1 justify-center rounded-lg border border-primary/50 bg-card text-body font-medium text-foreground disabled:opacity-60"
                   >
                     {preview.preparing ? (
-                      <Loader className="h-3.5 w-3.5 animate-spin text-play" />
+                      <Loader className="icon-text animate-spin text-play" />
                     ) : (
-                      <Play className="h-4 w-4 fill-play text-play" />
+                      <Play className="icon-text fill-play text-play" />
                     )}
                     {preview.preparing ? "Finding sets…" : "Preview the night"}
                   </button>
@@ -311,14 +317,14 @@ export function EventDetailsSheet({
                     className="press flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-lg border border-border/60 bg-card text-muted-foreground disabled:opacity-60"
                   >
                     {playlist.pending === NIGHT_KEY ? (
-                      <Loader className="h-3.5 w-3.5 animate-spin" />
+                      <Loader className="h-[18px] w-[18px] animate-spin" />
                     ) : (
-                      <Plus className="h-5 w-5" />
+                      <Plus className="h-[18px] w-[18px]" />
                     )}
                   </button>
                 </div>
                 {preview.empty && (
-                  <p className="mb-2 text-center text-[0.6875rem] text-muted-foreground">
+                  <p className="mb-2 text-center text-meta text-muted-foreground">
                     No sets found for this lineup.
                   </p>
                 )}
@@ -335,20 +341,20 @@ export function EventDetailsSheet({
                         // chip is small by nature but it is still a thing you
                         // press, and at 22px it was the least reliable target
                         // in the app.
-                        className="flex min-h-[34px] items-stretch overflow-hidden rounded-full border border-border/60 bg-secondary text-xs text-secondary-foreground"
+                        className="flex min-h-[34px] items-stretch overflow-hidden rounded-full border border-border/60 bg-secondary text-meta text-secondary-foreground"
                       >
                         <button
                           onClick={() => onSelectArtist(artist)}
                           onPointerDown={() => prefetchArtist(artist.id, artist.name)}
                           onTouchStart={() => prefetchArtist(artist.id, artist.name)}
                           onMouseEnter={() => prefetchArtist(artist.id, artist.name)}
-                          className="flex items-center gap-1 pl-3 pr-2 transition-smooth hover:text-primary active:scale-95"
+                          className="icon-row pl-3 pr-2 transition-smooth hover:text-primary active:scale-95"
                         >
                           {/* A name on its own does not look like a control. The
                               same green triangle as the preview button says these
                               make sound too, and says it in one glyph rather than
                               the caption above that people were not reading. */}
-                          <Play className="h-3 w-3 flex-shrink-0 fill-play text-play" />
+                          <Play className="icon-text fill-play text-play" />
                           {artist.name}
                         </button>
                         <button
@@ -358,9 +364,9 @@ export function EventDetailsSheet({
                           className="flex w-[34px] flex-shrink-0 items-center justify-center border-l border-border/60 text-muted-foreground transition-smooth hover:text-primary active:scale-95 disabled:opacity-50"
                         >
                           {playlist.pending === key ? (
-                            <Loader className="h-2.5 w-2.5 animate-spin" />
+                            <Loader className="h-[18px] w-[18px] animate-spin" />
                           ) : (
-                            <Plus className="h-4 w-4" />
+                            <Plus className="h-[18px] w-[18px]" />
                           )}
                         </button>
                       </div>
@@ -369,7 +375,7 @@ export function EventDetailsSheet({
                   {hiddenArtists > 0 && (
                     <button
                       onClick={() => setLineupExpanded(true)}
-                      className="flex min-h-[34px] items-center rounded-full border border-dashed border-border px-3 text-xs text-muted-foreground active:scale-95"
+                      className="flex min-h-[34px] items-center rounded-full border border-dashed border-border px-3 text-meta text-muted-foreground active:scale-95"
                     >
                       +{hiddenArtists} more
                     </button>
@@ -391,10 +397,10 @@ export function EventDetailsSheet({
                     from: "event-sheet",
                   })
                 }
-                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-smooth hover:opacity-90 active:scale-[0.99]"
+                className="icon-row min-h-[44px] w-full justify-center rounded-lg bg-primary text-body font-semibold text-primary-foreground transition-smooth hover:opacity-90 active:scale-[0.99]"
               >
                 View on RA
-                <ExternalLink className="h-4 w-4" />
+                <ExternalLink className="icon-text" />
               </a>
             </div>
           </div>
@@ -407,20 +413,20 @@ export function EventDetailsSheet({
             <div className="pointer-events-auto flex gap-2 pb-3">
               <button
                 onClick={scrollToMore}
-                className="glow-primary-sm flex items-center gap-1 rounded-full border border-primary/50 bg-card px-3 py-1.5 text-xs font-medium text-foreground active:scale-95"
+                className="glow-primary-sm icon-row rounded-full border border-primary/50 bg-card px-3 py-1.5 text-meta font-medium text-foreground active:scale-95"
               >
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="icon-text" />
                 More
               </button>
               <button
                 onClick={() => setExpanded((v) => !v)}
                 aria-label={expanded ? "Shrink" : "Expand to full screen"}
-                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground active:scale-95"
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-meta font-medium text-muted-foreground active:scale-95"
               >
                 {expanded ? (
-                  <ChevronDown className="h-3.5 w-3.5" />
+                  <ChevronDown className="h-[18px] w-[18px]" />
                 ) : (
-                  <ChevronUp className="h-3.5 w-3.5" />
+                  <ChevronUp className="h-[18px] w-[18px]" />
                 )}
               </button>
             </div>
