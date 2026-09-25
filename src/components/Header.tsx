@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import { CalendarDays, Search } from "lucide-react";
 import { DividedBoxes } from "@/components/DividedBoxes";
@@ -110,7 +111,7 @@ export function Header({
     : format(selectedDate, "EEE, MMM d");
 
   return (
-    <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border/50 pt-safe">
+    <header className="sticky-blur sticky top-0 z-40 bg-background/80 backdrop-blur-lg border-b border-border/50 pt-safe">
       {/* py in literal px, not the density-scaled scale.
           Every other gap in the app answers to the Density preference, and this
           one deliberately does not: the logo row is a fixed mark and a row of
@@ -118,7 +119,7 @@ export function Header({
           Airy it was taking 22px above the wordmark — a quarter of the header —
           to separate a title from a browser toolbar it is already separated
           from. Small and constant is the whole requirement. */}
-      <div className="shell relative flex items-center justify-between px-3">
+      <div className="shell gutter relative flex items-center justify-between">
         {/* A logo, not a heading — so it is deliberately outside every
             preference axis. It used to inherit the `type-*` class from <html>,
             which meant the app's own name was rendered in whichever typeface
@@ -161,22 +162,7 @@ export function Header({
           }}
           aria-live="polite"
           aria-label={`${caption}. Tap to switch between the date and the number of events.`}
-          /* Size pinned in literal px, like everything else in this row.
-
-             It is a *control* — tapping it swaps the date for the count — and
-             controls do not scale with the reading preferences, for the reasons
-             written above `.tap`. It used to be on the type ladder, and at the
-             largest text size it grew wide enough to run underneath the search
-             icon: absolutely centred text and a fixed icon cluster grow towards
-             each other, and one of them is not allowed to move. A date legible
-             at every setting is not worth a header that collides with itself,
-             and the date is on the rail immediately below this in type that is
-             larger still.
-
-             `max-w-[40%]` and `truncate` are the backstop rather than the fix:
-             the caption can now never reach the cluster whatever it is asked to
-             render. */
-          className="tap-row absolute left-1/2 max-w-[40%] -translate-x-1/2 justify-center truncate rounded px-2 text-[12px] font-semibold leading-none text-primary"
+          className="tap-row absolute left-1/2 -translate-x-1/2 justify-center rounded px-2 text-xs font-semibold text-primary"
         >
           {/* Keyed on the text so React remounts the span on every swap, which
               is what restarts the fade — a plain text change would swap the
@@ -222,7 +208,23 @@ export function Header({
         </div>
       </div>
 
-      {secret && <DividedBoxes onExit={() => setSecret(false)} />}
+      {/* Portalled to <body>, and it has to be.
+
+          The header carries `contain: paint` so its backdrop-filter stops
+          costing a blur per scroll frame (see `.sticky-blur` in index.css).
+          Containment also makes the header a *containing block for fixed
+          descendants* — which is a rule that has nothing to do with painting
+          and is easy to walk into. The hidden screen is `fixed inset-0`, so
+          left where it was it would have been clipped to a 44px strip at the
+          top of the window rather than covering the screen.
+
+          A full-screen overlay was never really a child of the header anyway;
+          it only lived here because this is where the taps are counted. */}
+      {secret &&
+        createPortal(
+          <DividedBoxes onExit={() => setSecret(false)} />,
+          document.body,
+        )}
     </header>
   );
 }

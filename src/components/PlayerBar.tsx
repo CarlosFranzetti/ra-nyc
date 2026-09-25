@@ -17,19 +17,11 @@ import { cn } from "@/lib/utils";
 import { PROVIDER_LABELS } from "@/types/artist";
 
 /**
- * Every secondary transport button, at the one size the whole app uses for a
- * control: a 44px box with an 18px glyph in it.
+ * Every transport button, at the one size the whole app uses for a control.
  *
  * `.tap` is 44px in literal px — see index.css. These were 32px, which is
  * comfortable with a mouse and mean with a thumb, on the one row of the app
  * most likely to be used one-handed and walking.
- *
- * The glyph size is the other half and it was the half still drifting: the
- * skip buttons were 18px, the close 16, the playlist's remove 12. All three are
- * the same kind of thing — a secondary control on this bar — and looked like
- * three different kinds, which is most of why the row read as cluttered rather
- * than crowded. Two glyph sizes exist on this screen now: 20px for the one
- * primary action, 18px for everything else.
  */
 const controlClass =
   "tap rounded-full text-foreground " +
@@ -121,10 +113,7 @@ export function PlayerBar() {
   if (!current) return null;
 
   const length = duration ?? 0;
-  const shown = Math.min(
-    scrubbing ?? position,
-    length || Number.MAX_SAFE_INTEGER,
-  );
+  const shown = Math.min(scrubbing ?? position, length || Number.MAX_SAFE_INTEGER);
   // Not while loading: there is no player to seek yet, so the handle would
   // move and playback wouldn't.
   const canSeek = seekable && length > 0 && !loading;
@@ -200,36 +189,29 @@ export function PlayerBar() {
             {queue.map((set, position) => {
               const live = position === index;
               return (
-                <li
-                  key={`${set.id}-${position}`}
-                  className="flex items-center gap-1"
-                >
+                <li key={`${set.id}-${position}`} className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => jumpTo(position)}
                     aria-current={live ? "true" : undefined}
                     className={cn(
                       "tap-row min-w-0 flex-1 gap-2 rounded-md px-2 text-left transition-smooth active:scale-[0.99]",
-                      live
-                        ? "bg-secondary"
-                        : "hover:bg-accent active:bg-accent",
+                      live ? "bg-secondary" : "hover:bg-accent active:bg-accent",
                     )}
                   >
                     {/* The live row is marked by the same triangle the transport
                         uses rather than by a number: a position in a queue you
                         can reorder by deleting is not a fact worth printing. */}
-                    <span className="flex h-[12px] w-[12px] flex-shrink-0 items-center justify-center">
+                    <span className="flex h-3 w-3 flex-shrink-0 items-center justify-center">
                       {live ? (
-                        <Play className="h-[10px] w-[10px] fill-primary text-primary" />
+                        <Play className="h-2.5 w-2.5 fill-primary text-primary" />
                       ) : null}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span
                         className={cn(
-                          "block truncate text-meta",
-                          live
-                            ? "font-medium text-foreground"
-                            : "text-muted-foreground",
+                          "block truncate text-[0.6875rem] leading-tight",
+                          live ? "font-medium text-foreground" : "text-muted-foreground",
                         )}
                       >
                         {set.title}
@@ -247,7 +229,7 @@ export function PlayerBar() {
                       aria-label={`Remove ${set.title} from the playlist`}
                       className="tap rounded-full text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
                     >
-                      <X className="h-[18px] w-[18px]" />
+                      <X className="h-3 w-3" />
                     </button>
                   )}
                 </li>
@@ -295,78 +277,66 @@ export function PlayerBar() {
             for it is an answer. */}
         {scrubbing !== null && (
           <div className="pointer-events-none absolute inset-x-0 -top-7 flex justify-center">
-            <span className="rounded-full bg-secondary px-2 py-0.5 text-micro font-medium tabular-nums text-foreground shadow-lg">
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-[0.625rem] font-medium tabular-nums text-foreground shadow-lg">
               {formatClock(shown)} / {formatClock(duration)}
             </span>
           </div>
         )}
       </div>
 
-      {/* Three groups, not seven controls.
-          The row had a uniform gap between all of prev / play / next / title /
-          tickets / list / close, which says they are seven peers when they are
-          really a transport, a label and a pair of utilities. Equal gaps
-          everywhere is the layout equivalent of no punctuation.
+      {/* No vertical padding: the play button sets the row's height on its own,
+          and padding on top of it was making the bar *taller* than the two rows
+          it replaced — which is the opposite of the point. */}
+      <div className="shell flex items-center gap-1 px-2">
+        <button
+          onClick={previous}
+          disabled={!hasPrevious}
+          aria-label="Previous mix"
+          className={controlClass}
+        >
+          <SkipBack className="h-[18px] w-[18px]" />
+        </button>
 
-          So the transport's three buttons sit flush against each other — their
-          44px boxes already hold them apart, and touching boxes read as one
-          cluster — and the space goes where it separates one *kind* of thing
-          from another. That is also where the title's missing width came from:
-          six gaps at the same width as the gaps that mattered.
+        {/* The one control on this bar anybody aims at in a hurry, so it is the
+            one that is bigger than the 44px standard rather than equal to it —
+            but only by a step.
 
-          No vertical padding: the play button sets the row's height on its own,
-          and padding on top of it made the bar taller than the two rows it
-          replaced. */}
-      <div className="shell flex items-center px-2">
-        <div className="flex flex-shrink-0 items-center">
-          <button
-            onClick={previous}
-            disabled={!hasPrevious}
-            aria-label="Previous mix"
-            className={controlClass}
-          >
-            <SkipBack className="h-[18px] w-[18px]" />
-          </button>
+            48 with a 20px glyph. It was 32/16 (a play button drawn at the size
+            of a label), then 56/24, which won the argument about being easy to
+            hit and then kept going: 56 plus four 44s plus six gaps left the
+            title 128px of a 390px screen. This is the size that was kept when
+            the rest of that round was reverted — the only thing on this bar
+            that is not the size it was two releases ago. */}
+        <button
+          onClick={toggle}
+          aria-label={playing ? "Pause" : "Play"}
+          className="flex h-[48px] w-[48px] flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-smooth active:scale-90 active:bg-primary"
+        >
+          {loading ? (
+            <Loader className="h-[20px] w-[20px] animate-spin" />
+          ) : playing ? (
+            <Pause className="h-[20px] w-[20px]" />
+          ) : (
+            <Play className="h-[20px] w-[20px]" />
+          )}
+        </button>
 
-          {/* The one control anybody aims at in a hurry, so it is the one that
-              is bigger than the 44 standard rather than equal to it — but only
-              by a step. It was 56 with a 24px glyph, which won the argument
-              about being easy to hit and then kept going: 56 plus four 44s plus
-              six gaps left the title 128px of a 390px screen, so the thing the
-              bar exists to tell you was the thing it had no room for. 48/20
-              is a step above the standard instead of a different scale, and it
-              hands 40px back to the title. */}
-          <button
-            onClick={toggle}
-            aria-label={playing ? "Pause" : "Play"}
-            className="mx-0.5 flex h-[48px] w-[48px] flex-shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-smooth active:scale-90 active:bg-primary"
-          >
-            {loading ? (
-              <Loader className="h-[20px] w-[20px] animate-spin" />
-            ) : playing ? (
-              <Pause className="h-[20px] w-[20px]" />
-            ) : (
-              <Play className="h-[20px] w-[20px]" />
-            )}
-          </button>
+        <button
+          onClick={next}
+          disabled={!hasNext}
+          aria-label="Next mix"
+          className={controlClass}
+        >
+          <SkipForward className="h-[18px] w-[18px]" />
+        </button>
 
-          <button
-            onClick={next}
-            disabled={!hasNext}
-            aria-label="Next mix"
-            className={controlClass}
-          >
-            <SkipForward className="h-[18px] w-[18px]" />
-          </button>
-        </div>
-
-        <div className="mx-2 min-w-0 flex-1">
-          <p className="truncate text-body font-medium text-foreground">
+        <div className="mx-1 min-w-0 flex-1">
+          <p className="truncate text-[0.8125rem] font-medium leading-tight text-foreground">
             {current.title}
           </p>
           <p
             className={cn(
-              "truncate text-meta",
+              "truncate text-[0.6875rem] leading-tight",
               error ? "text-destructive" : "text-muted-foreground",
             )}
           >
@@ -374,62 +344,57 @@ export function PlayerBar() {
           </p>
         </div>
 
-        <div className="flex flex-shrink-0 items-center">
-          {/* Earned, not shown.
+        {/* Earned, not shown.
             It appears only once someone has actually listened to a party
             preview for a while — `listened` ticks only while audio is playing,
             so a phone paused in a pocket never gets here. That is the whole
             ethic of it: at a minute in, "where do I get tickets" is a question
             the listener now has, and answering it is help. Shown at the start it
             would be an advert, and the app would have to be ignored to be used. */}
-          {ticketsVisible && source && (
-            <a
-              href={source.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`Tickets for ${source.label} on Resident Advisor`}
-              onClick={() =>
-                outbound("tickets", {
-                  host: hostOf(source.url),
-                  from: "player",
-                })
-              }
-              className="press icon-row flex-shrink-0 rounded-full border border-primary/50 bg-primary/10 px-2 py-1 text-micro font-medium text-primary"
-            >
-              <Ticket className="icon-text" />
-              Tickets
-            </a>
-          )}
+        {ticketsVisible && source && (
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Tickets for ${source.label} on Resident Advisor`}
+            onClick={() =>
+              outbound("tickets", { host: hostOf(source.url), from: "player" })
+            }
+            className="press flex flex-shrink-0 items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-1 text-[0.625rem] font-medium text-primary"
+          >
+            <Ticket className="h-3 w-3" />
+            Tickets
+          </a>
+        )}
 
-          {hasPlaylist && (
-            <button
-              onClick={() => setListOpen((open) => !open)}
-              aria-label={listOpen ? "Hide playlist" : "Show playlist"}
-              aria-expanded={listOpen}
-              className={cn(
-                controlClass,
-                "relative",
-                listOpen ? "text-primary" : "text-muted-foreground",
-              )}
-            >
-              <ListMusic className="h-[18px] w-[18px]" />
-              {/* How many are waiting, which is the one number worth having on a
+        {hasPlaylist && (
+          <button
+            onClick={() => setListOpen((open) => !open)}
+            aria-label={listOpen ? "Hide playlist" : "Show playlist"}
+            aria-expanded={listOpen}
+            className={cn(
+              controlClass,
+              "relative",
+              listOpen ? "text-primary" : "text-muted-foreground",
+            )}
+          >
+            <ListMusic className="h-[18px] w-[18px]" />
+            {/* How many are waiting, which is the one number worth having on a
                 closed panel — it is the difference between "there is a queue"
                 and "there is a queue with nine things in it". */}
-              <span className="absolute right-0 top-0.5 rounded-full bg-primary px-1 text-micro font-semibold text-primary-foreground">
-                {queue.length}
-              </span>
-            </button>
-          )}
-
-          <button
-            onClick={stop}
-            aria-label="Close player"
-            className={cn(controlClass, "text-muted-foreground")}
-          >
-            <X className="h-[18px] w-[18px]" />
+            <span className="absolute right-0 top-0.5 rounded-full bg-primary px-1 text-[0.5rem] font-semibold leading-[0.9rem] text-primary-foreground">
+              {queue.length}
+            </span>
           </button>
-        </div>
+        )}
+
+        <button
+          onClick={stop}
+          aria-label="Close player"
+          className={cn(controlClass, "text-muted-foreground")}
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
     </div>
   );

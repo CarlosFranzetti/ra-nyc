@@ -136,14 +136,14 @@ export function VenueSheet({
   const rideClass =
     // min-h in literal px: these three are the whole point of the sheet
     // and they are pressed on a street, one-handed.
-    "flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-lg border border-border/50 bg-card py-2 text-meta font-medium text-foreground transition-smooth active:scale-[0.98] active:bg-accent";
+    "flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-lg border border-border/50 bg-card py-2 text-[0.6875rem] font-medium text-foreground transition-smooth active:scale-[0.98] active:bg-accent";
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={onOpenChange} scaleBackground={false}>
       <DrawerContent layer="over" className="max-h-[calc(80vh_-_var(--player-h))]">
-        <div className="icon-row flex-shrink-0 border-b border-border/50 px-4 pb-3 pt-1">
-          <MapPin className="icon-text text-venue" />
-          <DrawerTitle className="min-w-0 flex-1 truncate text-lead font-semibold text-venue">
+        <div className="gutter flex flex-shrink-0 items-center gap-2 border-b border-border/50 pb-3 pt-1">
+          <MapPin className="h-4 w-4 flex-shrink-0 text-venue" />
+          <DrawerTitle className="min-w-0 flex-1 truncate text-base font-semibold text-venue">
             {venue ?? "Venue"}
           </DrawerTitle>
         </div>
@@ -162,7 +162,7 @@ export function VenueSheet({
               {isLoading ? (
                 <div className="skeleton-glow h-4 w-2/3 rounded" />
               ) : (
-                <p data-selectable className="text-meta leading-snug">
+                <p data-selectable className="text-xs leading-snug">
                   {/* Bold, and its own colour rather than the venue's. The name
                       above is already `text-venue`; repeating that hue here
                       would read as one wrapped title rather than as a name and
@@ -201,7 +201,7 @@ export function VenueSheet({
               className={rideClass}
             >
               <UberMark className="h-3.5 w-auto text-foreground" />
-              <span className="text-micro text-muted-foreground">Ride</span>
+              <span className="text-[0.625rem] text-muted-foreground">Ride</span>
             </a>
 
             <a
@@ -213,7 +213,7 @@ export function VenueSheet({
               className={rideClass}
             >
               <LyftMark className="h-3.5 w-auto text-foreground" />
-              <span className="text-micro text-muted-foreground">Ride</span>
+              <span className="text-[0.625rem] text-muted-foreground">Ride</span>
             </a>
 
             <a
@@ -224,8 +224,8 @@ export function VenueSheet({
               onClick={() => outbound("maps", { venue, from: "venue-sheet" })}
               className={rideClass}
             >
-              <Navigation className="icon-text text-primary" />
-              <span className="text-micro text-muted-foreground">Maps</span>
+              <Navigation className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[0.625rem] text-muted-foreground">Maps</span>
             </a>
           </div>
 
@@ -277,9 +277,9 @@ export function VenueSheet({
 
             {!isLoading && !located && (
               <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center">
-                <MapPin className="icon-text text-muted-foreground/50" />
-                <p className="text-body text-foreground">No map for this one</p>
-                <p className="text-meta text-muted-foreground">
+                <MapPin className="h-5 w-5 text-muted-foreground/50" />
+                <p className="text-sm text-foreground">No map for this one</p>
+                <p className="text-xs text-muted-foreground">
                   {error
                     ? error.message
                     : data?.address
@@ -306,14 +306,14 @@ export function VenueSheet({
                   from: "venue-sheet",
                 })
               }
-              className="press icon-row justify-center rounded-lg border border-primary/40 bg-primary/10 py-2 text-meta font-medium text-primary"
+              className="press flex items-center justify-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 py-2 text-xs font-medium text-primary"
             >
-              <Ticket className="icon-text" />
+              <Ticket className="h-3.5 w-3.5" />
               Tickets on RA
             </a>
           )}
 
-          <p className="pb-safe px-1 text-center text-meta text-muted-foreground/60">
+          <p className="pb-safe px-1 text-center text-[0.6875rem] text-muted-foreground/60">
             Map data © OpenStreetMap contributors, © CARTO
           </p>
         </div>
