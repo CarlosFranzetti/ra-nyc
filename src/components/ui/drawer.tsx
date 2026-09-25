@@ -14,7 +14,27 @@ import { cn } from "@/lib/utils";
  * open event sheet, and both a portal's overlay and its content need to sit
  * above the one beneath.
  */
-export const Drawer = DrawerPrimitive.Root;
+/**
+ * The sheet root, with the iOS background-scale on by default.
+ *
+ * `shouldScaleBackground` is what drives the `vaul-drawer-wrapper` in App.tsx:
+ * the page behind scales back, rounds its corners and dims while the sheet is
+ * up. See the note there for why it matters.
+ *
+ * **On by default, off for stacked sheets.** The artist sheet opens *over* an
+ * already-open event sheet, and these are two sibling Drawers rather than
+ * vaul's `NestedRoot` — so if both asked for the effect, the second would scale
+ * an already-scaled page and the listings would shrink twice. The second sheet
+ * is not being presented over the page; it is being presented over the first
+ * sheet, which does not move. Pass `scaleBackground={false}` there.
+ */
+export function Drawer({
+  scaleBackground = true,
+  ...props
+}: ComponentProps<typeof DrawerPrimitive.Root> & { scaleBackground?: boolean }) {
+  return <DrawerPrimitive.Root shouldScaleBackground={scaleBackground} {...props} />;
+}
+
 export const DrawerTrigger = DrawerPrimitive.Trigger;
 export const DrawerClose = DrawerPrimitive.Close;
 export const DrawerTitle = DrawerPrimitive.Title;

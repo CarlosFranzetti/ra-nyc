@@ -7,8 +7,29 @@ import { loadRecent, remember, saveRecent } from "@/lib/recentSearches";
 import { cn } from "@/lib/utils";
 import type { Event } from "@/types/event";
 
-/** How long the close animation runs before the panel is actually removed. */
-const EXIT_MS = 240;
+/**
+ * How long the close animation runs before the panel is actually removed.
+ *
+ * Read from `--out` rather than written here, and that is the whole point.
+ * This was a literal `240`, matching the `0.24s` the exit animation used to
+ * run for. When the overlays were put on one clock the CSS went to 0.34s and
+ * this number did not, because nothing connects them — so the panel unmounted
+ * a tenth of a second into a slide it never finished, and search closed by
+ * disappearing mid-movement. Measured: fifteen frames of travel where every
+ * sheet took twenty-four.
+ *
+ * A duration that exists in two places will eventually be two durations. This
+ * asks the stylesheet, so there is only one.
+ *
+ * Module scope, because the value cannot change at runtime, and `parseFloat`
+ * on a value CSS returns as seconds ("0.34s").
+ */
+const EXIT_MS = (() => {
+  if (typeof window === "undefined") return 340;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--out");
+  const seconds = parseFloat(raw);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 340;
+})();
 
 interface SearchSheetProps {
   open: boolean;
@@ -37,7 +58,7 @@ function Section({
   if (events.length === 0) return null;
   return (
     <section className="space-y-2">
-      <h3 className="px-1 text-meta font-semibold uppercase tracking-wider text-muted-foreground">
+      <h3 className="px-1 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
         {title} · {events.length}
       </h3>
       <div className="space-y-2">
@@ -246,12 +267,12 @@ export function SearchSheet({
             above it, so it needs the notch inset — but that inset is 0px on
             most devices, which would leave the field flush against the top
             edge. Both terms are needed and neither is enough. */}
-        <div className="flex flex-shrink-0 items-center gap-2 border-b border-border/50 px-3 pb-2 pt-[calc(env(safe-area-inset-top)+8px)]">
+        <div className="gutter flex flex-shrink-0 items-center gap-2 border-b border-border/50 pb-2 pt-[calc(env(safe-area-inset-top)+8px)]">
           <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border/50 bg-card px-3 py-2">
             {busy ? (
-              <Loader className="icon-text animate-spin text-primary" />
+              <Loader className="h-4 w-4 flex-shrink-0 animate-spin text-primary" />
             ) : (
-              <Search className="icon-text text-muted-foreground" />
+              <Search className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
             )}
             <input
               ref={focusInput}
@@ -266,7 +287,7 @@ export function SearchSheet({
               spellCheck={false}
               placeholder="DJs, parties, promoters, venues"
               aria-label="Search events"
-              className="min-w-0 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-muted-foreground/70"
+              className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/70"
             />
             {query && (
               <button
@@ -280,13 +301,13 @@ export function SearchSheet({
                 // the touch area is grown invisibly — see index.css.
                 className="tap-grow -mr-1 flex-shrink-0 p-1 text-muted-foreground active:scale-90"
               >
-                <X className="h-[18px] w-[18px]" />
+                <X className="h-4 w-4" />
               </button>
             )}
           </div>
           <button
             onClick={() => onOpenChange(false)}
-            className="tap-row flex-shrink-0 justify-center rounded-md px-2 text-body text-muted-foreground transition-smooth active:scale-95 active:text-foreground"
+            className="tap-row flex-shrink-0 justify-center rounded-md px-2 text-sm text-muted-foreground transition-smooth active:scale-95 active:text-foreground"
           >
             Cancel
           </button>
@@ -296,7 +317,7 @@ export function SearchSheet({
             it, so the first result should start immediately below the field —
             sixteen pixels of nothing there is sixteen pixels of the one or two
             rows that fit. */}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-3 pb-4 pt-2">
+        <div className="gutter min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pb-4 pt-2">
           {/* What you looked for last, above what is on tonight.
               Retyping a DJ's name to check whether anything new was announced
               is the most repeated action this screen has, and it is the one a
@@ -308,7 +329,7 @@ export function SearchSheet({
           {!enabled && recent.length > 0 && (
             <section className="space-y-2">
               <div className="flex items-baseline justify-between gap-2 px-1">
-                <h3 className="text-meta font-semibold uppercase tracking-wider text-muted-foreground">
+                <h3 className="text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground">
                   Recent
                 </h3>
                 {/* Text, not an icon. Clearing a history is a thing people want
@@ -317,7 +338,7 @@ export function SearchSheet({
                 <button
                   type="button"
                   onClick={clearRecent}
-                  className="tap-grow flex-shrink-0 px-1 text-meta text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors active:text-foreground"
+                  className="tap-grow flex-shrink-0 px-1 text-[0.6875rem] text-muted-foreground underline decoration-dotted underline-offset-2 transition-colors active:text-foreground"
                 >
                   Clear
                 </button>
@@ -331,7 +352,7 @@ export function SearchSheet({
                       setQuery(term);
                       inputRef.current?.focus();
                     }}
-                    className="flex min-h-[34px] max-w-full flex-shrink-0 items-center truncate rounded-full border border-border/70 px-3 text-meta text-muted-foreground transition-colors active:border-primary active:text-primary"
+                    className="flex min-h-[34px] max-w-full flex-shrink-0 items-center truncate rounded-full border border-border/70 px-3 text-[0.6875rem] leading-tight text-muted-foreground transition-colors active:border-primary active:text-primary"
                   >
                     {term}
                   </button>
@@ -349,21 +370,21 @@ export function SearchSheet({
           )}
 
           {!enabled && browsing.length === 0 && (
-            <p className="px-1 pt-4 text-center text-body text-muted-foreground">
+            <p className="px-1 pt-4 text-center text-sm text-muted-foreground">
               Type at least {MIN_QUERY} characters to search NYC listings.
             </p>
           )}
 
           {error && (
-            <p className="px-1 pt-4 text-center text-body text-destructive">
+            <p className="px-1 pt-4 text-center text-sm text-destructive">
               {error.message}
             </p>
           )}
 
           {nothing && (
             <div className="px-1 pt-4 text-center">
-              <p className="text-body text-foreground">No events found</p>
-              <p className="mt-1 text-meta text-muted-foreground">
+              <p className="text-sm text-foreground">No events found</p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 Nothing matching “{query.trim()}” in the last four months or the next six weeks.
               </p>
               {/* The difference between "this DJ has no gigs" and "we have not
@@ -372,7 +393,7 @@ export function SearchSheet({
                   result from the outside, which is how a working search gets
                   reported as broken. */}
               {thin && (
-                <p className="mt-2 text-meta leading-snug text-muted-foreground/70">
+                <p className="mt-2 text-[0.6875rem] leading-snug text-muted-foreground/70">
                   The saved index currently holds {data!.coverage!.indexed} of{" "}
                   {data!.coverage!.window} days, so older nights may not be
                   searchable yet. It fills as the app is used.
@@ -388,7 +409,7 @@ export function SearchSheet({
               covers the window there is nothing to disclaim, and a permanent
               "this may be incomplete" teaches people to ignore it. */}
           {data?.truncated && (upcoming.length > 0 || past.length > 0) && (
-            <p className="px-1 pb-2 text-center text-meta text-muted-foreground/60">
+            <p className="px-1 pb-2 text-center text-[0.6875rem] text-muted-foreground/60">
               Searching the next six weeks and the last four months.
             </p>
           )}

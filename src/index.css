@@ -458,89 +458,6 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Glyphs.
-
-   Two rules, and which one applies depends on what the glyph is *for*.
-
-   **A glyph inside a control does not move.** It is part of the button, and
-   the button is a constant size for the reasons written above `.tap`. These
-   are sized in literal px at the call site — 20px for the one primary action
-   on a screen, 18px for every secondary control — and there are exactly two of
-   those numbers.
-
-   **A glyph inside a line of text moves with the text.** A clock before a
-   start time, a pin before a venue, a headphone before a lineup: these are
-   punctuation, not controls. Set in `em`, so they are always the same size
-   relative to the words they sit against — which is the only definition of
-   "the right size" that survives a preference that makes the words 34% bigger.
-   That top rung exists for reading a phone at 4am, and a 14px pin frozen
-   beside 19px type is exactly the kind of detail that makes a screen feel
-   wrong without anyone being able to say why.
-
-   1.1em rather than 1em: a lucide glyph is drawn inside its box with a margin,
-   so at 1em it optically reads a size smaller than the cap height beside it.
-
-   Both rules were previously one accident. `h-4 w-4` — Tailwind's default way
-   to size an icon, and what thirty-eight glyphs in this app used — resolves
-   through the `spacing` scale, which this project rewrote to multiply by the
-   Density preference. So every glyph tracked Density: 16px at Airy, 7px at
-   Tight. See the note above `FIXED` in tailwind.config.ts, which is where that
-   is now cut.
-   ───────────────────────────────────────────────────────────────────────────── */
-.icon-text {
-  width: 1.1em;
-  height: 1.1em;
-  flex-shrink: 0;
-}
-
-/**
- * The row an `.icon-text` sits in, and the other half of the same idea.
- *
- * The gap between a glyph and the word it labels is not layout air — it is
- * word spacing, and it belongs to the text run rather than to the page. Set
- * with the spacing scale it answered to Density, and `gap-0.5` at Tight
- * (2px x 0.45) came out at **nine tenths of a pixel**: the clock and the
- * "10pm" it labels were touching. Density is meant to decide how much room the
- * listings have, not to weld a glyph to a numeral.
- *
- * In `em`, so it tracks the text on both sides of it — the same rule, and the
- * same reason, as the glyph itself.
- */
-.icon-row {
-  display: flex;
-  align-items: center;
-  gap: 0.35em;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   Focus.
-
-   The app declared nothing here, which is not the same as declaring nothing
-   happens: it means every browser's own idea of a focus ring, and Safari's
-   idea on iOS is to leave one drawn around whatever you last tapped. The
-   transport shipped looking like the Next button had a border and the
-   Previous button did not — the "border" was a focus ring left over from the
-   tap that started the set.
-
-   So: nothing for a pointer, a real ring for a keyboard. `:focus-visible` is
-   the browser's own answer to "did this focus come from a keyboard", and it is
-   the whole reason not to reach for the blunt `outline: none` that used to be
-   the standard fix and takes keyboard users' only cue with it.
-
-   The ring is `--ring`, which every theme already defines, and it is drawn
-   outside the box with an offset so it reads on a filled button as well as a
-   bare one.
-   ───────────────────────────────────────────────────────────────────────────── */
-:focus:not(:focus-visible) {
-  outline: none;
-}
-
-:focus-visible {
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 2px;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
    The Text size slider.
 
    A native `input[type=range]`, not six buttons and a pair of steppers. The
@@ -821,12 +738,149 @@ html {
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   One clock, one curve.
+
+   Everything that arrives over the listings used to move on its own timing,
+   chosen locally and never compared against its neighbours:
+
+     the four sheets   0.525s   cubic-bezier(0.32, 0.72, 0, 1)
+     search            0.26s in / 0.24s out, and a *different curve each way*
+     the transport     0.28s    cubic-bezier(0.22, 1, 0.36, 1)
+     the caption       0.42s
+
+   Nothing there is broken, which is why it survived: every one of those
+   animations runs. But four surfaces that do the same job — cover the
+   listings, then uncover them — moving at four speeds on three curves do not
+   read as one application. Search is the tell, because it is the overlay
+   opened most: it snaps in at half the duration of every sheet, so the app
+   feels smooth in one place and abrupt in another, and the inconsistency reads
+   as *something being wrong with the sliding* rather than as a difference in
+   timing.
+
+   So: `--ease` and two durations, used by everything.
+
+   **The curve** is vaul's, which is iOS's own sheet curve. It is the best of
+   the three already in use and it is the one the largest surfaces were already
+   on. It decelerates late, so a movement settles instead of stopping.
+
+   **In is slower than out**, 0.44 against 0.34. That asymmetry is deliberate
+   and it is not symmetry-for-its-own-sake that it breaks: an entrance is
+   showing you something and wants the frames; a dismissal is getting out of
+   the way and any time spent on it is time you are waiting. Making both 0.44
+   would feel sluggish on the way out, which is the half people notice.
+
+   The net effect on speed: sheets get *faster* (0.525 → 0.44 in, 0.34 out) and
+   search gets slower but smoother. Nothing on screen is sluggish, and
+   everything moves alike.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --in: 0.44s;
+  --out: 0.34s;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   The gutter.
+
+   One margin for the whole page, in literal pixels, and the same one for every
+   band down it — header, date rail, filter row, listings.
+
+   It was three margins, and they moved. The header carried `px-3`; the list
+   carried a density ladder of `px-2 / px-3 / px-4`; and *both* were then
+   multiplied again by `--space`, because those are spacing utilities and this
+   project rewrites the spacing scale. Measured:
+
+                    logo    card
+       Tight         5.4     3.6      card sits 1.8px LEFT of the logo
+       Default       9.0     9.0      aligned
+       Airy         12.2    16.3      card sits 4.1px RIGHT of the logo
+
+   So the page's left edge was a zig-zag, it changed width by 4.5x across the
+   Density range, and — the part that gives it away — the header and the list
+   crossed over, so which one sat further left depended on a preference about
+   how roomy the listings should be. At Default it happened to line up, which
+   is why it survived: the setting most people never change is the one setting
+   where it looks right.
+
+   A margin is not air between things; it is the frame the things sit in. It is
+   the one measurement on a page that must not move, because everything else is
+   judged against it. Density decides how much room the listings have *inside*
+   the frame.
+
+   12px: a step up from the 9 that Default was drawing — at 9 the cards read as
+   falling off the bezel — and still well under the 16 a roomier app would use.
+   ───────────────────────────────────────────────────────────────────────────── */
+.gutter {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Scrolling, and what it costs.
+
+   The momentum and the rubber band are already right — see the `body` rule
+   further down, which keeps the bounce and drops only the scroll chaining.
+   What was left is the per-frame cost, and on a phone that is what decides
+   whether a list feels like a list or like a web page.
+
+   ## The frosted header
+
+   `backdrop-filter` is the most expensive thing on this screen. It samples
+   everything painted behind the element and blurs it, and on a *sticky* header
+   the thing behind it is a list that is moving — so the sample is invalid on
+   every frame and the blur is recomputed on every frame. Apple ships frosted
+   nav bars everywhere, but in UIKit that is a compositor effect with hardware
+   behind it; in a web view it is a GPU readback per frame.
+
+   The look is worth keeping, so this makes it cheap instead of removing it:
+
+   - `transform: translateZ(0)` promotes the header to its own compositor
+     layer, so the list scrolling underneath does not invalidate it. Without
+     this the browser is free to re-rasterise the header *and* its backdrop
+     together.
+   - `contain: paint` tells the browser nothing inside will paint outside the
+     box, which bounds the region the blur has to consider.
+   - `will-change: backdrop-filter` keeps the effect on the fast path rather
+     than letting it fall back between frames.
+
+   ## Cards that are not on screen
+
+   `content-visibility: auto` lets the browser skip layout, paint and style for
+   a card that is scrolled out of view, which on a busy Saturday is most of
+   them. `contain-intrinsic-size` is the promise of how tall a skipped card is
+   — and it has to be close, or the scrollbar jumps as skipped cards are
+   measured for real on the way past. 94px is the measured height at the
+   default density (89 at Tight, 98 at Airy), so the worst case is a four-pixel
+   correction per card rather than a card collapsing to nothing.
+
+   This is one of the few optimisations that is strictly better the longer the
+   list gets, which is the right shape for a listings app.
+
+   **Honesty about verification:** none of this can be measured faithfully in
+   this project's test container. Headless Chromium on a Linux VM does not have
+   iOS Safari's compositor or its memory bandwidth, so a frame-timing number
+   taken here would be reassuring and meaningless. These are applied on the
+   strength of what the properties do, not on a measurement — and the numbers
+   above (the 94px, the blur-per-frame) are the parts that *are* measurable.
+   ───────────────────────────────────────────────────────────────────────────── */
+.sticky-blur {
+  transform: translateZ(0);
+  contain: paint;
+  will-change: backdrop-filter;
+}
+
+.scroll-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 94px;
+}
+
 .overlay-in {
-  animation: overlay-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: overlay-slide-in var(--in) var(--ease) both;
 }
 
 .overlay-out {
-  animation: overlay-slide-out 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: overlay-slide-out var(--out) var(--ease) both;
 }
 
 /* Staggered list entrance.
@@ -1097,33 +1151,44 @@ html {
   }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   Sheet timing.
+/* Sheet timing — the same clock as everything else, from `--in` / `--out`.
 
    vaul ships `transition: transform .5s cubic-bezier(.32,.72,0,1)` and a
-   matching `animation-duration: .5s` on `[data-vaul-drawer]`. This raises both
-   by 5% to 0.525s.
+   matching `animation-duration: .5s`. This used to raise both to 0.525s, on
+   the reasoning that a slower tail reads as smoother. It does, in isolation —
+   but it left the sheets as the slowest thing on screen by a factor of two
+   against search, and in a system the comparison is the thing you actually
+   see.
 
-   Two details make this safe:
+   Two details still make this safe:
    - Specificity, not `!important`. The extra attribute selector beats vaul's
      single-attribute rule regardless of stylesheet order, while still losing to
      the inline styles vaul writes during a drag — so the sheet keeps tracking
      the finger exactly instead of easing behind it.
-   - The easing is left as vaul's (iOS's own sheet curve). It decelerates late,
-     which is what makes a release settle rather than stop; slowing it slightly
-     gives that tail more room to read as smooth.
-   ───────────────────────────────────────────────────────────────────────────── */
+   - The easing is vaul's own, which is where `--ease` came from.
+
+   `--in` on the transition rather than a split, because the transition covers
+   the drag-release settle as well as the open; the *close* animation picks up
+   `--out` from the attribute selector below. */
 [data-vaul-drawer][data-vaul-drawer-direction] {
-  transition: transform 0.525s cubic-bezier(0.32, 0.72, 0, 1);
-  animation-duration: 0.525s;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform var(--in) var(--ease);
+  animation-duration: var(--in);
+  animation-timing-function: var(--ease);
+}
+
+[data-vaul-drawer][data-vaul-drawer-direction][data-state="closed"] {
+  animation-duration: var(--out);
 }
 
 /* The overlay should fade on the same clock, or the backdrop lands before the
    sheet does and the two read as separate movements. */
 [data-vaul-overlay] {
-  animation-duration: 0.525s;
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  animation-duration: var(--in);
+  animation-timing-function: var(--ease);
+}
+
+[data-vaul-overlay][data-state="closed"] {
+  animation-duration: var(--out);
 }
 
 /* The transport arriving and leaving.
@@ -1150,5 +1215,5 @@ html {
 }
 
 .player-enter {
-  animation: player-enter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: player-enter var(--in) var(--ease) both;
 }

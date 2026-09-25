@@ -2374,6 +2374,154 @@ title, and the two flyer-fallback initials, which are decoration filling a box).
 The other renders the app at Tight and at Airy and asserts **no glyph changes
 size** between them.
 
+### 3.x · Reverted, then given a frame
+
+The type-ladder release went back. The verdict was "I love the play button but
+everything else feels a bit off", and the revert was taken at full depth by
+explicit choice: everything from that round undone except the **48px play
+button**, which is now the only thing on the transport that is not the size it
+was two releases ago. The reverted build is kept on the `ra-alt` branch with a
+Vercel preview URL, so the two can be opened side by side.
+
+Then a spacing and sizing pass, and the useful thing about it is that every
+change below was made against a measured number rather than a screenshot. Three
+probes were written for it and kept: `tests/motion-probe.mjs`,
+`tests/rhythm-probe.mjs`, `tests/margin-probe.mjs`. None of them assert
+anything. They print.
+
+**"What happened to my smooth sliding" — nothing, and that was the problem.**
+Every overlay still animated. They were on four clocks and three curves:
+
+    the four sheets   0.525s   cubic-bezier(0.32, 0.72, 0, 1)
+    search            0.26s in / 0.24s out, a different curve each way
+    the transport     0.28s    cubic-bezier(0.22, 1, 0.36, 1)
+    the caption       0.42s
+
+Search is the one opened most and it was snapping in at half the duration of
+every sheet, so the app felt smooth in one place and abrupt in another. Now
+`--ease`, `--in` (0.44s) and `--out` (0.34s), used by all of them — sheets get
+slightly *faster*, search gets slower and smoother, and in is deliberately
+slower than out because an entrance is showing you something and a dismissal is
+getting out of the way.
+
+That uncovered a duplicated constant: `EXIT_MS = 240` in SearchSheet, a JS copy
+of the old 0.24s. The CSS moved to 0.34s and the number did not, so the panel
+unmounted a tenth of a second into a slide it never finished — fifteen frames
+of travel where every sheet took twenty-four. It now reads `--out` off the
+stylesheet, because a duration written in two places eventually becomes two
+durations.
+
+**The page had three left margins and they moved.** The header carried `px-3`,
+the list a density ladder of `px-2 / px-3 / px-4`, and both were multiplied
+again by `--space`:
+
+    density     logo    card
+    Tight        5.4     3.6     card 1.8px LEFT of the logo
+    Default      9.0     9.0     aligned
+    Airy        12.2    16.3     card 4.1px RIGHT of the logo
+
+The two crossed over, so which band sat further left depended on a preference
+about how roomy the listings should be — and it looked right at Default, which
+is the setting nobody changes, which is how it survived. A margin is the frame
+the page sits in, not air between things; it is the one measurement that must
+not move. `.gutter` is 12px, literal, and every band uses it: header, rail,
+filter row, listings, and all five sheets (which were themselves on four
+different margins, none of them the page's). Logo and card now both start at
+12 and both end at 378, at every density.
+
+**The card had a hole and a collision.** Measured: the text beside the 80px
+flyer is 53–74px depending on whether the title wraps, so top-aligning left
+27px of nothing under a short title and 6px under a long one — a different
+amount of empty on every row. It is centred now; the flyer still sets the
+height, so nothing else moved. And the internal row gaps were `mt-0.5` / `mt-1`
+off the density scale, which at Tight came out **0.9px and 1.8px** — not tight
+spacing but a collision, in a 1:2 ratio nobody could justify, inside a list
+whose *between-card* gap was 4.5px. One `gap-[0.25rem]` now, even, in rem.
+
+Which is the rule the rest of the app is being moved onto: **space inside a
+block is measured in the type; space between blocks is measured in the layout;
+the page margin is neither, and does not move.**
+
+**One thing came back from the reverted release** — `width` / `height` /
+`min-*` off the density scale (see `FIXED` in tailwind.config.ts). Not the type
+ladder, which is what changed how the app felt, but the scale that sizes
+*objects*: `h-4 w-4` meant 16px at Airy and 7px at Tight, across thirty-eight
+glyphs. A glyph at 45% of its size next to type that has not moved is a sizing
+fault at any density, and the brief was sizing.
+
+### 3.x · Apple-esque: the page recedes, and the list stops paying for the header
+
+Two asks, and they turned out to be unrelated problems.
+
+**The slides.** The sheets already had iOS's curve and, after the previous
+round, iOS's duration. What they did not have is the thing that actually makes
+an iOS sheet read as an iOS sheet: *the screen underneath recedes*. It scales
+back a couple of percent, rounds its corners and dims, so the two surfaces read
+as a stack with depth instead of one rectangle covering another. Ours slid up
+over a page that sat perfectly still.
+
+vaul implements it against a `vaul-drawer-wrapper` attribute, so it cost a
+wrapper in App.tsx and `shouldScaleBackground`. Measured on open: the wrapper
+goes from `none | 0px` to `scale(0.933) translateY(13px) | radius 8px` across
+32 frames.
+
+Two places it is deliberately **off**:
+
+- **Stacked sheets.** Artist opens over event, venue over either. These are
+  sibling Drawers with z-layering rather than vaul's `NestedRoot`, so a second
+  one asking for the effect would scale an already-scaled page and the listings
+  would shrink twice. The second sheet is presented over the *first sheet*,
+  which does not move.
+- **Settings**, which slides from the right. A side panel is a *push*, and on
+  iOS the screen behind a push slides — it does not recede. Scaling there would
+  be the wrong idiom for the gesture.
+
+**The scrolling.** The momentum and the rubber band were already right (`body`
+keeps `overscroll-behavior-y: contain`, which drops chaining and keeps the
+bounce), as were the tap-highlight and callout suppressions. What was left was
+per-frame cost:
+
+- `backdrop-filter` on a **sticky** header is the expensive one, because the
+  thing it samples is a list that is moving — so the blur is recomputed every
+  frame. Apple ships frosted bars everywhere, but in UIKit that is a compositor
+  effect with hardware behind it. `.sticky-blur` keeps the look and makes it
+  cheap: own compositor layer, `contain: paint` to bound the sampled region,
+  `will-change: backdrop-filter`.
+- `.scroll-card` puts `content-visibility: auto` on every card with
+  `contain-intrinsic-size: auto 94px` — the measured default-density height, so
+  a skipped card is at worst a four-pixel correction rather than a collapse.
+
+**The same trap twice, and it is worth writing down once.** Both `contain:
+paint` and a `transform` make an element the *containing block for
+fixed-position descendants*. Neither rule has anything to do with what the
+property appears to be for, and this round walked into it from both directions:
+
+- The hidden screen is `fixed inset-0` and was rendered inside `<header>`, which
+  now has `contain: paint` — so a full-screen overlay would have been clipped
+  to a 44px strip.
+- The transport is `fixed ... bottom-0` and was rendered inside the page, which
+  is now the transformed `vaul-drawer-wrapper` — so with a sheet open it stopped
+  being pinned to the viewport and scaled and slid with the page. It was still
+  *visible*, which is why this needed a test to find rather than an eye: it had
+  simply moved out from under the thumb. The player suite caught it as
+  "transport is tappable over an open sheet".
+
+Both are portalled to `<body>` now. **Anything that measures itself against the
+window has to live outside both.**
+
+One more, smaller: the wrapper was first written with `min-h-screen bg-background`,
+which made it the *first* `.min-h-screen` in the document — and the player suite
+finds the page by that class, so it began measuring a wrapper with no bottom
+padding. Nothing visible changed. The wrapper only ever needed to be opaque;
+HomePage's own root already carries the height and the padding.
+
+**Not verifiable here, and said plainly:** headless Chromium on a Linux VM has
+neither iOS Safari's compositor nor its memory bandwidth, so a frame-timing
+number taken in this container would be reassuring and meaningless. The scroll
+changes are applied on the strength of what the properties do. What *is*
+measured — and is in `tests/apple-probe.mjs` — is that they resolved, and that
+the background actually recedes.
+
 ## 4 · Map of the code
 
 ```

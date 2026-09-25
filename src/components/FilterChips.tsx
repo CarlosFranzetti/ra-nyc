@@ -58,7 +58,7 @@ export function FilterChips({ active, counts, onToggle }: FilterChipsProps) {
             className={cn(
               // min-h in literal px so Density cannot shrink a control: at Tight
               // these were 22px tall.
-              "flex min-h-[34px] flex-shrink-0 items-center rounded-full border px-3 text-meta",
+              "flex min-h-[34px] flex-shrink-0 items-center rounded-full border px-3 text-[0.6875rem] leading-tight",
               key === FIRST_RIGHT && "ml-auto",
               "transition-colors duration-150",
               on

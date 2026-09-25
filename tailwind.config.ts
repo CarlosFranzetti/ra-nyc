@@ -1,27 +1,31 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Literal pixels, for the scales that describe *how big a thing is* rather than
- * how much air is around it.
+ * Literal pixels, for the scales that say how big a thing *is* rather than how
+ * much air is around it.
  *
- * Tailwind ships one `spacing` scale and points `width`, `height`, `min-*` and
- * `max-*` at it alongside `padding`, `margin` and `gap`. That is fine in a
- * stock install, where the scale is a set of constants. It is not fine here:
+ * Tailwind ships one `spacing` scale and points `width`, `height` and `min-*`
+ * at it alongside `padding`, `margin` and `gap`. That is fine in a stock
+ * install, where the scale is a set of constants. It is not fine here, because
  * this config rewrites `spacing` to multiply by `--space`, the Density
- * preference — so every `h-4 w-4` in the app was a *density-scaled icon*.
+ * preference — so `h-4 w-4`, the most ordinary way there is to size an icon,
+ * meant **16px at Airy and 7px at Tight**.
  *
- * The numbers on that: `h-4` is 16px at Airy (--space 1.02) and 7px at Tight
- * (0.45). A clock glyph next to a start time, a map pin, the chevron on a
- * disclosure, the `+` on a lineup chip — all of them silently shrank by more
- * than half when you asked for a denser list, because "denser list" and
- * "smaller icons" were the same variable. Thirty-eight glyphs were on this
- * scale. Nobody chose it; it is what `h-4` means by default.
+ * Thirty-eight glyphs were on that scale: the clock before a start time, the
+ * pin before a venue, the headphone above a lineup, the `+` on every chip. Ask
+ * for a denser list and they shrank by more than half, because "denser list"
+ * and "smaller icons" were the same variable.
  *
- * Splitting the two is the whole fix, and it is a config change rather than
- * thirty-eight edits: `p-4` still means "16px of air, scaled by Density",
- * `h-4` now means "16px, always". It is the same rule `.tap` already follows in
- * index.css for the same reason — how big a control is is not a matter of taste
- * about how roomy the layout should be.
+ * This is the one piece of the reverted sizing release that comes back, and it
+ * comes back because it is a *sizing fault* rather than a matter of taste: a
+ * glyph drawn at 45% of its intended size next to type that has not moved is
+ * wrong at any density. The type ladder from that release — the part that
+ * changed how the app felt — stays reverted.
+ *
+ * It is also the same rule `.tap` already follows in index.css, and the same
+ * rule the flyer and the header follow, each of which had to be rescued from
+ * this scale by hand in an earlier round. Fixing it at the config is what stops
+ * the next component acquiring it again by typing the obvious thing.
  */
 const FIXED = {
   "0": "0px",
@@ -65,51 +69,6 @@ export default {
   darkMode: ["class"],
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
-    /**
-     * Six rungs, and nothing between them.
-     *
-     * The app had eleven type sizes: five arbitrary rem values written inline
-     * — 0.5, 0.5625, 0.625, 0.6875, 0.8125 — alongside six of Tailwind's own.
-     * Sixty-eight usages spread over eleven sizes, several of them one pixel
-     * apart, which is not a scale but a list of decisions each made locally
-     * and none made twice the same way. Two subtitles a pixel different from
-     * each other is not a design; it is a diff nobody noticed.
-     *
-     * They collapse cleanly, because the eleven were already clustered: 10px
-     * and 12px and 14px did most of the work. Sixty of the sixty-eight land
-     * on their existing size; the rest move by a pixel or two. What changes
-     * is that there is now somewhere for the next one to go.
-     *
-     * Named for the job rather than the size, so a component asks for "the
-     * secondary line" and gets whatever that is, instead of asking for
-     * eleven-sixteenths of a rem and getting whatever it typed.
-     *
-     * rem, not px, deliberately: this is the ladder the Text size preference
-     * and the typography rungs multiply. Spacing is px for the mirror-image
-     * reason — see the note on `spacing`. Type scales; air scales at 60%;
-     * controls and glyphs do not scale at all. Three rules, and every size in
-     * the app is one of them.
-     *
-     * The line-height is part of the rung, not a separate decision at each
-     * call site. That is where `leading-tight` sprinkled through the markup
-     * came from, and it meant the same size read at two different densities
-     * depending on which file it was in.
-     */
-    fontSize: {
-      // Counters and badges. Rides inside a control, never alone.
-      micro: ["0.625rem", { lineHeight: "1.2" }],
-      // The second line: venue, provider, "3 of 9", timestamps.
-      meta: ["0.75rem", { lineHeight: "1.25" }],
-      // The first line of a row, and the app's default reading size.
-      body: ["0.875rem", { lineHeight: "1.3" }],
-      // Body copy with room around it — a sheet's paragraph, a setting.
-      lead: ["1rem", { lineHeight: "1.4" }],
-      // A sheet's heading.
-      title: ["1.25rem", { lineHeight: "1.25" }],
-      // The one big thing on a screen.
-      display: ["1.625rem", { lineHeight: "1.1" }],
-    },
-
     extend: {
       colors: {
         border: "hsl(var(--border))",
@@ -191,13 +150,12 @@ export default {
         "80": "calc(320px * var(--space, 1))",
         "96": "calc(384px * var(--space, 1))",
       },
-      // See FIXED above. These four are the scales that say how big something
-      // *is*; only padding, margin and gap answer to Density now.
+      // See FIXED above: these say how big a thing is, so only padding, margin
+      // and gap answer to Density.
       width: FIXED,
       height: FIXED,
       minWidth: FIXED,
       minHeight: FIXED,
-
 
       borderRadius: {
         lg: "var(--radius)",

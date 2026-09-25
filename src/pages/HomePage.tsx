@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import { CloudOff } from "lucide-react";
 import { DatePicker } from "@/components/DatePicker";
@@ -94,16 +95,16 @@ export default function HomePage() {
     layoutDensity === "airy" && "gap-3",
   );
 
-  const padX = cn(
-    layoutDensity === "tight" && "px-2",
-    layoutDensity === "default" && "px-3",
-    layoutDensity === "airy" && "px-4",
-  );
+  // The horizontal margin is `.gutter` — one constant for every band on the
+  // page, see index.css. Density still owns the space *below* the list, which
+  // is air rather than frame.
+  const padX = "gutter";
 
   const mainPadding = cn(
-    layoutDensity === "tight" && "px-2 pb-4",
-    layoutDensity === "default" && "px-3 pb-6",
-    layoutDensity === "airy" && "px-4 pb-8",
+    "gutter",
+    layoutDensity === "tight" && "pb-4",
+    layoutDensity === "default" && "pb-6",
+    layoutDensity === "airy" && "pb-8",
   );
 
   const allEvents = useMemo(() => data?.events ?? [], [data?.events]);
@@ -172,8 +173,8 @@ export default function HomePage() {
                 are hours old are indistinguishable from listings that are
                 current, and the app would be confidently wrong about tonight. */}
             {data?.stale && (
-              <span className="icon-row flex-shrink-0 text-meta text-muted-foreground/70">
-                <CloudOff className="icon-text" />
+              <span className="flex flex-shrink-0 items-center gap-1 text-[0.6875rem] text-muted-foreground/70">
+                <CloudOff className="h-3 w-3" />
                 Saved listings
               </span>
             )}
@@ -197,13 +198,13 @@ export default function HomePage() {
               <EmptyState />
             ) : filteredOut ? (
               <div className="py-10 text-center">
-                <p className="text-body text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Nothing tonight matches those filters.
                 </p>
                 <button
                   type="button"
                   onClick={() => setFilters([])}
-                  className="mt-2 text-meta text-primary underline underline-offset-4"
+                  className="mt-2 text-xs text-primary underline underline-offset-4"
                 >
                   Clear filters
                 </button>
@@ -281,8 +282,23 @@ export default function HomePage() {
         />
 
         {/* Docked to the bottom, over everything. Renders nothing until
-            something is playing. */}
-        <PlayerBar />
+            something is playing.
+
+            Portalled to <body>, and this is load-bearing. The app is wrapped in
+            `vaul-drawer-wrapper` so the page recedes behind an open sheet (see
+            App.tsx), and vaul does that with a `transform` on the wrapper. A
+            transformed ancestor becomes the containing block for `position:
+            fixed` descendants — so the transport, left inside, stopped being
+            pinned to the viewport and started scaling and sliding with the
+            page. It was still on screen, which is why this is worth a comment
+            rather than being obvious: it had simply moved out from under the
+            thumb, and the suite caught it as "transport is tappable over an
+            open sheet".
+
+            Same trap as the hidden screen and `contain: paint` in Header.tsx.
+            Anything that must measure itself against the window has to be
+            outside both. */}
+        {createPortal(<PlayerBar />, document.body)}
       </div>
     </>
   );

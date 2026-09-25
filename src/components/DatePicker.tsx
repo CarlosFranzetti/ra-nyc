@@ -92,7 +92,11 @@ export function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
       // `snap-x` so a flick settles on a chip rather than mid-gap, and
       // `overscroll-x-contain` so dragging past the end does not hand the
       // gesture to Safari's back-swipe.
-      className="flex gap-1.5 overflow-x-auto overscroll-x-contain scroll-smooth snap-x scroll-pl-2 px-2 pb-1 no-scrollbar"
+      // `.gutter` rather than `px-2`, so the first chip starts on the same
+      // margin as the cards below it and the logo above it — the rail is a band
+      // of the page like any other. `scroll-pl` has to match it or a snapped
+      // chip lands 12px left of where the rail actually begins.
+      className="gutter flex gap-1.5 overflow-x-auto overscroll-x-contain scroll-smooth snap-x scroll-pl-[12px] pb-1 no-scrollbar"
     >
       {dates.map((date) => {
         const isSelected = isSameDay(date, selectedDate);
