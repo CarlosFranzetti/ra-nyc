@@ -16,7 +16,12 @@ import { SearchSheet } from "@/components/SearchSheet";
 import { VenueSheet } from "@/components/VenueSheet";
 import { SplashScreen } from "@/components/SplashScreen";
 import { useTheme } from "@/context/ThemeContext";
-import { useEventCacheUpdates, useEvents, useWeekScan } from "@/hooks/useEvents";
+import {
+  useEventCacheUpdates,
+  useEvents,
+  useWarmDayImages,
+  useWeekScan,
+} from "@/hooks/useEvents";
 import { applyFilters, filterCounts, type FilterKey } from "@/lib/filters";
 import { currentNight } from "@/lib/night";
 import { cn } from "@/lib/utils";
@@ -108,6 +113,22 @@ export default function HomePage() {
   );
 
   const allEvents = useMemo(() => data?.events ?? [], [data?.events]);
+
+  /**
+   * Pull the night's flyers into cache, five at a time, as soon as the day
+   * lands — so the list stops assembling itself under your thumb as you scroll.
+   * See `useWarmDayImages`.
+   *
+   * `allEvents`, not `visibleEvents`: the filter chips are a view of the same
+   * night, and flipping to Low-key should not be the moment a dozen flyers
+   * start loading. Warming the whole day once costs the same requests in total
+   * and makes every filter instant.
+   */
+  const flyerUrls = useMemo(
+    () => allEvents.map((event) => event.imageUrl),
+    [allEvents],
+  );
+  useWarmDayImages(flyerUrls);
   const visibleEvents = useMemo(
     () => applyFilters(allEvents, filters),
     [allEvents, filters],
