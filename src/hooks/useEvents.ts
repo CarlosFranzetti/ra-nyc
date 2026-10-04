@@ -200,31 +200,159 @@ export function usePrefetchEvents() {
 const warmedImages = new Set<string>();
 
 /**
- * Warm a flyer on hover / touchstart, same trigger as `usePrefetchEvents`
- * above and `usePrefetchArtist` — by the time the tap that opens the detail
- * sheet lands, the image it's about to show eagerly has nothing left to wait
- * for.
+ * How long a single flyer is allowed to hold up the queue.
+ *
+ * A batch advances when every image in it has settled, so one URL that never
+ * loads and never errors — a CDN that accepts the connection and then sits on
+ * it — would stall every flyer behind it for as long as the page is open. The
+ * timeout is not about giving up on the image; the request is left running and
+ * may still populate the cache. It is about the queue.
+ */
+const WARM_TIMEOUT_MS = 10_000;
+
+/**
+ * Pull one flyer into cache, resolving when it has settled either way.
  *
  * Plain `Image()` loads rather than `fetch()`: they're the exact requests
  * `EventThumb` itself makes (same URLs, same `referrerPolicy`), so the service
  * worker's `ra-img-v1` cache — or failing that, the browser's own HTTP cache —
- * has already done the work by the time the real `<img>` mounts. Mirrors
- * `EventThumb`'s own direct-then-proxied order: hotlink protection that blocks
- * the direct load blocks it here too, so warming only the direct URL would
- * warm the one request that was never going to succeed and leave the fallback
- * — the one the sheet will actually end up showing — to happen live instead.
+ * has already done the work by the time the real `<img>` mounts.
+ *
+ * Mirrors `EventThumb`'s own direct-then-proxied order, and that is the whole
+ * reason this is a shared function rather than two: hotlink protection that
+ * blocks the direct load blocks it here too, so warming only the direct URL
+ * would warm the one request that was never going to succeed and leave the
+ * fallback — the one the card will actually end up showing — to happen live.
  */
-export function usePrefetchEventImage() {
-  return useCallback((imageUrl: string | null | undefined) => {
-    if (!imageUrl || warmedImages.has(imageUrl)) return;
-    warmedImages.add(imageUrl);
+function warmImage(imageUrl: string): Promise<void> {
+  if (warmedImages.has(imageUrl)) return Promise.resolve();
+  warmedImages.add(imageUrl);
+
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, WARM_TIMEOUT_MS);
+    const settle = () => {
+      clearTimeout(timer);
+      resolve();
+    };
     const direct = new Image();
     direct.referrerPolicy = "no-referrer";
+    direct.onload = settle;
     direct.onerror = () => {
       const proxied = new Image();
       proxied.referrerPolicy = "no-referrer";
+      proxied.onload = settle;
+      proxied.onerror = settle;
       proxied.src = proxiedImageUrl(imageUrl);
     };
     direct.src = imageUrl;
+  });
+}
+
+/**
+ * Warm a flyer on hover / touchstart, same trigger as `usePrefetchEvents`
+ * above and `usePrefetchArtist` — by the time the tap that opens the detail
+ * sheet lands, the image it's about to show eagerly has nothing left to wait
+ * for.
+ */
+export function usePrefetchEventImage() {
+  return useCallback((imageUrl: string | null | undefined) => {
+    if (!imageUrl) return;
+    void warmImage(imageUrl);
   }, []);
+}
+
+/**
+ * How many flyers are fetched at once.
+ *
+ * Five, and the number is not arbitrary: browsers hold about six concurrent
+ * connections per host, so a batch of five leaves one free for the thing you
+ * are actually waiting on — the next day's `/api/events`, a search, the audio
+ * stream. Firing all of a busy Saturday's sixty flyers at once does not make
+ * them arrive sooner; it makes them arrive in a queue of the browser's
+ * choosing, with the API stuck behind them.
+ *
+ * It also bounds memory. Sixty decoded flyers at once is real memory on a
+ * phone; five in flight, resolved and released before the next five start, is
+ * not.
+ */
+export const WARM_BATCH = 5;
+
+/**
+ * Pull a whole night's flyers into cache, five at a time, in list order.
+ *
+ * The problem this solves is the one you see rather than measure: flyers
+ * arriving *while you scroll*, each card filling in a beat after it appears, so
+ * the list is visibly assembling itself under your thumb. `loading="lazy"` is
+ * what causes it — it is the right default for not fetching sixty images nobody
+ * asked for, and the wrong behaviour once a night is on screen and the only
+ * question left is how fast you can get down it.
+ *
+ * So the cards stay lazy and the cache is filled behind them. By the time a
+ * card scrolls into range its `<img>` still makes a request, but that request
+ * is a cache hit and resolves without a network round trip — which is the part
+ * you could see.
+ *
+ * **In list order**, because that is the order they will be needed, and
+ * **five at a time**, because the point is to be finished before you get there
+ * rather than to start everything at once. A batch waits for the previous one
+ * to settle.
+ *
+ * Three things it declines to do:
+ *
+ * - **On a metered connection, nothing.** `saveData` means someone is paying
+ *   per megabyte, and speculatively fetching sixty flyers they may never scroll
+ *   to is exactly what that setting is asking us not to do. The cards still
+ *   load theirs lazily, as before.
+ * - **Not before the screen is ready.** Deferred to idle with a short backstop,
+ *   for the reason the week scan learned: the first paint and the day's own
+ *   fetch should have the network to themselves. A warm that competes with the
+ *   listings makes the app slower to become useful in order to make it smoother
+ *   afterwards, which is the wrong trade in the first second.
+ * - **Nothing already warm.** The set is module-level and per session, so
+ *   stepping back to a day you have already seen costs no requests at all.
+ *
+ * Cancels on a date change. Stepping along the rail should not leave three
+ * nights of flyers queued ahead of the one you are looking at — the requests
+ * already issued are left to finish and populate the cache, but no further
+ * batch starts.
+ */
+export function useWarmDayImages(imageUrls: (string | null | undefined)[]): void {
+  useEffect(() => {
+    const pending = imageUrls.filter(
+      // `url != null && url !== ""` rather than `Boolean(url)`: a type predicate
+      // has to narrow by a check the compiler can follow into `warmedImages.has`,
+      // which takes a string.
+      (url): url is string =>
+        typeof url === "string" && url !== "" && !warmedImages.has(url),
+    );
+    if (pending.length === 0) return undefined;
+
+    const connection = (
+      navigator as Navigator & { connection?: { saveData?: boolean } }
+    ).connection;
+    if (connection?.saveData) return undefined;
+
+    let cancelled = false;
+
+    const run = async () => {
+      for (let i = 0; i < pending.length; i += WARM_BATCH) {
+        if (cancelled) return;
+        await Promise.all(pending.slice(i, i + WARM_BATCH).map(warmImage));
+      }
+    };
+
+    const idle = window.requestIdleCallback;
+    if (typeof idle === "function") {
+      const handle = idle(() => void run(), { timeout: 400 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback?.(handle);
+      };
+    }
+    const timer = setTimeout(() => void run(), 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [imageUrls]);
 }
