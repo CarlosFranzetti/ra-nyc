@@ -283,8 +283,20 @@ check(
 // clicks: it would stop the very playback the rest of the file measures.
 await page.waitForSelector('input[aria-label="Seek"]', { timeout: 8000 });
 check("opening a DJ starts playing without a second tap", true);
-check("the row for the playing set offers to pause it",
-  (await page.locator('button[aria-label^="Pause Set"]').count()) > 0);
+// Waited for, not sampled. The seek input above appears when the transport
+// mounts, which happens as soon as there is a current set — but the row's label
+// flips to "Pause …" when `playing` turns true, and those are two different
+// transitions. Reading the label immediately after the input appears asserts
+// that the second one has already happened, which it has no obligation to have.
+// It passed on timing luck until a change elsewhere in the app shifted the
+// first frames by a few milliseconds.
+const pausableRow = await page
+  .locator('button[aria-label^="Pause Set"]')
+  .first()
+  .waitFor({ timeout: 8000 })
+  .then(() => true)
+  .catch(() => false);
+check("the row for the playing set offers to pause it", pausableRow);
 
 // The queue is the whole catalogue even though the list is showing six.
 check(
