@@ -1,0 +1,21 @@
+import fs from "node:fs";
+const src = fs.readFileSync(new URL("./agent-l1-queue.mjs", import.meta.url), "utf8");
+const head = src.slice(0, src.indexOf("// ───────────────────────── T1"));
+const body = `
+await fresh();
+await page.locator("text=Test Night").first().click();
+await page.waitForSelector('[role="dialog"]', { timeout: 10000 });
+await page.locator('button:has-text("Preview the night")').click();
+await page.waitForSelector('input[aria-label="Seek"]', { timeout: 10000 });
+await wait(800);
+const q0 = await snap();
+note("preview, first DJ only", "ids=" + j(q0.ids) + " subtitle=" + q0.subtitle);
+await page.waitForTimeout(Number(process.env.SLOW_MS ?? 3000) + 800);
+const q1 = await snap();
+await call("jumpTo", 1); await wait(700);
+const q2 = await snap();
+note("preview, after 2nd DJ appended + jumpTo(1)", "ids=" + j(q2.ids) + " title=" + q2.title + " subtitle=" + q2.subtitle + " lock=" + q2.lock);
+check("2nd DJ's set is attributed to 2nd DJ (Slow DJ)", /Slow DJ/.test(q2.subtitle ?? ""), q2.subtitle);
+await browser.close(); shutdown(); process.exit(0);
+`;
+fs.writeFileSync(new URL("./agent-l1-preview.gen.mjs", import.meta.url), head + body);

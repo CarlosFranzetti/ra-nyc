@@ -2522,6 +2522,73 @@ changes are applied on the strength of what the properties do. What *is*
 measured — and is in `tests/apple-probe.mjs` — is that they resolved, and that
 the background actually recedes.
 
+### 3.x · The bug hunt — paused at eight of nine reports
+
+The owner reported "bugs in the player and SoundCloud search" and asked for a
+nine-agent investigation (three per area: player, playlist, search), an Opus
+manager to consolidate, and this session to orchestrate, with a transcript of
+every interaction. The transcript is committed at
+[docs/agent-transcript-2026-10-26.md](./docs/agent-transcript-2026-10-26.md)
+— reports are verbatim, cross-area relays were routed through the orchestrator
+and logged both ways.
+
+**Stopped by the session usage limit** before the manager produced a plan and
+before S3 (search failsafes) reported. **No repairs have been made.** Resume
+by re-running the manager from the transcript (sections 01–13 are complete),
+not by re-running the investigators — their findings and probes are all kept.
+
+What the eight reports converge on, in rough severity order:
+
+- **Stale closure in `enqueue`/`appendSets` after an async resolve** — found
+  independently by P1 (#1, #2), L1 (#2) and L2 (#1). A `+` or preview that
+  resolves late replaces a queue that started meanwhile, or reopens a player
+  the listener closed. Blocker. Fix: decide at resolution time via a ref or
+  functional update, plus an epoch counter bumped by `stop()`.
+- **Duplicate ids stall playback** — P1 #3, L1 #3. `playSets` and the
+  within-batch half of `appendSets` do not dedupe; the load effect is keyed
+  on `current?.id`, so a same-id neighbour never loads. P1's addendum rejects
+  L1's `[id, index]` keying (it would restart the live set when an earlier row
+  is removed) and proposes a `reloadNonce`, which also fixes P3 #3's
+  retry-after-create-failure. Adopted.
+- **`artistName` and `source` are per-queue, not per-set** — L1 #1, #5. The
+  bar and the lock screen name the wrong DJ for every appended set.
+- **Pause during a track swap is overridden** — P3 #1, confirmed by P1.
+  `auto_play: true` plus an unconditional `play()` in the load callback.
+  Intent flag; keep `auto_play` and pause in `start()` as the iPhone-safe
+  variant.
+- **Opening an artist sheet or Preview wipes a built playlist** — P1 #4, L1
+  #4, L2 #7. **Ruled: play keeps the playlist** (the owner's own words from
+  the request that opened this work). `playNext`, not `playSets`.
+- **A previous night's slow DJ leaks into the next night's preview** — L2 #2.
+  Per-run token in `useEventPreview`.
+- **Timeline** — P2: two-frame flash of the old position on every track
+  change; a held drag commits to the *new* track and skips a set; a keyup on
+  another element leaves the scrubber stuck.
+- **Panel** — L3: `listOpen` never reset so the list reopens next session;
+  live row not scrolled into view; focus lost on remove; badge count missing
+  from the accessible name; Tickets chip halves the title at 390px.
+- **Search** — S2: one `event: null` listing 500s the whole `/api/search`
+  (happened on production 19:16 UTC, transient; guard still missing);
+  vocabulary entries match as substrings (`live` matches "Dave"); no
+  relevance ranking; empty searches are remembered.
+- **Artist resolution** — S1: RA's `biography` is very likely never returned
+  (query probably selects an object as a scalar; the retry hides the error),
+  so the whole handle/term machinery is inert in production; a confirmed
+  wrong match (Cosmo (NY) → a Florida Mixcloud account, whose bio is shown as
+  the NYC DJ's); display-name-only matching with a pool of 5; transient
+  failures cached permanently; no invalidation path. S1's **RA-origin
+  signal** design (country/residency from RA, scored against SoundCloud
+  `city`/`country_code`, refuse-to-pick on a tie) is the owner's explicit
+  ask and is in scope — but RA's schema is unverified, so it ships
+  logging-first with optional fields.
+
+Also pending from the owner: **"Need the open maps api"** — one line of
+clarification needed on resume.
+
+**Owner action:** S1's live resolve wrote a `link_source='none'` row for RA
+artist 173682 (Gianna (US)) to the production `artist_links` table. Sticky
+until deleted.
+
 ## 4 · Map of the code
 
 ```
