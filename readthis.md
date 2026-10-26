@@ -10,17 +10,26 @@ Everything outstanding that needs a human.
   do you mean moving the venue map to an OpenStreetMap-based API, or adding a
   keyed maps provider? The venue sheet currently draws OSM-style tiles and
   geocodes through Nominatim with the `ra-nyc/1.0` user agent.
-- **A junk row in production.** The bug hunt's S1 agent resolved RA artist
-  **173682** (Gianna (US)) live, which wrote a `link_source='none'` row to
-  `artist_links`. Rows like that are sticky (see the transcript, S1 #9). It
-  will be removed in the repair pass if you are happy for a `DELETE` to run
-  against production; say so, or delete it yourself.
+- **The junk row no longer needs a `DELETE`.** The bug hunt's S1 agent wrote
+  a `link_source='none'` row for RA artist **173682** (Gianna (US)) to
+  production `artist_links`. Since the repair, a `none` row older than 24
+  hours is treated as a miss and re-resolved on the next view, so it heals
+  itself. Nothing to do unless you want it gone today.
+- **After the repair deploy, read the runtime logs once.** Each cold artist
+  resolve now asks RA six questions in parallel and logs each failure as
+  `[ra] artist query <selection> <message>`. A selection that logs "Cannot
+  query field" on every call is a dead guess and can be deleted from
+  `api/_lib/artistLinks.ts` to save an RA request per resolve. One of the
+  two biography shapes will always fail; keep the other. If `country` works
+  but `iso2` stays null, `urlCode` is not an ISO code and `isoCode` is the
+  next field to try. Also watch for RA 429s for a few days: degraded answers
+  are no longer cached, so origin traffic rises until the misses fill in.
 - **Vercel Web Analytics is still off.** vercel.com → ra-nyc → Analytics →
   Enable. Every `track()` call is deployed and inert until then.
-- **~18 merged `claude/…` branches** to delete on github.com — the git proxy
+- **~19 merged `claude/…` branches** to delete on github.com — the git proxy
   returns 403 for deletions from a session. Keep `ra-alt`.
-- **Usage.** The nine-agent hunt hit the session limit. The repair phase is
-  deliberately run with one manager resume and one repairer, no more.
+- **Usage.** The nine-agent hunt hit the session limit. The repair phase ran
+  on one Opus resume and two Sonnet repairers, and finished.
 
 ---
 

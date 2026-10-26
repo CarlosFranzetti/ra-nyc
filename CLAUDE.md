@@ -54,9 +54,9 @@ through `tail`; a full untruncated dump of all eight suites is thousands of
 tokens of PASS lines nobody reads.
 
 ```
-npm run test          # 198 Vitest units
-npm run test:all      # typecheck, then units + layout, player, search, preview,
-                      # donate, settings and offline e2e (~2 minutes)
+npm run test          # 274 Vitest units
+npm run test:all      # typecheck, then units + player, search, layout, preview,
+                      # donate, settings, offline and playlist e2e (~3 minutes)
 ```
 
 `test:all` starts with `npm run typecheck`, and that is not decoration.
@@ -66,10 +66,12 @@ exactly how `/api/backfill` shipped using `SEARCH_AHEAD_DAYS` without importing
 it: every suite passed, the deploy went green, and the endpoint threw a
 `ReferenceError` on every call until someone happened to run `tsc`.
 
-`tests/agent-*.mjs` are investigation probes left by the 2026-10-26 bug hunt
-(see `docs/agent-transcript-2026-10-26.md`). Evidence, not tests: nothing runs
-them, and the repair pass promotes the ones that earn it into real checks and
-deletes the rest. Do not add them to `test:all`.
+The `tests/agent-*.mjs` probes from the 2026-10-26 bug hunt are gone: the
+repair pass promoted the ones that earned it into `tests/playlist.e2e.mjs` (55
+checks; 12 of the first 49 pass against the pre-repair source, so they bite)
+and the artist-resolution units, and deleted the rest. The hunt itself is in
+`docs/agent-transcript-2026-10-26.md`. If a future hunt leaves probes, keep
+them out of `test:all` until they are promoted.
 
 The e2e suites each spawn their own Vite server on a fixed port. If one fails
 with `EADDRINUSE`, a previous run left a server behind — pass `E2E_PORT=<free

@@ -109,8 +109,12 @@ interface PlayerContextValue {
    */
   playNext(set: ArtistSet, name?: string | null, source?: PlaybackSource | null): number | null;
   /**
-   * Put a set straight after a given entry without starting it. Returns the uid
-   * of the entry holding the set (the existing one if it was already queued).
+   * Put a set straight after a given entry without starting it. Returns the new
+   * entry's uid, or `null` when the set was already queued (nothing is added).
+   *
+   * `null` rather than the existing entry's uid, deliberately: a caller walking
+   * a run of inserts — the preview — would otherwise move its anchor to wherever
+   * the duplicate happens to sit and scatter the rest of the run.
    */
   insertAfter(
     anchorUid: number,
@@ -642,8 +646,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       name: string | null = null,
       from: PlaybackSource | null = null,
     ): number | null => {
-      const existing = stateRef.current.entries.find((e) => keyOf(e.set) === keyOf(set));
-      if (existing) return existing.uid;
+      if (stateRef.current.entries.some((e) => keyOf(e.set) === keyOf(set))) return null;
       const item = mint({ set, artistName: name, source: from });
       dispatch({ type: "INSERT_AFTER", anchorUid, item });
       return item.uid;

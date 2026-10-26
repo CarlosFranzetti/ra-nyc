@@ -2649,6 +2649,67 @@ it; the shape was not. Parallel investigation is the expensive phase and it
 front-loads the cost. Next time: three leads first, specialists only where a
 lead asks for one.
 
+### 3.x · The bug hunt — repaired and shipped
+
+The resume ran as planned, on three agents: the Opus manager was resumed
+and wrote the plan (transcript §19), then two Sonnet repairers took two
+lanes of disjoint files while the orchestrator did the third and the ship.
+Every report, relay and ruling is in `docs/agent-transcript-2026-10-26.md`.
+
+**Lane A — the player.** `PlayerContext` is a reducer now. Each queue entry
+has a uid, its own `artistName` and `source`, so the bar and the lock screen
+name the right DJ for every set, not just the first. A stop epoch, bumped by
+`stop()`, is captured at tap time by every async caller (`usePlaylistAdd`,
+`useEventPreview`, `ArtistSheet`); a lookup that lands after Close or after
+a different queue started is discarded rather than applied. A `reload` nonce
+decides when the widget reloads: when the live uid changes but the set id
+does not, so removing a row above the live one no longer restarts it and
+moving onto a same-set neighbour does. `playNext` and `insertAfter`
+implement ruling 1: preview and the DJ chip start a set now and keep the
+playlist behind it. SoundCloud keeps `auto_play: true` with a `wantPlay`
+intent flag so a pause during a swap is not undone (the lower-risk variant;
+the `auto_play: false` form still wants an iPhone). `mediaSession` clears
+position state on close. PlayerBar: `useLayoutEffect` resets the scrubber
+before paint, the drag bubble follows a held key, focus survives a row's
+removal, the list button carries the count. `tests/playlist.e2e.mjs` is new
+(55 checks, in `test:all` last); 12 of its first 49 pass on the pre-repair
+source.
+
+**Lane B — artist resolution.** `getArtistLinks` returns `{links, degraded}`.
+Degraded means a timeout, network error, 429 or 5xx upstream, or an
+exact-name tie we declined to pick; it is never written to the database and
+the edge holds it five minutes instead of a week. A 404 on a bio handle is an
+answer, not an outage, and is cached. `none` rows expire after a day, `auto`
+after ninety, `manual` never — which also means migrations 0002/0004/0005's
+`to_timestamp(0)` rows finally re-resolve, once each. Account choice scores
+candidates against the artist's origin (parenthetical, RA country, bio
+places) with word-bound matching and a region table; a lone contradicted
+candidate is dropped (the Florida Cosmo), and a tie with no signal is
+refused. RA is asked six things in parallel — `contentUrl`, two biography
+shapes, `country`, `residentCountry`, `soundcloud` — each failure logged by
+selection, so production logs will say which guesses are dead. Units
+200 → 274.
+
+**Lane C — the sheet.** A `+` that finds nothing now says so, under the
+control that was pressed. The S3 probes, never finished, were deleted; S1's
+and S2's were promoted into units.
+
+**Deviations the repairers made from the plan, all accepted.** `insertAfter`
+returns `null` for an already-queued set (returning the existing uid moved
+the preview's anchor and scattered the taster — the player suite caught it).
+`STOP` keeps the reload counter monotonic. A `RESUMED` action clears `ended`
+so a replayed last set does not make a later `+` jump. The per-provider cap
+guarantees each provider's newest 30 a slot and returns unused slots to the
+overflow, because a flat cap cut one-provider artists. Short names must open
+the title. The contradiction penalty applies only when every named place is
+outside the origin, and not when the only known origin is a country.
+
+**What this cost.** Opus resume plus two Sonnet repairers: roughly 490k
+subagent tokens and 40 minutes of wall clock for the repair, against ten
+agents and a session limit for the investigation. The two-lane shape, with
+file ownership fixed up front, had no merge conflicts and no file was
+touched by two agents.
+
 ## 4 · Map of the code
 
 ```

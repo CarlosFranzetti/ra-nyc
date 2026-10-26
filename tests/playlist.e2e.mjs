@@ -549,10 +549,13 @@ async function panel(page) {
   await sleep(3000);
   const rows = await panel(page);
   const live = rows.findIndex((r) => r.live);
+  const first = rows.findIndex((r) => r.title.startsWith("DJ1"));
   check("Preview over a playlist keeps all five of the user's sets", rows.filter((r) => r.title.startsWith("DJ3")).length === 5, JSON.stringify(rows.map((r) => r.title)));
+  // Whichever DJ resolved first is what plays now; the rest go in directly behind
+  // it, so the taster is one block rather than scattered through the user's list.
   check(
-    "and the taster sits straight after the live entry, in lineup order",
-    live !== -1 && rows[live + 1]?.title.startsWith("DJ1") && rows[live + 2]?.title.startsWith("DJ2"),
+    "and the taster is one block in lineup order, playing now",
+    first !== -1 && rows[first + 1]?.title.startsWith("DJ2") && (live === first || live === first - 1),
     JSON.stringify(rows.map((r) => (r.live ? `*${r.title}` : r.title))),
   );
   await context.close();
@@ -801,6 +804,9 @@ async function panel(page) {
   await waitBar(page);
   await until(page, (s) => s.playBtn === "Pause");
   await backToEvent(page);
+  // Out of the event sheet: an open modal traps keyboard focus inside itself, so
+  // focus could not reach the bar at all.
+  await closeSheet(page);
 
   const label = await page.locator('button[aria-label^="Show playlist"]').getAttribute("aria-label");
   check("the list button's name carries the count", /12/.test(label ?? ""), label ?? "");
@@ -842,6 +848,7 @@ async function panel(page) {
   // A new session starts with the panel closed.
   await page.locator('button[aria-label="Close player"]').click();
   await sleep(500);
+  await openEvent(page, "Night One");
   await openArtist(page, "DJ1");
   await waitBar(page);
   await sleep(800);
@@ -900,6 +907,32 @@ async function panel(page) {
   await page.locator(plus("DJ2")).click();
   const next = await until(page, (s) => /4 of 4/.test(s.subtitle ?? "") && s.playBtn === "Pause", 6000);
   check("adding to a queue that has finished starts the new set", /DJ2/.test(next.subtitle ?? "") && /4 of 4/.test(next.subtitle ?? "") && next.playBtn === "Pause", `${next.subtitle} ${next.playBtn}`);
+  await context.close();
+}
+
+// ═══ 11. An add that finds nothing says so ═════════════════════════════════
+
+{
+  console.log("\n== failed adds ==");
+  // Nobody on this bill has a set anywhere. A `+` used to spin and go quiet.
+  const { context, page } = await boot({
+    events: [mkEvent("1", "Night One", [1, 2])],
+    artists: { 1: { count: 0 }, 2: { count: 0 } },
+  });
+  const dj = page.getByText("No sets found for DJ2.", { exact: true });
+  const night = page.getByText("No sets found for this lineup.", { exact: true });
+
+  await page.locator(plus("DJ2")).click();
+  await dj.waitFor({ timeout: 8000 }).catch(() => {});
+  check("a DJ's add that finds nothing says so, by name", (await dj.count()) === 1);
+  check("and the + is live again rather than silently inert", !(await page.locator(plus("DJ2")).isDisabled()));
+  check("the night's message is not shown for one DJ", (await night.count()) === 0);
+
+  await page.locator(NIGHT).click();
+  await night.waitFor({ timeout: 8000 }).catch(() => {});
+  check("the whole lineup finding nothing says so under the play row", (await night.count()) === 1);
+  check("and the DJ's message is cleared by the new add", (await dj.count()) === 0);
+  check("no player appeared for an empty queue", !(await bar(page)).present);
   await context.close();
 }
 
