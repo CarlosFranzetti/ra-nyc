@@ -61,8 +61,14 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
  */
 export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
   const { data, isLoading, error } = useArtist(artist?.id, artist?.name ?? "");
-  const { playSets, playNext, enqueue, queue, toggle, isCurrent, playing } =
+  const { playSets, playNext, enqueue, queue, current, toggle, isCurrent, playing } =
     usePlayer();
+  // Read inside the auto-start effect without being its dependency: the effect
+  // must fire once per artist, not every time the queue changes under it.
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const currentRef = useRef(current);
+  currentRef.current = current;
   const [bioExpanded, setBioExpanded] = useState(false);
   const [allSetsShown, setAllSetsShown] = useState(false);
 
@@ -98,12 +104,24 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
     const resolved = data?.sets;
     if (!id || startedFor.current === id || !resolved?.length) return;
     startedFor.current = id;
-    playSets(resolved, 0, artist?.name ?? null);
+    const name = artist?.name ?? null;
+    if (queueRef.current.length === 0) {
+      playSets(resolved, 0, name);
+      return;
+    }
+    // A playlist exists, and opening a DJ is not a request to throw it away.
+    // Already listening to this DJ: do nothing, so re-opening their sheet can
+    // neither jump nor un-pause them.
+    const live = currentRef.current;
+    const key = (set: { url: string; id: string }) => set.url || set.id;
+    if (live && resolved.some((set) => key(set) === key(live))) return;
+    const first = resolved[0];
+    if (first) playNext(first, name);
     // `data?.sets` rather than the `?? []` fallback above: that fallback is a
     // fresh array on every render, so depending on it re-runs this effect
     // constantly. React Query hands back a stable reference until the data
     // actually changes.
-  }, [open, artist?.id, artist?.name, data?.sets, playSets]);
+  }, [open, artist?.id, artist?.name, data?.sets, playSets, playNext]);
   // The list is a short read by default; the *queue* is always the full
   // catalogue, so `next` keeps going past whatever is on screen.
   const shownSets = allSetsShown ? sets : sets.slice(0, COLLAPSED_SETS);
@@ -235,7 +253,7 @@ export function ArtistSheet({ artist, open, onOpenChange }: ArtistSheetProps) {
                             no control. */}
                         {!live && (
                           <button
-                            onClick={() => enqueue([set], artist?.name ?? null)}
+                            onClick={() => enqueue([{ set, artistName: artist?.name ?? null }])}
                             aria-label={`Add ${set.title} to the playlist`}
                             className="tap border-l border-border/50 text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
                           >

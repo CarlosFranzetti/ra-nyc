@@ -27,6 +27,15 @@ import type { Artist, Event } from "@/types/event";
 /** Matches the preview's ceiling — a festival bill is not a playlist addition. */
 const MAX_ARTISTS = 6;
 
+/**
+ * How long an add waits on a DJ's lookup.
+ *
+ * A hung `/api/artist` froze every add behind it, because a tap is dropped while
+ * one is pending (L2 #6). Ended as "nothing playable", it surfaces as `failed`
+ * and frees the button.
+ */
+const LOOKUP_TIMEOUT_MS = 8000;
+
 export interface PlaylistAdd {
   /** Adds one DJ's set for this night. */
   addArtist(event: Event, artist: Artist): void;
@@ -45,20 +54,30 @@ export const NIGHT_KEY = "night";
 
 export function usePlaylistAdd(): PlaylistAdd {
   const queryClient = useQueryClient();
-  const { enqueue } = usePlayer();
+  const { enqueue, getEpoch } = usePlayer();
   const [pending, setPending] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
   const resolve = useCallback(
     async (event: Event, artist: Artist): Promise<ArtistSet | null> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         // `fetchQuery`, so a DJ already opened this session costs no request.
-        const details = await queryClient.fetchQuery(
-          artistQuery(artist.id, artist.name),
-        );
-        return previewSet(event.id, artist.id, details.sets);
+        // `retry: false`: the default retry re-sends a 429 immediately, and the
+        // add has its own answer to a failure — `failed`.
+        const lookup = queryClient.fetchQuery({
+          ...artistQuery(artist.id, artist.name),
+          retry: false,
+        });
+        const timeout = new Promise<null>((done) => {
+          timer = setTimeout(() => done(null), LOOKUP_TIMEOUT_MS);
+        });
+        const details = await Promise.race([lookup, timeout]);
+        return details ? previewSet(event.id, artist.id, details.sets) : null;
       } catch {
         return null;
+      } finally {
+        clearTimeout(timer);
       }
     },
     [queryClient],
@@ -70,13 +89,22 @@ export function usePlaylistAdd(): PlaylistAdd {
       if (pending) return;
       setPending(key);
       setFailed(null);
+      // The player may be closed — or a different queue started — while the
+      // lookup is out. `enqueue` is handed live state, so the second can no
+      // longer replace anything; the first has to be checked here, or a `+`
+      // tapped before Close restarts music the listener shut off.
+      const epoch = getEpoch();
       void resolve(event, artist).then((set) => {
         setPending(null);
-        if (set) enqueue([set], artist.name);
-        else setFailed(key);
+        if (getEpoch() !== epoch) return;
+        if (set) {
+          enqueue([
+            { set, artistName: artist.name, source: { label: event.title, url: event.url } },
+          ]);
+        } else setFailed(key);
       });
     },
-    [pending, resolve, enqueue],
+    [pending, resolve, enqueue, getEpoch],
   );
 
   const addNight = useCallback(
@@ -89,18 +117,23 @@ export function usePlaylistAdd(): PlaylistAdd {
       }
       setPending(NIGHT_KEY);
       setFailed(null);
-      void Promise.all(lineup.map((artist) => resolve(event, artist))).then(
-        (results) => {
-          setPending(null);
-          const sets = results.filter((set): set is ArtistSet => set !== null);
-          if (sets.length === 0) setFailed(NIGHT_KEY);
-          // `enqueue` dedupes, so a b2b that resolved from both of its DJs
-          // goes in once.
-          else enqueue(sets, null);
-        },
-      );
+      const epoch = getEpoch();
+      const source = { label: event.title, url: event.url };
+      void Promise.all(
+        lineup.map(async (artist) => ({ artist, set: await resolve(event, artist) })),
+      ).then((results) => {
+        setPending(null);
+        if (getEpoch() !== epoch) return;
+        const items = results.flatMap(({ artist, set }) =>
+          set ? [{ set, artistName: artist.name, source }] : [],
+        );
+        if (items.length === 0) setFailed(NIGHT_KEY);
+        // `enqueue` dedupes — within the batch too — so a b2b that resolved
+        // from both of its DJs goes in once. Each set keeps its own DJ's name.
+        else enqueue(items);
+      });
     },
-    [pending, resolve, enqueue],
+    [pending, resolve, enqueue, getEpoch],
   );
 
   return { addArtist, addNight, pending, failed };

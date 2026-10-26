@@ -62,7 +62,17 @@ export function publishPlaybackState(playing: boolean): void {
  */
 export function publishPosition(position: number, duration: number | null): void {
   if (!supported() || !navigator.mediaSession.setPositionState) return;
-  if (!duration || duration <= 0) return;
+  if (!duration || duration <= 0) {
+    // Called with no argument the spec *clears* the state. Returning silently
+    // left the previous set's position on the lock screen after Close, and for
+    // any set whose length is unknown.
+    try {
+      navigator.mediaSession.setPositionState();
+    } catch {
+      // Same as below.
+    }
+    return;
+  }
   try {
     navigator.mediaSession.setPositionState({
       duration,

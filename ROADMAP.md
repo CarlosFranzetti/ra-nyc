@@ -8,6 +8,24 @@ Legend: **P1** = next up · **P2** = after that · **P3** = nice to have.
 
 Ordered by what actually costs a user something today.
 
+### ~~Repair the player, playlist and artist resolution~~ — shipped 2026-10-26
+
+All nine items from the bug hunt (`docs/agent-transcript-2026-10-26.md`)
+landed in one PR: late resolutions can no longer restart or replace the
+player; duplicate sets no longer stall the queue; every set carries its own
+DJ and night; pause survives a track swap; play keeps the playlist; a night's
+slow DJ stays in its night; the timeline no longer flashes, skips or sticks;
+a null listing no longer 500s search; and artist resolution refuses to cache
+a degraded answer, scores accounts against where RA says the DJ is from, and
+asks RA for biography and country logging-first. What is left of that work
+is in `readthis.md` §0: read the logs once after deploy and prune the RA
+field guesses that never answer.
+
+Deferred from the plan, each with a reason in the transcript: a `refresh=1`
+on `/api/artist` (touches the bearer check, so it gets its own reviewed
+change); `load()` on the Mixcloud and Archive adapters; fuzzy-4 matching;
+relevance tiers; non-Latin names; a Skip affordance for an unplayable set.
+
 ### Anchor dates to New York time — P1
 
 **Half done.** The rollover question is answered: `src/lib/night.ts` puts the

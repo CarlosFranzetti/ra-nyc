@@ -48,7 +48,14 @@ export const createMixcloudPlayer: CreatePlayer = async (mount, set, events) => 
   mount.appendChild(iframe);
 
   const widget = Mixcloud.PlayerWidget(iframe);
-  await widget.ready;
+  try {
+    await widget.ready;
+  } catch (cause) {
+    // The iframe is already in the host; without this a `ready` that rejects
+    // leaves an orphan behind on every retry.
+    iframe.remove();
+    throw cause;
+  }
 
   let duration = set.duration;
   try {

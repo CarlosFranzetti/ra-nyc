@@ -411,7 +411,7 @@ check("expanding reveals the whole list", expandedRows === SET_COUNT, `${expande
 // a queue was something you could only walk forwards through. These are the
 // three things a playlist has to be able to do: show itself, take something
 // out, and take something back in — none of which may interrupt the music.
-const playlistToggle = page.locator('button[aria-label="Show playlist"]');
+const playlistToggle = page.locator('button[aria-label^="Show playlist"]');
 check("the transport offers a playlist", (await playlistToggle.count()) === 1);
 
 await playlistToggle.click();
@@ -469,7 +469,7 @@ check(
   `${titles.length} rows: ${beforeEdit.trim()} then ${titles[wasAt + 1] ?? "(nothing)"}`,
 );
 
-await page.locator('button[aria-label="Hide playlist"]').click();
+await page.locator('button[aria-label^="Hide playlist"]').click();
 await page.waitForTimeout(250);
 
 // ── the point of the feature: dismiss everything, playback continues

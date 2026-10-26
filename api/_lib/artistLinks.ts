@@ -1,7 +1,10 @@
 import {
   buildArtistContext,
-  pickByContext,
+  isContradicted,
+  scoreCandidate,
   type ArtistContext,
+  type CandidateProfile,
+  type RaOrigin,
 } from "./artistContext.js";
 import { getSql } from "./db.js";
 import { normalizeName } from "./normalize.js";
@@ -141,6 +144,35 @@ const FALLBACK_LIMIT = 4;
  */
 const MIN_SOUNDCLOUD_SECONDS = 45 * 60;
 
+/**
+ * Shortest Mixcloud upload that is plausibly a set.
+ *
+ * "Mixcloud is mixes by construction" was wrong in practice: Cosmo (NY)'s
+ * catalogue held eight uploads of 135-262 seconds ("Not Like Us ... Remix"), and
+ * with a persistent queue the next one up would simply play. Twenty minutes
+ * rather than SoundCloud's forty-five because radio shows on Mixcloud
+ * legitimately run short. An upload with no reported length is kept, as the
+ * API omitting it says nothing about the audio.
+ */
+const MIN_MIXCLOUD_SECONDS = 20 * 60;
+
+/**
+ * Most sets one provider may contribute before the merge sort.
+ *
+ * Colleen Murphy's fifty Mixcloud uploads are all weekly "Balearic Breakfast"
+ * episodes; sorted newest-first across providers and cut at MAX_SETS, they left
+ * no room for anything else. See `orderSets` for how the leftover slots are
+ * handed back.
+ */
+const PER_PROVIDER_CAP = 30;
+
+/**
+ * The Archive's own budget when it runs as a fallback, after the other two.
+ *
+ * 3s (RA) + 7s (catalogue) + 4s here is 14s, inside the 15s `maxDuration`.
+ */
+const ARCHIVE_TIMEOUT_MS = 4_000;
+
 // ─── Name matching ──────────────────────────────────────────────────────────
 
 /**
@@ -252,17 +284,103 @@ export function isPlausibleMatch(artistName: string, candidate: string): boolean
   return false;
 }
 
-/** For free-text titles: does the artist's name appear in it at all? */
-function titleMentions(artistName: string, title: string): boolean {
-  const a = normalizeName(artistName);
-  return a.length >= 4 && normalizeName(title).includes(a);
+/**
+ * The name as it should be *searched for*, parenthetical stripped.
+ *
+ * "Cosmo (NY)" is RA's way of telling two Cosmos apart; it is not part of
+ * anyone's SoundCloud, Mixcloud or Archive listing. Sent as written it made
+ * every provider query ask for a literal "(NY)" and, on the Archive, an exact
+ * phrase nothing contains. The parenthetical is still read — by
+ * `buildArtistContext`, which is where it belongs.
+ */
+export function searchName(name: string): string {
+  const stripped = name.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim();
+  return stripped || name.trim();
+}
+
+interface Word {
+  word: string;
+  /** Offsets into the original string, so what sits *between* words can be read. */
+  start: number;
+  end: number;
+}
+
+/** Whole words, accent-folded and lowercased, with their positions. */
+function wordsOf(value: string): Word[] {
+  const out: Word[] = [];
+  for (const m of value.matchAll(/[\p{L}\p{N}]+/gu)) {
+    const word = normalizeName(m[0]);
+    if (word) out.push({ word, start: m.index ?? 0, end: (m.index ?? 0) + m[0].length });
+  }
+  return out;
+}
+
+/**
+ * Names this short are ordinary words or fragments of longer names, so merely
+ * appearing in a title is not evidence.
+ */
+const SHORT_NAME_LENGTH = 7;
+
+/** What follows an artist credit: "Cosmo @ Nowadays", "Cosmo - Live", "Cosmo mix". */
+const CREDIT_SEPARATOR = /^\s*(?:@|[-\u2013\u2014]\s|presents\b|mix\b)/i;
+
+/**
+ * For free-text titles: does the artist's name appear in it as a name?
+ *
+ * Whole words only. The old test was a substring over the title with every
+ * separator removed, so "Cosmo" was "mentioned" by "Cosmos Radio Hour",
+ * "Cosmopolitan Brunch Mix" and "Radio Cosmo - Conspiracion", and three of
+ * those were adopted as the artist's sets from the Archive.
+ *
+ * A name of seven letters or fewer must also open the title (an optional "DJ"
+ * aside) and be followed by the separator an artist credit uses. Without that,
+ * "Lepota Luba Cosmo - Lowest Edge" - someone else with Cosmo in their name -
+ * still passed.
+ */
+export function titleMentions(artistName: string, title: string): boolean {
+  const name = wordsOf(searchName(artistName)).map((w) => w.word);
+  if (name.join("").length < 4) return false;
+
+  const words = wordsOf(title);
+  const at = words.findIndex(
+    (_, i) => i + name.length <= words.length && name.every((w, k) => words[i + k]!.word === w),
+  );
+  if (at < 0) return false;
+  if (name.join("").length > SHORT_NAME_LENGTH) return true;
+
+  if (at > 1 || (at === 1 && words[0]!.word !== "dj")) return false;
+  return CREDIT_SEPARATOR.test(title.slice(words[at + name.length - 1]!.end));
+}
+
+/**
+ * What a fetch can come back as.
+ *
+ * `null` used to stand for all of: rate-limited, server error, timeout, network
+ * failure and a perfectly good empty answer. The caller could not tell "this
+ * artist has nothing" from "SoundCloud was having a bad second", and cached
+ * both for good. An empty 200 is `ok: true` with whatever it contained.
+ */
+export type FetchResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; reason: "http" | "timeout" | "network"; status?: number };
+
+/**
+ * Whether a failure is worth retrying later rather than remembering.
+ *
+ * A 404 or 410 is an answer — the handle in a bio does not exist — and treating
+ * it as an outage would leave every artist with one stale handle uncached.
+ */
+export function isTransient(result: FetchResult<unknown>): boolean {
+  if (result.ok) return false;
+  if (result.reason === "http") return result.status !== 404 && result.status !== 410;
+  return true;
 }
 
 async function fetchJson<T>(
   url: string,
   signal?: AbortSignal,
   headers?: Record<string, string>,
-): Promise<T | null> {
+): Promise<FetchResult<T>> {
   try {
     const res = await fetch(url, {
       headers: {
@@ -272,12 +390,23 @@ async function fetchJson<T>(
       },
       signal,
     });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
+    if (!res.ok) return { ok: false, reason: "http", status: res.status };
+    return { ok: true, data: (await res.json()) as T };
+  } catch (error) {
     // A failed side-source must never fail the whole lookup.
-    return null;
+    const name = (error as { name?: string } | null)?.name;
+    return {
+      ok: false,
+      reason: name === "AbortError" || name === "TimeoutError" ? "timeout" : "network",
+    };
   }
+}
+
+/** One provider's answer, and whether it is complete enough to remember. */
+interface Resolved<T> {
+  value: T | null;
+  /** True when something failed in a way a retry might fix. Not cached long. */
+  degraded: boolean;
 }
 
 // ─── SoundCloud ─────────────────────────────────────────────────────────────
@@ -285,9 +414,20 @@ async function fetchJson<T>(
 interface ScUser {
   id?: number;
   username?: string;
+  /** The account's real handle; `username` is a free-text display name. */
+  permalink?: string;
   permalink_url?: string;
+  full_name?: string | null;
   description?: string | null;
   avatar_url?: string | null;
+  // The fields below are recalled from api-v2 user objects and have not been
+  // checked against a live response from here. Each is optional, and ranking
+  // reads a field only when it is present.
+  city?: string | null;
+  country_code?: string | null;
+  followers_count?: number;
+  track_count?: number;
+  verified?: boolean;
 }
 interface ScTrack {
   id?: number;
@@ -385,21 +525,106 @@ async function soundcloudAccessToken(signal?: AbortSignal): Promise<string | nul
   }
 }
 
+/** The account's handle: `permalink`, or the last path segment of its URL. */
+function soundcloudHandle(user: ScUser | undefined): string | null {
+  if (!user) return null;
+  if (user.permalink) return user.permalink;
+  const tail = user.permalink_url?.replace(/[?#].*$/, "").split("/").filter(Boolean).pop();
+  return tail || null;
+}
+
+/**
+ * The name test, on every field an account can carry its name in.
+ *
+ * Display name only was the old rule, and it let anyone who typed "Cosmo" into
+ * their profile through while rejecting `cosmo_nyc`, whose display name might be
+ * anything. The permalink is what the account actually *is*.
+ */
+function scNameFields(user: ScUser): string[] {
+  return [user.username, user.permalink, user.full_name].filter(
+    (v): v is string => typeof v === "string" && v.length > 0,
+  );
+}
+
+function scMatchesName(name: string, user: ScUser): boolean {
+  return scNameFields(user).some((field) => isPlausibleMatch(name, field));
+}
+
+/** Exactly the artist's name, not merely a decorated version of it. */
+function isExactName(name: string, fields: string[]): boolean {
+  const self = normalizeName(name);
+  return Boolean(self) && fields.some((f) => normalizeName(f) === self);
+}
+
+/**
+ * Chooses among accounts that already passed the name test.
+ *
+ * Returns `refused` when two or more accounts carry the artist's exact name and
+ * nothing separates them: top score no better than zero, and under three points
+ * clear of the runner-up. Guessing there is how Cosmo (NY) ended up with a
+ * Florida DJ's account, and "wrong is worse than empty" is the rule this file
+ * is built on. Callers mark a refusal `degraded` so it is not remembered for a
+ * week - a later RA field or a better search may break the tie.
+ *
+ * A *sole* candidate is dropped when the evidence contradicts it (a bio naming
+ * somewhere else, with nothing to corroborate), because there is nothing for it
+ * to out-rank and it would otherwise win by default.
+ */
+export function chooseAccount<T>(
+  candidates: T[],
+  score: (candidate: T) => number,
+  isExact: (candidate: T) => boolean,
+  contradicted: (candidate: T) => boolean,
+  options: { refuseTies: boolean },
+): { pick: T | undefined; refused: boolean } {
+  if (candidates.length === 0) return { pick: undefined, refused: false };
+
+  const ranked = candidates
+    .map((candidate, index) => ({ candidate, index, score: score(candidate) }))
+    // Stable on ties: the provider's own relevance order is the tie-break.
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  if (ranked.length === 1) {
+    return { pick: contradicted(ranked[0]!.candidate) ? undefined : ranked[0]!.candidate, refused: false };
+  }
+
+  if (options.refuseTies && ranked.filter((r) => isExact(r.candidate)).length >= 2) {
+    const margin = ranked[0]!.score - ranked[1]!.score;
+    if (ranked[0]!.score <= 0 && margin < 3) return { pick: undefined, refused: true };
+  }
+  return { pick: ranked[0]!.candidate, refused: false };
+}
+
+interface SoundcloudResult {
+  user: string | null;
+  /** The account's real handle, when known. */
+  handle: string | null;
+  url: string | null;
+  description: string | null;
+  sets: ArtistSet[];
+}
+
 async function resolveSoundcloud(
   name: string,
   context: ArtistContext,
   signal?: AbortSignal,
-): Promise<{
-  user: string | null;
-  url: string | null;
-  description: string | null;
-  sets: ArtistSet[];
-} | null> {
+): Promise<Resolved<SoundcloudResult>> {
   const mode = soundcloudMode();
-  if (mode === "off") return null;
+  if (mode === "off") return { value: null, degraded: false };
+
+  let degraded = false;
+  /** Unwraps a fetch, remembering whether a failure was worth retrying. */
+  const take = <T>(result: FetchResult<T>): T | null => {
+    if (result.ok) return result.data;
+    if (isTransient(result)) degraded = true;
+    return null;
+  };
 
   const clientId = process.env.SOUNDCLOUD_CLIENT_ID as string;
-  const q = encodeURIComponent(name);
+  const q = encodeURIComponent(searchName(name));
+  // One request either way; a name as common as Cosmo has far more than five
+  // same-named accounts, and the right one was routinely not in the first five.
+  const USER_LIMIT = 20;
 
   // The two APIs differ in host, auth and search paths, but return close enough
   // shapes that everything below this block is shared.
@@ -411,11 +636,11 @@ async function resolveSoundcloud(
   if (mode === "official") {
     const token = await soundcloudAccessToken(signal);
     // A configured-but-broken secret must not silently fall through to api-v2:
-    // that would 401 too, just less obviously.
-    if (!token) return null;
+    // that would 401 too, just less obviously. It is an outage, not an answer.
+    if (!token) return { value: null, degraded: true };
     const base = "https://api.soundcloud.com";
     auth = { Authorization: `OAuth ${token}` };
-    userSearch = `${base}/users?q=${q}&limit=5`;
+    userSearch = `${base}/users?q=${q}&limit=${USER_LIMIT}`;
     resolveHandle = (handle) =>
       `${base}/resolve?url=${encodeURIComponent(`https://soundcloud.com/${handle}`)}`;
     trackSearch = (userId) =>
@@ -425,7 +650,7 @@ async function resolveSoundcloud(
   } else {
     const base = "https://api-v2.soundcloud.com";
     const credential = `&client_id=${encodeURIComponent(clientId)}`;
-    userSearch = `${base}/search/users?q=${q}&limit=5${credential}`;
+    userSearch = `${base}/search/users?q=${q}&limit=${USER_LIMIT}${credential}`;
     resolveHandle = (handle) =>
       `${base}/resolve?url=${encodeURIComponent(
         `https://soundcloud.com/${handle}`,
@@ -436,102 +661,158 @@ async function resolveSoundcloud(
         : `${base}/search/tracks?q=${q}&limit=${CATALOGUE_LIMIT}${credential}`;
   }
 
-  // A handle written in the artist's own RA bio beats anything a name search
-  // can offer, so it skips the search entirely. Guarded on `kind`, because
-  // /resolve happily returns a track or a playlist for the wrong kind of URL.
+  // A handle the artist gave RA outright beats anything a name search can
+  // offer, so it skips the search. Guarded on `kind`, because /resolve happily
+  // returns a track or a playlist for the wrong kind of URL.
+  //
+  // A handle merely *found in a bio* is held to the name test as well: the
+  // first soundcloud.com link in prose is as likely a collaborator, a label or
+  // a mix host as the artist. One that fails it is demoted to a +5 nudge for
+  // any search result that turns out to be that same account.
   let user: ScUser | undefined;
+  let boostedHandle: string | null = null;
   if (context.handles.soundcloud) {
-    const resolved = await fetchJson<ScUser & { kind?: string }>(
-      resolveHandle(context.handles.soundcloud),
-      signal,
-      auth,
+    const resolved = take(
+      await fetchJson<ScUser & { kind?: string }>(
+        resolveHandle(context.handles.soundcloud),
+        signal,
+        auth,
+      ),
     );
-    if (resolved?.username && (resolved.kind ?? "user") === "user") user = resolved;
+    if (resolved?.username && (resolved.kind ?? "user") === "user") {
+      if (context.handleSource.soundcloud === "structured" || scMatchesName(name, resolved)) {
+        user = resolved;
+      } else {
+        boostedHandle = context.handles.soundcloud.toLowerCase();
+      }
+    }
   }
 
   if (!user) {
     // The official API returns bare arrays; api-v2 wraps them in `collection`.
-    const rawUsers = await fetchJson<ScUser[] | { collection?: ScUser[] }>(
-      userSearch,
-      signal,
-      auth,
+    const rawUsers = take(
+      await fetchJson<ScUser[] | { collection?: ScUser[] }>(userSearch, signal, auth),
     );
-    const candidates = Array.isArray(rawUsers) ? rawUsers : (rawUsers?.collection ?? []);
+    const list = (Array.isArray(rawUsers) ? rawUsers : (rawUsers?.collection ?? [])).filter(
+      // A null element has been seen in this list; it must not take the lookup down.
+      (u): u is ScUser => Boolean(u) && typeof u === "object",
+    );
 
     // Two artists can share a name exactly, and then no amount of string
     // matching separates them — the first search hit used to win by default.
-    // Ranking the name-passing candidates by how much of the RA bio's context
-    // they echo is the only thing that can tell them apart.
-    user = pickByContext(
-      candidates.filter((u) => u.username && isPlausibleMatch(name, u.username)),
-      context,
-      (u) => [u.username, u.description],
+    // What can is how well each account's own description of itself fits what
+    // RA says about the artist.
+    const profile = (u: ScUser): CandidateProfile => ({
+      permalink: u.permalink,
+      description: u.description,
+      city: u.city,
+      countryCode: u.country_code,
+      followers: u.followers_count,
+      trackCount: u.track_count,
+      verified: u.verified,
+    });
+    const matches = list.filter((u) => scMatchesName(name, u));
+    const { pick, refused } = chooseAccount(
+      matches,
+      (u) =>
+        scoreCandidate(name, context, profile(u)) +
+        (boostedHandle && soundcloudHandle(u)?.toLowerCase() === boostedHandle ? 5 : 0),
+      (u) => isExactName(name, scNameFields(u)),
+      (u) => isContradicted(context, profile(u)),
+      { refuseTies: true },
     );
+    // No account, and no scoped track search either: that search would adopt
+    // any upload whose uploader merely *looks* like the name, which is exactly
+    // the wrong-Cosmo case we just declined to guess at.
+    if (refused) return { value: null, degraded: true };
+    if (!pick && matches.length > 0) return { value: null, degraded };
+    user = pick;
   }
 
   const readTracks = async (userId: number | undefined): Promise<ScTrack[]> => {
-    const raw = await fetchJson<ScTrack[] | { collection?: ScTrack[] }>(
-      trackSearch(userId),
-      signal,
-      auth,
+    const raw = take(
+      await fetchJson<ScTrack[] | { collection?: ScTrack[] }>(trackSearch(userId), signal, auth),
     );
-    return Array.isArray(raw) ? raw : (raw?.collection ?? []);
+    return (Array.isArray(raw) ? raw : (raw?.collection ?? [])).filter(
+      (t): t is ScTrack => Boolean(t) && typeof t === "object",
+    );
   };
 
-  // Prefer the matched user's own uploads.
-  let ownUploads = Boolean(user?.id);
-  let tracks = await readTracks(user?.id);
+  const toSets = (tracks: ScTrack[], trustUploads: boolean): ArtistSet[] =>
+    tracks
+      .filter((t): t is ScTrack & { permalink_url: string } => Boolean(t.permalink_url))
+      // Length first: it is the cheapest filter and removes most of the list.
+      // A missing duration is treated as too short rather than kept — an unknown
+      // length is far more often a single than an unlabelled two-hour set.
+      .filter((t) => (t.duration ?? 0) >= MIN_SOUNDCLOUD_SECONDS * 1000)
+      .filter(
+        (t) =>
+          // Trust the user's own uploads; be strict about search hits.
+          trustUploads ||
+          titleMentions(name, t.title ?? "") ||
+          isPlausibleMatch(name, t.user?.username ?? ""),
+      )
+      .map((t) => ({
+        provider: "soundcloud" as const,
+        id: `sc-${t.id ?? t.permalink_url}`,
+        title: t.title ?? "Untitled",
+        url: t.permalink_url,
+        embedUrl: soundcloudEmbed(t.permalink_url),
+        duration: t.duration ? Math.round(t.duration / 1000) : null,
+        plays: t.playback_count ?? null,
+        createdAt: t.created_at ?? null,
+        artwork: soundcloudArtwork(t),
+      }));
 
-  // A matched profile with no uploads is common and used to end the search
+  // Prefer the matched user's own uploads.
+  let sets = toSets(await readTracks(user?.id), Boolean(user?.id));
+
+  // A matched profile with no *sets* is common, and used to end the search
   // here, which is how a DJ with an obvious SoundCloud page ended up showing
   // none of their sets: plenty of them post through labels, radio shows or
   // playlists rather than uploading to their own account. Falling back to the
-  // scoped search picks those up. It re-enters strict filtering, since these
+  // scoped search picks those up, and re-enters strict filtering since these
   // are search hits rather than the artist's own uploads.
-  if (ownUploads && tracks.length === 0) {
-    ownUploads = false;
-    tracks = await readTracks(undefined);
+  //
+  // Decided on what is left *after* the 45-minute filter. It used to test the
+  // raw track count, so a profile of fifty four-minute singles - which yields
+  // nothing playable - never fell back, and the Lot Radio and NTS sets that
+  // were the only ones that DJ had stayed unfound.
+  if (user?.id && sets.length === 0) {
+    sets = toSets(await readTracks(undefined), false);
   }
 
-  const sets: ArtistSet[] = tracks
-    .filter((t): t is ScTrack & { permalink_url: string } => Boolean(t.permalink_url))
-    // Length first: it is the cheapest filter and removes most of the list.
-    // A missing duration is treated as too short rather than kept — an unknown
-    // length is far more often a single than an unlabelled two-hour set.
-    .filter((t) => (t.duration ?? 0) >= MIN_SOUNDCLOUD_SECONDS * 1000)
-    .filter(
-      (t) =>
-        // Trust the user's own uploads; be strict about search hits.
-        ownUploads ||
-        titleMentions(name, t.title ?? "") ||
-        isPlausibleMatch(name, t.user?.username ?? ""),
-    )
-    .map((t) => ({
-      provider: "soundcloud" as const,
-      id: `sc-${t.id ?? t.permalink_url}`,
-      title: t.title ?? "Untitled",
-      url: t.permalink_url,
-      embedUrl: soundcloudEmbed(t.permalink_url),
-      duration: t.duration ? Math.round(t.duration / 1000) : null,
-      plays: t.playback_count ?? null,
-      createdAt: t.created_at ?? null,
-      artwork: soundcloudArtwork(t),
-    }));
+  if (!user && sets.length === 0) return { value: null, degraded };
 
-  if (!user && sets.length === 0) return null;
-
+  const handle = soundcloudHandle(user);
   return {
-    user: user?.username ?? null,
-    url: user?.permalink_url ?? null,
-    description: user?.description?.trim() || null,
-    sets,
+    value: {
+      user: user?.username ?? null,
+      handle,
+      url: user?.permalink_url ?? null,
+      description: user?.description?.trim() || null,
+      sets,
+    },
+    degraded,
   };
 }
 
 // ─── Mixcloud ───────────────────────────────────────────────────────────────
 
+interface McSearchUser {
+  username?: string;
+  name?: string;
+  url?: string;
+  biog?: string | null;
+  // Recalled, not verified against a live response; ranking reads a field only
+  // when it is present.
+  city?: string | null;
+  country?: string | null;
+  follower_count?: number;
+  cloudcast_count?: number;
+}
 interface McUserSearch {
-  data?: { username?: string; name?: string; url?: string; biog?: string | null }[];
+  data?: McSearchUser[];
 }
 interface McUser {
   biog?: string | null;
@@ -548,66 +829,104 @@ interface McCloudcasts {
   }[];
 }
 
-async function resolveMixcloud(
-  name: string,
-  context: ArtistContext,
-  signal?: AbortSignal,
-): Promise<{
+interface MixcloudResult {
   user: string;
   url: string;
   biog: string | null;
   sets: ArtistSet[];
-} | null> {
-  const searchForUser = async () => {
-    const search = await fetchJson<McUserSearch>(
-      `https://api.mixcloud.com/search/?q=${encodeURIComponent(name)}&type=user&limit=5`,
-      signal,
-    );
-    return pickByContext(
-      (search?.data ?? []).filter(
-        (u) =>
-          (u.username && isPlausibleMatch(name, u.username)) ||
-          (u.name && isPlausibleMatch(name, u.name)),
-      ),
-      context,
-      (u) => [u.username, u.name, u.biog],
-    );
+}
+
+async function resolveMixcloud(
+  name: string,
+  context: ArtistContext,
+  signal?: AbortSignal,
+): Promise<Resolved<MixcloudResult>> {
+  let degraded = false;
+  const take = <T>(result: FetchResult<T>): T | null => {
+    if (result.ok) return result.data;
+    if (isTransient(result)) degraded = true;
+    return null;
   };
 
-  const load = async (username: string) =>
-    Promise.all([
+  const searchForUser = async () => {
+    const search = take(
+      await fetchJson<McUserSearch>(
+        `https://api.mixcloud.com/search/?q=${encodeURIComponent(searchName(name))}&type=user&limit=5`,
+        signal,
+      ),
+    );
+    const text = (u: McSearchUser): CandidateProfile => ({
+      permalink: u.username,
+      // `country` is free text on Mixcloud rather than a code, so it is read
+      // as a place named, not compared as an ISO code.
+      description: [u.biog, u.country].filter(Boolean).join(" . ") || null,
+      city: u.city,
+      followers: u.follower_count,
+      trackCount: u.cloudcast_count,
+    });
+    // Ranked, never refused: Mixcloud search results carry no follower or
+    // location fields we can rely on, so two exact-name matches would always
+    // look like a tie and every such artist would lose their Mixcloud sets.
+    // The provider's own relevance order is the tie-break, as it always was.
+    return chooseAccount(
+      (search?.data ?? []).filter(
+        (u) =>
+          (u?.username && isPlausibleMatch(name, u.username)) ||
+          (u?.name && isPlausibleMatch(name, u.name)),
+      ),
+      (u) => scoreCandidate(name, context, text(u)),
+      () => false,
+      (u) => isContradicted(context, text(u)),
+      { refuseTies: false },
+    ).pick;
+  };
+
+  const load = async (username: string) => {
+    const [profile, casts] = await Promise.all([
       fetchJson<McUser>(`https://api.mixcloud.com/${encodeURIComponent(username)}/`, signal),
       fetchJson<McCloudcasts>(
         `https://api.mixcloud.com/${encodeURIComponent(username)}/cloudcasts/?limit=${CATALOGUE_LIMIT}`,
         signal,
       ),
     ]);
+    return { profile, casts };
+  };
 
   // Same as SoundCloud: a handle in the RA bio settles it outright. Mixcloud
   // usernames are the URL path, so there is nothing to resolve.
-  let match: NonNullable<McUserSearch["data"]>[number] | undefined;
+  let match: McSearchUser | undefined;
   let username = context.handles.mixcloud ?? null;
   let profile: McUser | null = null;
   let casts: McCloudcasts | null = null;
 
   if (username) {
-    [profile, casts] = await load(username);
+    const loaded = await load(username);
+    profile = loaded.profile.ok ? loaded.profile.data : null;
+    casts = loaded.casts.ok ? loaded.casts.data : null;
     // A handle lifted from a bio can be stale, or point at an account Mixcloud
     // has since removed. Falling back to the search rather than giving up is
     // the difference between one dead link costing this artist their sets and
-    // costing them nothing.
-    if (!profile && !casts?.data?.length) username = null;
+    // costing them nothing. Only a *transient* failure of that lookup counts
+    // against caching the result: a 404 is the answer, not an outage.
+    if (!profile && !casts?.data?.length) {
+      username = null;
+      if (isTransient(loaded.profile) || isTransient(loaded.casts)) degraded = true;
+    }
   }
 
   if (!username) {
     match = await searchForUser();
     username = match?.username ?? null;
-    if (!username) return null;
-    [profile, casts] = await load(username);
+    if (!username) return { value: null, degraded };
+    const loaded = await load(username);
+    profile = take(loaded.profile);
+    casts = take(loaded.casts);
   }
 
   const sets: ArtistSet[] = (casts?.data ?? [])
     .filter((c): c is NonNullable<typeof c> & { key: string } => Boolean(c.key))
+    // Mixes by construction was wrong in practice: see MIN_MIXCLOUD_SECONDS.
+    .filter((c) => c.audio_length == null || c.audio_length >= MIN_MIXCLOUD_SECONDS)
     .map((c) => ({
       provider: "mixcloud" as const,
       id: `mc-${c.key}`,
@@ -628,13 +947,16 @@ async function resolveMixcloud(
 
   // Nothing behind the name at all — say so rather than publishing a dead
   // profile link under the artist's.
-  if (!profile && sets.length === 0) return null;
+  if (!profile && sets.length === 0 && !(casts?.data?.length)) return { value: null, degraded };
 
   return {
-    user: username,
-    url: match?.url ?? `https://www.mixcloud.com/${username}/`,
-    biog: profile?.biog?.trim() || null,
-    sets,
+    value: {
+      user: username,
+      url: match?.url ?? `https://www.mixcloud.com/${username}/`,
+      biog: profile?.biog?.trim() || null,
+      sets,
+    },
+    degraded,
   };
 }
 
@@ -650,23 +972,28 @@ interface IaSearch {
  * Fully open, no key. A surprising amount of DJ-set archival lives here (radio
  * shows, festival recordings), which is what makes "and other sources" real
  * rather than aspirational.
+ *
+ * Runs only when SoundCloud and Mixcloud found nothing - a fallback, as
+ * `FALLBACK_LIMIT` always said, rather than a peer whose loose matching
+ * contributed three other artists' uploads to Cosmo's list.
  */
 async function resolveArchive(
   name: string,
   signal?: AbortSignal,
-): Promise<ArtistSet[]> {
-  const query = `title:("${name.replace(/"/g, "")}") AND mediatype:(audio)`;
+): Promise<Resolved<ArtistSet[]>> {
+  const query = `title:("${searchName(name).replace(/"/g, "")}") AND mediatype:(audio)`;
   const url =
     `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}` +
     `&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=downloads&fl%5B%5D=date` +
     `&rows=${FALLBACK_LIMIT}&page=1&output=json`;
 
-  const json = await fetchJson<IaSearch>(url, signal);
+  const result = await fetchJson<IaSearch>(url, signal);
+  const json = result.ok ? result.data : null;
 
-  return (json?.response?.docs ?? [])
+  const sets = (json?.response?.docs ?? [])
     .filter(
       (d): d is { identifier: string; title: string; downloads?: number; date?: string } =>
-        Boolean(d.identifier && d.title),
+        Boolean(d?.identifier && d.title),
     )
     // Archive titles are free text, so require the name to actually appear.
     .filter((d) => titleMentions(name, d.title))
@@ -681,6 +1008,7 @@ async function resolveArchive(
       plays: d.downloads ?? null,
       createdAt: d.date ?? null,
     }));
+  return { value: sets, degraded: isTransient(result) };
 }
 
 /**
@@ -701,16 +1029,20 @@ async function resolveArchive(
 
 // ─── Resident Advisor ───────────────────────────────────────────────────────
 
-interface RAArtistQuery {
-  data?: { artist?: { contentUrl?: string; biography?: string | null } | null };
-  errors?: unknown[];
+interface RAGraphqlBody {
+  data?: { artist?: Record<string, unknown> | null } | null;
+  errors?: { message?: string }[];
 }
+
+type RaFetch =
+  | { ok: true; body: RAGraphqlBody }
+  | { ok: false; reason: "http" | "timeout" | "network"; status?: number; body?: RAGraphqlBody };
 
 async function raGraphql(
   query: string,
   artistId: string,
   signal?: AbortSignal,
-): Promise<RAArtistQuery | null> {
+): Promise<RaFetch> {
   try {
     const res = await fetch("https://ra.co/graphql", {
       method: "POST",
@@ -725,46 +1057,162 @@ async function raGraphql(
       body: JSON.stringify({ query, variables: { id: artistId } }),
       signal,
     });
-    if (!res.ok) return null;
-    return (await res.json()) as RAArtistQuery;
-  } catch {
-    return null;
+    if (!res.ok) {
+      // GraphQL servers commonly answer a validation error with a 4xx and the
+      // reason in the body; reading it is the whole point of logging.
+      const body = (await res.json().catch(() => undefined)) as RAGraphqlBody | undefined;
+      return { ok: false, reason: "http", status: res.status, body };
+    }
+    return { ok: true, body: (await res.json()) as RAGraphqlBody };
+  } catch (error) {
+    const name = (error as { name?: string } | null)?.name;
+    return {
+      ok: false,
+      reason: name === "AbortError" || name === "TimeoutError" ? "timeout" : "network",
+    };
   }
 }
 
+/** One selection against `artist(id)`, and whether its failure was an outage. */
+interface RaFieldResult {
+  artist: Record<string, unknown> | null;
+  transient: boolean;
+}
+
 /**
- * RA profile URL and biography.
+ * Runs `artist(id: $id) { <selection> }` as a query of its own.
  *
- * `biography` is an educated guess at their schema, so this asks for it first
- * and retries without it on a GraphQL error — one unknown field fails an entire
- * query. Kept well away from the listings query, which is the app's actual job.
+ * RA's schema has not been confirmed from here, and in GraphQL one unknown field
+ * fails the entire query. So every field we want gets its own request: a wrong
+ * guess costs that field and nothing else. Every failure is logged with the
+ * field and RA's own message, which is how the right shape gets found - the old
+ * single query retried silently, and "RA's biography is never returned" went
+ * unnoticed in production because nothing said why.
  */
-async function resolveRa(
+async function raArtistField(
+  selection: string,
   artistId: string,
   signal?: AbortSignal,
-): Promise<{ url: string | null; biography: string | null }> {
-  const withBio = await raGraphql(
-    `query GET_ARTIST($id: ID!) { artist(id: $id) { contentUrl biography } }`,
+): Promise<RaFieldResult> {
+  const res = await raGraphql(
+    `query GET_ARTIST($id: ID!) { artist(id: $id) { ${selection} } }`,
     artistId,
     signal,
   );
+  const body = res.body;
+  const message =
+    body?.errors?.[0]?.message ??
+    (res.ok ? undefined : `${res.reason}${res.status ? ` ${res.status}` : ""}`);
+  if (message) console.warn("[ra] artist query", selection, message);
 
-  const usable =
-    withBio && !withBio.errors?.length
-      ? withBio
-      : await raGraphql(
-          `query GET_ARTIST($id: ID!) { artist(id: $id) { contentUrl } }`,
-          artistId,
-          signal,
-        );
+  const transient =
+    !res.ok &&
+    (res.reason !== "http" || res.status === 429 || (res.status !== undefined && res.status >= 500));
+  if (!res.ok || body?.errors?.length) return { artist: null, transient };
+  return { artist: body?.data?.artist ?? null, transient: false };
+}
 
-  const artist = usable?.data?.artist;
-  if (!artist) return { url: null, biography: null };
+function trimmed(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
-  const path = artist.contentUrl;
+/** RA's biography may be HTML; the artist sheet renders text. */
+function plainText(value: string): string {
+  return value
+    .replace(/<\s*(?:br|\/p|\/div|\/li)\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Either schema shape: a plain string, or `{ blurb, content }`. */
+function readBiography(value: unknown): string | null {
+  if (typeof value === "string") return trimmed(plainText(value));
+  if (value && typeof value === "object") {
+    const o = value as { content?: unknown; blurb?: unknown };
+    const text = trimmed(o.content) ?? trimmed(o.blurb);
+    return text ? trimmed(plainText(text)) : null;
+  }
+  return null;
+}
+
+function readCountry(value: unknown): RaOrigin | null {
+  if (!value || typeof value !== "object") return null;
+  const c = value as { name?: unknown; urlCode?: unknown };
+  const name = trimmed(c.name);
+  // `urlCode` is the only code-shaped field we ask for, and it is not known to
+  // be an ISO one. Trust it as one only when it looks like one.
+  const code = trimmed(c.urlCode);
+  const iso2 = code && /^[a-z]{2}$/i.test(code) ? code.toUpperCase() : null;
+  return name || iso2 ? { iso2, countryName: name } : null;
+}
+
+export interface RaArtist {
+  url: string | null;
+  biography: string | null;
+  /** Only when RA exposed a country. */
+  origin?: RaOrigin;
+  /** Only when RA exposed one. */
+  socials?: { soundcloud?: string };
+  /** True when a query failed in a way a retry might fix. */
+  degraded: boolean;
+}
+
+/**
+ * RA profile URL, biography, origin and social handles.
+ *
+ * Six small queries in parallel rather than one big one - see `raArtistField` -
+ * all under the one RA deadline the caller passes. Only `contentUrl` is known to
+ * exist. The rest are educated guesses at RA's schema, each optional: with every
+ * guess wrong this returns exactly what the old single query did, and logs six
+ * lines saying why.
+ *
+ * Costs about six RA requests per cold resolve instead of one or two. They run
+ * only on a cache miss, and the log lines say which to drop once it is known
+ * which fields exist.
+ */
+export async function resolveRa(artistId: string, signal?: AbortSignal): Promise<RaArtist> {
+  const queries = [
+    "contentUrl",
+    "biography { blurb content }",
+    "biography",
+    "country { name urlCode }",
+    "residentCountry { name urlCode }",
+    "soundcloud",
+  ];
+  const settled = await Promise.allSettled(
+    queries.map((selection) => raArtistField(selection, artistId, signal)),
+  );
+  const [url, bioObject, bioScalar, country, resident, soundcloud] = settled.map(
+    (r, i): RaFieldResult => {
+      if (r.status === "fulfilled") return r.value;
+      console.warn("[ra] artist query", queries[i], String(r.reason));
+      return { artist: null, transient: true };
+    },
+  ) as [RaFieldResult, RaFieldResult, RaFieldResult, RaFieldResult, RaFieldResult, RaFieldResult];
+
+  const path = trimmed(url.artist?.contentUrl);
+  const biography =
+    readBiography(bioObject.artist?.biography) ?? readBiography(bioScalar.artist?.biography);
+
+  // Resident country first: where someone lives now says more about which
+  // account is theirs than where they were born.
+  const origin = readCountry(resident.artist?.residentCountry) ?? readCountry(country.artist?.country);
+  const sc = trimmed(soundcloud.artist?.soundcloud);
+
   return {
     url: path ? (path.startsWith("http") ? path : `https://ra.co${path}`) : null,
-    biography: artist.biography?.trim() || null,
+    biography,
+    ...(origin ? { origin } : {}),
+    ...(sc ? { socials: { soundcloud: sc } } : {}),
+    degraded: [url, bioObject, bioScalar, country, resident, soundcloud].some((r) => r.transient),
   };
 }
 
@@ -789,7 +1237,8 @@ function buildFallbackLinks(name: string) {
  */
 function buildLinkList(parts: {
   bandcamp: string;
-  soundcloud: { url: string; user: string | null };
+  /** `handle` is the real account name; `user` is the free-text display name. */
+  soundcloud: { url: string; user: string | null; handle?: string | null };
   mixcloud: { url: string | null; user: string | null };
 }): ArtistLink[] {
   const candidates: ArtistLink[] = [
@@ -802,7 +1251,12 @@ function buildLinkList(parts: {
     {
       label: "SoundCloud",
       url: parts.soundcloud.url,
-      detail: parts.soundcloud.user ? `@${parts.soundcloud.user}` : "Search",
+      // "@" promises a handle. A SoundCloud display name is not one - it gave
+      // "@Colleen Cosmo Murphy" and "@Gianna (US)" - so only a real permalink
+      // earns it, and the display name is shown as the plain label it is.
+      detail: parts.soundcloud.handle
+        ? `@${parts.soundcloud.handle}`
+        : (parts.soundcloud.user ?? "Search"),
       resolved: Boolean(parts.soundcloud.user),
     },
     ...(parts.mixcloud.url
@@ -824,6 +1278,11 @@ function buildLinkList(parts: {
 
 // ─── Persistence ────────────────────────────────────────────────────────────
 
+/** How long a "found nothing" row is believed before it is looked up again. */
+const EMPTY_ROW_TTL_MS = 24 * 60 * 60 * 1000;
+/** How long a resolved row is believed. Identities drift: handles change, accounts are deleted. */
+const AUTO_ROW_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
 interface ArtistRow {
   ra_artist_id: string;
   name: string;
@@ -836,6 +1295,27 @@ interface ArtistRow {
   sets: ArtistSet[] | null;
   links: ArtistLink[] | null;
   link_source: "auto" | "manual" | "none";
+  resolved_at?: string | Date | null;
+}
+
+/**
+ * Whether a stored row should be looked up again rather than served.
+ *
+ * `resolved_at` has been written since the first migration and read by nothing
+ * (migration 0006 says as much), so every row was permanent: a lookup that hit a
+ * rate limit once was an empty artist page forever. Empty and `none` rows are
+ * the likeliest to be an outage rather than an answer, so they expire in a day;
+ * resolved rows in ninety. A human's correction (`manual`) never expires.
+ */
+export function isStaleRow(
+  row: Pick<ArtistRow, "link_source" | "sets" | "resolved_at">,
+  now: number = Date.now(),
+): boolean {
+  if (row.link_source === "manual") return false;
+  const at = row.resolved_at ? new Date(row.resolved_at).getTime() : Number.NaN;
+  if (Number.isNaN(at)) return false;
+  const empty = row.link_source === "none" || !row.sets || row.sets.length === 0;
+  return now - at > (empty ? EMPTY_ROW_TTL_MS : AUTO_ROW_TTL_MS);
 }
 
 async function readCached(artistId: string): Promise<ArtistLinks | null> {
@@ -845,13 +1325,14 @@ async function readCached(artistId: string): Promise<ArtistLinks | null> {
   try {
     const rows = (await sql`
       select ra_artist_id, name, mixcloud_user, mixcloud_url, soundcloud_user,
-             soundcloud_url, ra_url, bio, sets, links, link_source
+             soundcloud_url, ra_url, bio, sets, links, link_source, resolved_at
       from artist_links
       where ra_artist_id = ${artistId}
     `) as unknown as ArtistRow[];
 
     const row = rows[0];
     if (!row) return null;
+    if (isStaleRow(row)) return null;
 
     return {
       id: row.ra_artist_id,
@@ -927,6 +1408,18 @@ function releasedAt(set: ArtistSet): number | null {
   return Number.isNaN(at) ? null : at;
 }
 
+function compareSets(a: ArtistSet, b: ArtistSet): number {
+  const dateA = releasedAt(a);
+  const dateB = releasedAt(b);
+  if (dateA !== null && dateB !== null && dateA !== dateB) return dateB - dateA;
+  if (dateA !== null && dateB === null) return -1;
+  if (dateA === null && dateB !== null) return 1;
+  const rank = PROVIDER_RANK[a.provider] - PROVIDER_RANK[b.provider];
+  if (rank !== 0) return rank;
+  // Undated and same provider: most-played first, a proxy for "the good one".
+  return (b.plays ?? 0) - (a.plays ?? 0);
+}
+
 /**
  * Newest first, then provider, then plays.
  *
@@ -936,48 +1429,63 @@ function releasedAt(set: ArtistSet): number | null {
  * and Mixcloud both report a real date, while Archive items usually don't — so
  * undated sets fall to the back and the fallbacks land after the catalogue
  * without needing a rule that says so.
+ *
+ * Date-first alone let one prolific show crowd out every other provider
+ * (fifty weekly episodes filled the whole queue), so each provider's newest
+ * `PER_PROVIDER_CAP` are guaranteed a place first. Slots they leave unused go
+ * to whichever provider has more, newest first: a DJ with only SoundCloud
+ * still gets the full MAX_SETS rather than being cut to the cap.
  */
 export function orderSets(sets: ArtistSet[]): ArtistSet[] {
-  return [...sets]
-    .sort((a, b) => {
-      const dateA = releasedAt(a);
-      const dateB = releasedAt(b);
-      if (dateA !== null && dateB !== null && dateA !== dateB) return dateB - dateA;
-      if (dateA !== null && dateB === null) return -1;
-      if (dateA === null && dateB !== null) return 1;
-      const rank = PROVIDER_RANK[a.provider] - PROVIDER_RANK[b.provider];
-      if (rank !== 0) return rank;
-      // Undated and same provider: most-played first, a proxy for "the good one".
-      return (b.plays ?? 0) - (a.plays ?? 0);
-    })
+  const byProvider = new Map<SetProvider, ArtistSet[]>();
+  for (const set of [...sets].sort(compareSets)) {
+    const list = byProvider.get(set.provider) ?? [];
+    list.push(set);
+    byProvider.set(set.provider, list);
+  }
+
+  const kept: ArtistSet[] = [];
+  const overflow: ArtistSet[] = [];
+  for (const list of byProvider.values()) {
+    kept.push(...list.slice(0, PER_PROVIDER_CAP));
+    overflow.push(...list.slice(PER_PROVIDER_CAP));
+  }
+  const room = Math.max(0, MAX_SETS - kept.length);
+
+  return [...kept, ...overflow.sort(compareSets).slice(0, room)]
+    .sort(compareSets)
     .slice(0, MAX_SETS);
 }
 
+/**
+ * `degraded` means something upstream failed in a way a retry might fix, so the
+ * result was not remembered and should not be cached for long either.
+ */
 export async function getArtistLinks(
   artistId: string,
   name: string,
   options: { refresh?: boolean } = {},
-): Promise<ArtistLinks> {
+): Promise<{ links: ArtistLinks; degraded: boolean }> {
   if (!options.refresh) {
     const cachedRow = await readCached(artistId);
-    if (cachedRow) return cachedRow;
+    if (cachedRow) return { links: cachedRow, degraded: false };
   }
 
   /**
    * Each stage gets its own deadline rather than sharing one.
    *
    * A single controller started at entry was fine while every source ran in
-   * parallel — all six raced the same seven seconds. It stopped being fine the
-   * moment RA became a *prerequisite*: `resolveRa` can make two sequential
-   * round trips to `ra.co` (it retries without the guessed `biography` field on
-   * any GraphQL error), and a slow-but-successful RA lookup would then hand
-   * SoundCloud and Mixcloud an already-aborted signal. Their fetches reject
-   * instantly, `fetchJson` swallows it, and the two sources a DJ actually
-   * posts to return nothing — with a *successful* RA call as the cause.
+   * parallel. It stopped being fine the moment RA became a *prerequisite*: a
+   * slow-but-successful RA lookup would hand SoundCloud and Mixcloud an
+   * already-aborted signal, their fetches would reject instantly, and the two
+   * sources a DJ actually posts to would return nothing — with a *successful*
+   * RA call as the cause.
    *
-   * RA is held to a shorter budget because it is now blocking, and the
-   * catalogue stage starts a fresh one. Worst case is 3s + 7s, inside the 15s
-   * `maxDuration` in vercel.json.
+   * RA is held to a shorter budget because it is blocking, and the catalogue
+   * stage starts a fresh one. RA's several queries run in parallel under the one
+   * RA deadline, not one after another. The Archive, now a fallback that runs
+   * after the catalogue stage, gets its own short one. Worst case is
+   * 3s + 7s + 4s, inside the 15s `maxDuration` in vercel.json.
    */
   const timers: ReturnType<typeof setTimeout>[] = [];
   const deadline = (ms: number): AbortSignal => {
@@ -987,42 +1495,51 @@ export async function getArtistLinks(
   };
 
   try {
-    // The three sources that don't need RA start now and are awaited after it,
-    // so the dependency costs an ordering rather than a round trip.
-    //
-    // `settle` is what makes that safe. These three are in flight across an
-    // `await`, so if anything between here and their `await` throws, they
-    // become unhandled rejections and take the process down rather than the
-    // request. It logs instead of swallowing, because a side source that fails
-    // silently is precisely how the search-window bug hid for three rounds.
-    const settle = <T>(work: Promise<T>, label: string, fallback: T): Promise<T> =>
+    // Logs instead of swallowing, because a source that fails silently is
+    // precisely how the search-window bug hid for three rounds. A throw here is
+    // an outage as far as caching is concerned.
+    const settle = <T>(work: Promise<Resolved<T>>, label: string): Promise<Resolved<T>> =>
       work.catch((error) => {
         console.error(`[artistLinks] ${label} failed`, error);
-        return fallback;
+        return { value: null, degraded: true };
       });
-
-    const sideSignal = deadline(UPSTREAM_TIMEOUT_MS);
-    const archivePending = settle(resolveArchive(name, sideSignal), "archive", []);
 
     const ra = await resolveRa(artistId, deadline(RA_TIMEOUT_MS));
     // A bio-less or failed RA lookup still yields the parenthetical off the
-    // name, and matching otherwise falls back to what it did before this
-    // existed.
-    const context = buildArtistContext(name, ra.biography);
+    // name, and with every optional RA field missing matching behaves as it did
+    // before any of them were asked for.
+    const context = buildArtistContext(name, ra.biography, {
+      origin: ra.origin,
+      soundcloud: ra.socials?.soundcloud,
+    });
 
     const catalogueSignal = deadline(UPSTREAM_TIMEOUT_MS);
-    const [soundcloud, mixcloud, archive] = await Promise.all([
-      resolveSoundcloud(name, context, catalogueSignal),
-      resolveMixcloud(name, context, catalogueSignal),
-      archivePending,
+    const [soundcloudResult, mixcloudResult] = await Promise.all([
+      settle(resolveSoundcloud(name, context, catalogueSignal), "soundcloud"),
+      settle(resolveMixcloud(name, context, catalogueSignal), "mixcloud"),
     ]);
+    const soundcloud = soundcloudResult.value;
+    const mixcloud = mixcloudResult.value;
+
+    // The Archive is the fallback for artists the first two don't cover, so it
+    // only runs when they found no sets at all.
+    let archiveResult: Resolved<ArtistSet[]> = { value: [], degraded: false };
+    if ((soundcloud?.sets.length ?? 0) + (mixcloud?.sets.length ?? 0) === 0) {
+      archiveResult = await settle(
+        resolveArchive(name, deadline(ARCHIVE_TIMEOUT_MS)),
+        "archive",
+      ).then((r) => ({ value: r.value ?? [], degraded: r.degraded }));
+    }
+
+    const degraded =
+      ra.degraded || soundcloudResult.degraded || mixcloudResult.degraded || archiveResult.degraded;
 
     const fallback = buildFallbackLinks(name);
 
     const sets = orderSets([
       ...(soundcloud?.sets ?? []),
       ...(mixcloud?.sets ?? []),
-      ...archive,
+      ...(archiveResult.value ?? []),
     ]);
 
     // Bio priority: RA is the scene-native source, then the artist's own
@@ -1040,6 +1557,7 @@ export async function getArtistLinks(
       soundcloud: {
         url: soundcloud?.url ?? fallback.soundcloudUrl,
         user: soundcloud?.user ?? null,
+        handle: soundcloud?.handle ?? null,
       },
       mixcloud: { url: mixcloud?.url ?? null, user: mixcloud?.user ?? null },
     });
@@ -1059,8 +1577,11 @@ export async function getArtistLinks(
       cached: false,
     };
 
-    await writeCached(links);
-    return links;
+    // A degraded result is an answer with holes in it. Remembering it would
+    // make the holes permanent: one 429 from SoundCloud used to leave an artist
+    // with no sets until someone deleted the row by hand.
+    if (!degraded) await writeCached(links);
+    return { links, degraded };
   } finally {
     timers.forEach(clearTimeout);
   }

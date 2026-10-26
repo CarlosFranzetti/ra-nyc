@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ListMusic,
   Loader,
@@ -48,6 +48,7 @@ export function PlayerBar() {
     current,
     artistName,
     queue,
+    entries,
     index,
     source,
     listened,
@@ -85,6 +86,40 @@ export function PlayerBar() {
   const [scrubbing, setScrubbing] = useState<number | null>(null);
   const active = Boolean(current);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  // Where to put focus once a removal has re-rendered the list.
+  const focusAfterRemove = useRef<number | null>(null);
+
+  // Read by the commit below, which also runs from a window listener and so must
+  // not close over a stale `scrubbing`.
+  const scrubRef = useRef<number | null>(null);
+  scrubRef.current = scrubbing;
+  const commitScrub = useCallback(() => {
+    const at = scrubRef.current;
+    if (at === null) return;
+    scrubRef.current = null;
+    seek(at);
+    setScrubbing(null);
+  }, [seek]);
+
+  // A drag held through a track change used to be committed to the *new* track,
+  // seeking it to a position that belonged to the last one — and with the
+  // length of a short set, that is straight past its end and on to the next.
+  useEffect(() => {
+    setScrubbing(null);
+  }, [current?.id]);
+
+  // The scrub is committed by the input's own pointer and key events, so a
+  // keyup that lands elsewhere — focus moved mid-hold — left the thumb and its
+  // bubble stuck. Listening on the window while a scrub is open closes that.
+  const scrubOpen = scrubbing !== null;
+  useEffect(() => {
+    if (!scrubOpen) return undefined;
+    window.addEventListener("keyup", commitScrub);
+    return () => window.removeEventListener("keyup", commitScrub);
+  }, [scrubOpen, commitScrub]);
+
   useEffect(() => {
     const root = document.documentElement;
     const element = barRef.current;
@@ -110,6 +145,53 @@ export function PlayerBar() {
   // would be a control that reveals a list of one.
   const hasPlaylist = queue.length > 1;
 
+  // The panel used to stay open in state while hidden, so the next session's
+  // first playlist appeared already expanded.
+  useEffect(() => {
+    if (!hasPlaylist) setListOpen(false);
+  }, [hasPlaylist]);
+
+  // Keep the live row visible. The panel is capped at 38vh, so a long queue puts
+  // the row you are listening to below the fold — the one row you opened the
+  // list to find. Scrolls the panel itself: `scrollIntoView` also scrolls the
+  // page behind the sheets.
+  useEffect(() => {
+    const panel = panelRef.current;
+    const row = panel?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!panel || !row) return;
+    const box = panel.getBoundingClientRect();
+    const at = row.getBoundingClientRect();
+    if (at.top < box.top) panel.scrollTop -= box.top - at.top;
+    else if (at.bottom > box.bottom) panel.scrollTop += at.bottom - box.bottom;
+  }, [listOpen, hasPlaylist, index]);
+
+  // Removing a row unmounts the button that had focus, so focus fell to <body>
+  // and a keyboard user lost their place in the list on every removal. Lands on
+  // the nearest row that still has a remove button (the live row has none).
+  useEffect(() => {
+    const target = focusAfterRemove.current;
+    if (target === null) return;
+    focusAfterRemove.current = null;
+    const list = listRef.current;
+    if (!list) return;
+    const rows = Array.from(list.children);
+    const indices = rows.map((_, i) => i);
+    const order = [
+      ...indices.filter((i) => i >= target),
+      ...indices.filter((i) => i < target).reverse(),
+    ];
+    for (const i of order) {
+      const button = rows[i]?.querySelector<HTMLButtonElement>(
+        'button[aria-label^="Remove"]',
+      );
+      if (button) {
+        button.focus();
+        return;
+      }
+    }
+    list.focus();
+  }, [queue.length]);
+
   if (!current) return null;
 
   const length = duration ?? 0;
@@ -118,12 +200,6 @@ export function PlayerBar() {
   // move and playback wouldn't.
   const canSeek = seekable && length > 0 && !loading;
   const percent = length > 0 ? Math.min(100, (shown / length) * 100) : 0;
-
-  const commitScrub = () => {
-    if (scrubbing === null) return;
-    seek(scrubbing);
-    setScrubbing(null);
-  };
 
   const subtitle =
     error ??
@@ -184,12 +260,22 @@ export function PlayerBar() {
           sheets reserve room for the panel too and nothing ends up underneath
           it while it is open. */}
       {hasPlaylist && listOpen && (
-        <div className="shell max-h-[38vh] overflow-y-auto overscroll-contain border-b border-border/50 px-2 py-1.5">
-          <ul aria-label="Playlist" className="space-y-0.5">
-            {queue.map((set, position) => {
+        <div
+          ref={panelRef}
+          className="shell max-h-[38vh] overflow-y-auto overscroll-contain border-b border-border/50 px-2 py-1.5"
+        >
+          <ul
+            ref={listRef}
+            tabIndex={-1}
+            aria-label="Playlist"
+            className="space-y-0.5 outline-none"
+          >
+            {entries.map(({ uid, set }, position) => {
               const live = position === index;
               return (
-                <li key={`${set.id}-${position}`} className="flex items-center gap-1">
+                /* The entry's uid, not its position: a position key remounted
+                   seven of eight rows on every removal. */
+                <li key={uid} className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => jumpTo(position)}
@@ -225,7 +311,10 @@ export function PlayerBar() {
                   {!live && (
                     <button
                       type="button"
-                      onClick={() => removeAt(position)}
+                      onClick={() => {
+                        focusAfterRemove.current = position;
+                        removeAt(position);
+                      }}
                       aria-label={`Remove ${set.title} from the playlist`}
                       className="tap rounded-full text-muted-foreground transition-smooth active:scale-90 active:text-foreground"
                     >
@@ -266,6 +355,7 @@ export function PlayerBar() {
           onPointerUp={commitScrub}
           onPointerCancel={commitScrub}
           onKeyUp={commitScrub}
+          onBlur={commitScrub}
           aria-label="Seek"
           aria-valuetext={`${formatClock(shown)} of ${formatClock(duration)}`}
           style={{ "--progress": `${percent}%` } as React.CSSProperties}
@@ -276,7 +366,13 @@ export function PlayerBar() {
             stop seeing; one that appears under your thumb at the moment you ask
             for it is an answer. */}
         {scrubbing !== null && (
-          <div className="pointer-events-none absolute inset-x-0 -top-7 flex justify-center">
+          /* Anchored by its own bottom edge. `-top-7` put the top 28px above the
+             line, which is right for one font size; at the largest text size the
+             bubble grows downward into the bar. */
+          <div
+            className="pointer-events-none absolute inset-x-0 flex justify-center"
+            style={{ bottom: "calc(100% + 0.75rem)" }}
+          >
             <span className="rounded-full bg-secondary px-2 py-0.5 text-[0.625rem] font-medium tabular-nums text-foreground shadow-lg">
               {formatClock(shown)} / {formatClock(duration)}
             </span>
@@ -360,17 +456,20 @@ export function PlayerBar() {
             onClick={() =>
               outbound("tickets", { host: hostOf(source.url), from: "player" })
             }
-            className="press flex flex-shrink-0 items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-1 text-[0.625rem] font-medium text-primary"
+            /* Icon-only on a phone: the text pill took about 60px of a 390px
+               row and halved the title. The aria-label is unchanged, and the
+               chip keeps a 44px target in literal px, like every control here. */
+            className="press flex flex-shrink-0 items-center justify-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-1 text-[0.625rem] font-medium text-primary max-[400px]:h-[44px] max-[400px]:w-[44px] max-[400px]:px-0 max-[400px]:py-0"
           >
             <Ticket className="h-3 w-3" />
-            Tickets
+            <span className="max-[400px]:sr-only">Tickets</span>
           </a>
         )}
 
         {hasPlaylist && (
           <button
             onClick={() => setListOpen((open) => !open)}
-            aria-label={listOpen ? "Hide playlist" : "Show playlist"}
+            aria-label={`${listOpen ? "Hide" : "Show"} playlist, ${queue.length} sets`}
             aria-expanded={listOpen}
             className={cn(
               controlClass,
@@ -382,7 +481,10 @@ export function PlayerBar() {
             {/* How many are waiting, which is the one number worth having on a
                 closed panel — it is the difference between "there is a queue"
                 and "there is a queue with nine things in it". */}
-            <span className="absolute right-0 top-0.5 rounded-full bg-primary px-1 text-[0.5rem] font-semibold leading-[0.9rem] text-primary-foreground">
+            <span
+              aria-hidden="true"
+              className="absolute right-0 top-0.5 rounded-full bg-primary px-1 text-[0.5rem] font-semibold leading-[0.9rem] text-primary-foreground"
+            >
               {queue.length}
             </span>
           </button>
