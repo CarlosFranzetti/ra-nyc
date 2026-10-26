@@ -4,6 +4,26 @@ Everything outstanding that needs a human.
 
 ---
 
+## 0 · Open now — 2026-10-26
+
+- **"Need the open maps api."** Your words, not yet acted on. One line needed:
+  do you mean moving the venue map to an OpenStreetMap-based API, or adding a
+  keyed maps provider? The venue sheet currently draws OSM-style tiles and
+  geocodes through Nominatim with the `ra-nyc/1.0` user agent.
+- **A junk row in production.** The bug hunt's S1 agent resolved RA artist
+  **173682** (Gianna (US)) live, which wrote a `link_source='none'` row to
+  `artist_links`. Rows like that are sticky (see the transcript, S1 #9). It
+  will be removed in the repair pass if you are happy for a `DELETE` to run
+  against production; say so, or delete it yourself.
+- **Vercel Web Analytics is still off.** vercel.com → ra-nyc → Analytics →
+  Enable. Every `track()` call is deployed and inert until then.
+- **~18 merged `claude/…` branches** to delete on github.com — the git proxy
+  returns 403 for deletions from a session. Keep `ra-alt`.
+- **Usage.** The nine-agent hunt hit the session limit. The repair phase is
+  deliberately run with one manager resume and one repairer, no more.
+
+---
+
 ## 1 · The database — **done, nothing to do**
 
 Checked against production on **2026-08-18**:

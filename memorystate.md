@@ -2589,6 +2589,66 @@ clarification needed on resume.
 artist 173682 (Gianna (US)) to the production `artist_links` table. Sticky
 until deleted.
 
+#### How the hunt was run, so it can be resumed or repeated
+
+**Roster.** Nine investigators, three per area, one Sonnet lead and two Haiku
+specialists each: P1/P2/P3 (player state machine, timeline, media session and
+lifecycle), L1/L2/L3 (queue mutators, playlist-add resolution, panel UI),
+S1/S2/S3 (artist resolution, fuzzy search, failsafes). An Opus manager to
+consolidate. This session (Fable) orchestrated.
+
+**Why the orchestrator is the hub.** Subagents cannot message each other —
+a subagent's `SendMessage` goes out under the parent's address and replies
+come back to the parent. So every cross-area finding was relayed through the
+orchestrator and logged both ways. That constraint is also what makes the
+transcript complete by construction rather than reconstructed.
+
+**Rules every investigator got.** Investigation only, no edits under `src/`
+or `api/`; probes allowed under `tests/agent-*.mjs`; a private `E2E_PORT`
+each (55xx); evidence as file:line plus what was run plus exact output; a
+severity; reproduction; a concrete proposed fix; a cross-area tag; and an
+explicit "ruled out" list so the manager knows what was looked at and found
+clean. "Do not invent bugs."
+
+**What the relays bought.** P3's pause-during-swap finding went to P1, who
+confirmed it with its own probe and answered the iOS question with a
+lower-risk variant. L1's `[id, index]` effect-key proposal went to P1, who
+rejected it with a concrete counter-case (removing an earlier row would
+restart the live set) and proposed the `reloadNonce` that also fixes P3's
+retry case. Neither would have happened with nine agents reporting in
+isolation.
+
+**Rulings made by the orchestrator, binding on the repair pass.**
+1. Play keeps the playlist (the owner's words). `playNext`, never `playSets`
+   over an existing queue.
+2. The search outage was real and transient; the null-event guard is a
+   hardening, not an emergency.
+3. The RA-origin signal is in scope; ships logging-first because RA's schema
+   is unverified from here.
+4. The hold-to-view flyer is done and out of scope.
+5. Standing security rules hold; anything touching the backfill bearer check
+   is reviewed on the spot.
+
+**Resume plan, written for conserving usage.** The investigation is finished
+and its product is in the transcript; do not re-run it. (1) Resume the Opus
+manager — it had read the transcript when the limit hit — and have it
+finalise from the eight reports, skipping S3, whose remit S1 #9/#10/#14 and
+L2 #5/#6 already cover. (2) Execute the plan in two lanes that touch disjoint
+files: one Sonnet repairer on the player/playlist cluster (`PlayerContext.tsx`,
+`PlayerBar.tsx`, `usePlaylistAdd.ts`, `useEventPreview.ts`,
+`ArtistSheet.tsx`, the adapters), the orchestrator on the search/API cluster
+(`ra.ts`, `artistLinks.ts`, `artistContext.ts`, `vocab.ts`, `SearchSheet.tsx`).
+(3) Promote the probes that earn it into real checks, delete the rest, run
+`test:all`, ship once. Two agents total for the repair phase, against ten for
+the investigation.
+
+**The usage lesson.** Ten agents at once, each with its own Vite server and
+Playwright on a slow container, each reading the same thousand-line files,
+hit the session limit before the manager could plan. The findings were worth
+it; the shape was not. Parallel investigation is the expensive phase and it
+front-loads the cost. Next time: three leads first, specialists only where a
+lead asks for one.
+
 ## 4 · Map of the code
 
 ```

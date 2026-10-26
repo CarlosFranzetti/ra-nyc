@@ -35,13 +35,17 @@ Two exceptions, both narrow:
   the count, because the failure mode is not "a bug ships" but "money or a
   secret goes somewhere it should not".
 
-Last review: **landing 60**, on the theme-ladder / card-rhythm change. It found
-three real defects — a display face that never reached the settings preview
-because the rule was a descendant selector and the preview puts both classes on
-one element; a `.text-glow` left at the old radii while every box-shadow around
-it shrank; and a font weight fetched that nothing can set. All three fixed
-before merge. The cadence then widened from 5 to 7 to conserve tokens, so the
-next review lands at the next multiple of seven.
+Last review: the theme-ladder / card-rhythm change. It found three real
+defects — a display face that never reached the settings preview because the
+rule was a descendant selector and the preview puts both classes on one
+element; a `.text-glow` left at the old radii while every box-shadow around it
+shrank; and a font weight fetched that nothing can set. All three fixed before
+merge. The cadence then widened from 5 to 7 to conserve tokens.
+
+**Recount before deciding.** This note once recorded that review as "landing
+60"; the command above read **52** on 2026-10-26, so that number was wrong.
+The command is the truth, the note is not. Next review falls on the next
+multiple of seven the command reports.
 
 ## Tests
 
@@ -50,7 +54,7 @@ through `tail`; a full untruncated dump of all eight suites is thousands of
 tokens of PASS lines nobody reads.
 
 ```
-npm run test          # 156 Vitest units
+npm run test          # 198 Vitest units
 npm run test:all      # typecheck, then units + layout, player, search, preview,
                       # donate, settings and offline e2e (~2 minutes)
 ```
@@ -61,6 +65,11 @@ so a type error is not a build failure — it is a 500 in production. That is
 exactly how `/api/backfill` shipped using `SEARCH_AHEAD_DAYS` without importing
 it: every suite passed, the deploy went green, and the endpoint threw a
 `ReferenceError` on every call until someone happened to run `tsc`.
+
+`tests/agent-*.mjs` are investigation probes left by the 2026-10-26 bug hunt
+(see `docs/agent-transcript-2026-10-26.md`). Evidence, not tests: nothing runs
+them, and the repair pass promotes the ones that earn it into real checks and
+deletes the rest. Do not add them to `test:all`.
 
 The e2e suites each spawn their own Vite server on a fixed port. If one fails
 with `EADDRINUSE`, a previous run left a server behind — pass `E2E_PORT=<free

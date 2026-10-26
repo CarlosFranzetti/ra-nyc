@@ -8,6 +8,37 @@ Legend: **P1** = next up · **P2** = after that · **P3** = nice to have.
 
 Ordered by what actually costs a user something today.
 
+### Repair the player, playlist and artist resolution — P1
+
+The 2026-10-26 bug hunt (`docs/agent-transcript-2026-10-26.md`) found these,
+ranked in `memorystate.md` under "The bug hunt". The ones that cost a user
+something today, in order:
+
+1. A `+` or preview that resolves late replaces what is playing, or reopens a
+   player you closed (stale closure in `enqueue`/`appendSets`; four agents
+   found it independently).
+2. Two copies of one set in the queue stall playback for good.
+3. The bar and the lock screen name the wrong DJ for every set after the
+   first (`artistName`/`source` are per-queue, not per-set).
+4. Pause during a track swap is overridden a few seconds later.
+5. Opening a DJ or tapping Preview wipes a playlist you built. **Ruled: play
+   keeps the playlist.**
+6. A previous night's slow DJ leaks into the next night's preview.
+7. Timeline: old position flashes on every change; a held drag skips a set;
+   a stray keyup sticks the scrubber.
+8. One `event: null` listing from RA 500s the whole search (happened in
+   production, transient; still unguarded).
+9. Artist resolution: RA's biography is almost certainly never returned, so
+   same-name disambiguation has been inert; confirmed wrong match for Cosmo
+   (NY); transient failures cached forever; no way to invalidate.
+
+### RA-origin signal for artist matching — P1
+
+The owner's explicit ask: use where RA says a DJ is from to pick the right
+SoundCloud account. Design is in the transcript (S1). Ships logging-first with
+optional fields because RA's GraphQL schema could not be verified from the
+sandbox.
+
 ### Anchor dates to New York time — P1
 
 **Half done.** The rollover question is answered: `src/lib/night.ts` puts the
