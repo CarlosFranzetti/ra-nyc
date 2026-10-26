@@ -129,8 +129,25 @@ export function normalizeImageUrl(src: string): string {
   return `https://images.ra.co/${s.replace(/^\/+/, "")}`;
 }
 
-function transformListing(listing: RAListing): RAEvent {
-  const event = listing.event;
+/**
+ * One RA listing → one event, or `null` when RA sent a listing with no event.
+ *
+ * That happens. On 2026-10-26 a single row with `event: null` sat in a live
+ * window and every `/api/search` request 500'd for the minutes it was there —
+ * `Cannot read properties of null (reading 'flyerFront')`, straight from the
+ * production runtime log. `collect` maps a whole page in one expression
+ * outside the per-window catch, so one bad row was the whole search, whatever
+ * the query. The day view runs the same map. Both call sites drop the null
+ * and warn, so a bad row costs one listing and a log line.
+ */
+const isEvent = (event: RAEvent | null): event is RAEvent => event !== null;
+
+function transformListing(listing: RAListing): RAEvent | null {
+  const event = listing?.event;
+  if (!event) {
+    console.warn("[ra] listing with no event dropped", listing?.id ?? "?");
+    return null;
+  }
 
   // flyerFront is RA's dedicated flyer field and is present far more often than
   // images[0]. Preferring it is the difference between flyers loading and not.
@@ -237,7 +254,7 @@ export async function fetchRAEvents({
   });
 
   return (
-    dedupeById(listings.map(transformListing))
+    dedupeById(listings.map(transformListing).filter(isEvent))
       .filter((event) => startsOn(event, date))
       // Busiest first — with a 50-event cap and no pagination, popularity is a
       // better ordering than whatever RA returns.
@@ -437,11 +454,26 @@ function matchesTerm(event: RAEvent, term: string): boolean {
 
   if (fields.some((value) => normalizeName(value).includes(exact))) return true;
 
+  const split = (value: string) => value.split(/[\s,&·/]+/).map(searchKey).filter(Boolean);
+
   // Every key the vocabulary offers, the term's own first. An unknown word
   // expands to itself alone, so this is the same single test it always was for
   // the common case — a DJ or a venue.
+  //
+  // The term's own key may match as a substring: that is the whole point of
+  // typing "nowa" for Nowadays, and it was tested above. The *expansions* may
+  // not. A vocabulary entry is a word, and several of them are short — "uk"
+  // under bass, "av" under live, "unter" under queer — so as substrings they
+  // matched L-uk-e Hess, D-av-e Clark and H-unter. Searching "live" returned
+  // an unrelated night with Dave Clark on it. Expansions are compared against
+  // the field's words, whole.
   const keys = expandTerm(term);
-  if (keys.some((key) => fields.some((value) => searchKey(value).includes(key)))) {
+  const [own, ...expansions] = keys;
+  if (own && fields.some((value) => searchKey(value).includes(own))) return true;
+  if (
+    expansions.length &&
+    fields.some((value) => split(value).some((word) => expansions.includes(word)))
+  ) {
     return true;
   }
 
@@ -456,7 +488,6 @@ function matchesTerm(event: RAEvent, term: string): boolean {
   // a DJ name in this scene — could never be found at all. Splitting both and
   // requiring *every* query word to land somewhere fixes that without letting
   // a single matching word drag in half the city.
-  const split = (value: string) => value.split(/[\s,&·/]+/).map(searchKey).filter(Boolean);
 
   const words = (value: string) =>
     split(value).filter((key) => key.length >= FUZZY_MIN_LENGTH);
@@ -538,7 +569,7 @@ async function collect(
     ),
   );
   return {
-    events: dedupeById(pages.flat().map(transformListing)),
+    events: dedupeById(pages.flat().map(transformListing).filter(isEvent)),
     // Any saturated request means RA had more in that window than we took.
     // `some`, not `every`: the trailing page of a window is usually short even
     // when earlier windows were cut off, and reporting "complete" then would be
@@ -654,9 +685,16 @@ export async function searchRAEvents(options: {
   // is worth one extra bounded query on every search.
   const scanned = await recentCachedEvents({ areaId, from: windowFrom, to: windowTo });
 
+  // `matching` over the indexed rows too — the comment above promised it and
+  // the code did not do it. Two things got through unfiltered: the index's
+  // haystack is one key with the spaces stripped, so "llanow" matched
+  // *Vanilla / Nowadays* across the field boundary; and the SQL `like` has no
+  // word boundaries, so the vocabulary's short expansions matched inside
+  // names there just as they did live. Whether a row came from the index or a
+  // live window should not change whether it matches.
   const hits = dedupeById([
     ...matching(live),
-    ...cached.events,
+    ...matching(cached.events),
     ...matching(scanned),
   ]);
 

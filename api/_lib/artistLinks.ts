@@ -749,6 +749,16 @@ async function resolveRa(
     signal,
   );
 
+  // Said out loud, because the silent retry is how "RA's biography is never
+  // returned" went unnoticed in production: if `biography` is not a scalar in
+  // RA's schema this query is a validation error on every call, the fallback
+  // below always runs, and nothing anywhere records why the bio is null.
+  if (withBio?.errors?.length) {
+    console.warn(
+      "[ra] artist query with biography rejected, retrying without it:",
+      (withBio.errors[0] as { message?: string } | undefined)?.message ?? "no message",
+    );
+  }
   const usable =
     withBio && !withBio.errors?.length
       ? withBio

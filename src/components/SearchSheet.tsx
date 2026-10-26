@@ -123,7 +123,13 @@ export function SearchSheet({
    * survived the debounce and completed — so the history is a list of searches
    * that happened rather than of characters that were typed.
    */
-  const answered = data?.q ?? "";
+  // And only a search that *found* something. A typo that returned nothing
+  // was being banked too, so a misspelling you corrected a second later held
+  // one of the six slots for the rest of the session.
+  const answered =
+    data && (data.upcoming?.length ?? 0) + (data.past?.length ?? 0) > 0
+      ? data.q
+      : "";
   useEffect(() => {
     if (!answered) return;
     setRecent((current) => {

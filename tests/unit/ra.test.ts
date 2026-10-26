@@ -57,12 +57,15 @@ function stubRA(
     // RA errors on an oversized page rather than truncating — the behaviour
     // that made a bad pageSize look like "this artist has no gigs".
     if (size > cap) return { ok: false, status: 400, json: async () => ({}) };
+    // `listingDate`, not `event.date`: a listing can arrive with `event: null`
+    // (the null-event test), and the stub has to be able to serve that row
+    // rather than throw inside the fetch and make the window look dead.
     const inRange = rows
       .filter((r) => {
-        const d = r.event.date.slice(0, 10);
+        const d = r.listingDate.slice(0, 10);
         return d >= gte && d <= lte;
       })
-      .sort((a, b) => a.event.date.localeCompare(b.event.date));
+      .sort((a, b) => a.listingDate.localeCompare(b.listingDate));
     return {
       ok: true,
       json: async () => ({
@@ -179,6 +182,38 @@ describe("searchRAEvents", () => {
     expect((await searchRAEvents({ term: "lakuti" })).upcoming.map((e) => e.id)).toContain("f1");
     expect((await searchRAEvents({ term: "bossa nova" })).upcoming.map((e) => e.id)).toContain("f2");
     expect((await searchRAEvents({ term: "uzuri" })).upcoming.map((e) => e.id)).toContain("f1");
+  });
+
+  // A single RA listing with `event: null` took the whole search endpoint down
+  // in production on 2026-10-26 — every query, for the minutes the row sat in
+  // a live window. The map that transforms a page ran outside the per-window
+  // catch, so one bad row was a TypeError for the request.
+  it("survives a listing with no event instead of failing the whole search", async () => {
+    const corpse = { id: "l-null", listingDate: `${day(4)}T00:00:00.000`, event: null };
+    stubRA([...corpus, corpse as unknown as ReturnType<typeof listing>]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const ids = (await searchRAEvents({ term: "lakuti" })).upcoming.map((e) => e.id);
+    expect(ids).toContain("f1");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("no event"), "l-null");
+    warn.mockRestore();
+  });
+
+  // Vocabulary expansions are words, and some are short. As substrings, "uk"
+  // (under bass) matched Luke, "av" (under live) matched Dave, "unter" (under
+  // queer) matched Hunter — so "live" returned a night that was not live.
+  it("matches vocabulary expansions as whole words, not substrings", async () => {
+    stubRA([
+      listing({ id: "luke", title: "Luke Hess all night", date: day(3) }),
+      listing({ id: "dave", title: "Unrelated night", date: day(3), artists: ["Dave Clark"] }),
+      listing({ id: "hunt", title: "Hunter b2b Gunter", date: day(3) }),
+      listing({ id: "garage", title: "Garage night", date: day(3) }),
+      listing({ id: "band", title: "Live band on the roof", date: day(3) }),
+    ]);
+    const ids = async (term: string) =>
+      (await searchRAEvents({ term })).upcoming.map((e) => e.id);
+    expect(await ids("bass")).toEqual(["garage"]);
+    expect(await ids("live")).toEqual(["band"]);
+    expect(await ids("queer")).toEqual([]);
   });
 
   it("is accent-insensitive", async () => {
