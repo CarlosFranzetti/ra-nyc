@@ -20,8 +20,10 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { EventThumb } from "@/components/EventThumb";
+import { FlyerViewer } from "@/components/FlyerViewer";
 import { usePrefetchArtist } from "@/hooks/useArtist";
 import { useEventPreview } from "@/hooks/useEventPreview";
+import { useLongPress } from "@/hooks/useLongPress";
 import { NIGHT_KEY, usePlaylistAdd } from "@/hooks/usePlaylistAdd";
 import { hostOf, outbound } from "@/lib/analytics";
 import { formatTime } from "@/lib/formatTime";
@@ -70,6 +72,9 @@ export function EventDetailsSheet({
   const [blurbExpanded, setBlurbExpanded] = useState(false);
   const [lineupExpanded, setLineupExpanded] = useState(false);
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
+  // The flyer at full size — opened by holding the flyer, see below.
+  const [flyerOpen, setFlyerOpen] = useState(false);
+  const hold = useLongPress(() => setFlyerOpen(true));
 
   // Reset per event, or the next event opens mid-scroll with the previous
   // event's toggles applied.
@@ -77,6 +82,7 @@ export function EventDetailsSheet({
     setExpanded(false);
     setBlurbExpanded(false);
     setLineupExpanded(false);
+    setFlyerOpen(false);
     scrollRef.current?.scrollTo({ top: 0 });
   }, [event?.id]);
 
@@ -149,6 +155,14 @@ export function EventDetailsSheet({
   };
 
   return (
+    <>
+    <FlyerViewer
+      imageUrl={event.imageUrl}
+      alt={event.title}
+      fallbackLabel={event.venue.name}
+      open={flyerOpen}
+      onClose={() => setFlyerOpen(false)}
+    />
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent
         className={
@@ -174,24 +188,40 @@ export function EventDetailsSheet({
           onClick={closeUnlessInteractive}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
-          {/* Tapping the flyer returns to the listings.
-              The dead-space handler above already did this, since an <img> is
-              not a control — but only by accident of what it is *not*, and only
-              while nothing between here and the scroller stops the event. vaul
-              also treats a pointer-down on its content as a possible drag,
-              which is exactly the gesture a tap on a large image looks like.
-              Saying it outright costs one handler and stops it being a
-              behaviour that could quietly disappear.
+          {/* Tap the flyer to return to the listings; hold it to see it full
+              size.
 
-              role="button" so the sheet's own closeUnlessInteractive skips it
-              rather than firing a second time on the way up. */}
+              Two gestures on one element, and they have to be told apart before
+              either fires. `useLongPress` does that: a finger that stays down
+              for 350ms opens the viewer and marks the gesture as a hold, and
+              the click that the browser fires on release is then swallowed by
+              `consumeClick` — otherwise the sheet would close under the viewer
+              the instant it opened. A tap is anything shorter; it still closes
+              the sheet exactly as before.
+
+              The tap handler is here rather than left to the dead-space
+              handler above because an <img> is not a control and only closed
+              the sheet by accident of what it is *not*. vaul also treats a
+              pointer-down on its content as a possible drag, which is the
+              gesture a tap on a large image looks like — and a hold doubly so.
+              Movement cancels the hold (see the hook), so a drag that starts on
+              the flyer is still a drag.
+
+              role="button" so closeUnlessInteractive skips it rather than
+              firing a second time on the way up. `no-callout` stops iOS raising
+              the save-image sheet over a hold, which is the one platform
+              gesture that would otherwise compete with this one. */}
           <div
             role="button"
             tabIndex={-1}
-            aria-label="Back to listings"
-            onClick={() => onOpenChange(false)}
+            aria-label="Back to listings — hold to see the flyer"
+            {...hold.handlers}
+            onClick={() => {
+              if (hold.consumeClick()) return;
+              onOpenChange(false);
+            }}
             className={cn(
-              "w-full cursor-pointer overflow-hidden bg-muted transition-all duration-200",
+              "no-callout w-full cursor-pointer overflow-hidden bg-muted transition-all duration-200",
               // Expanding trades flyer for text — the reason you expand is to
               // read the rest, not to see a bigger picture.
               expanded ? "aspect-auto h-24" : "aspect-square max-h-[40vh]",
@@ -428,5 +458,6 @@ export function EventDetailsSheet({
         )}
       </DrawerContent>
     </Drawer>
+    </>
   );
 }

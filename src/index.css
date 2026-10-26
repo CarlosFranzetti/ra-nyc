@@ -883,6 +883,34 @@ html {
   animation: overlay-slide-out var(--out) var(--ease) both;
 }
 
+/* The flyer viewer: a fade with a touch of scale, on the shared clock.
+
+   Not the overlay slide — a slide is for a surface arriving from an edge, and
+   a full-size image does not arrive from anywhere; it is the thing you were
+   already holding, grown. 0.96 → 1 is enough to read as "this came from
+   there" without the image visibly resizing on the way in. */
+@keyframes viewer-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes viewer-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.98); }
+}
+
+.viewer-in  { animation: viewer-in  var(--in)  var(--ease) both; }
+.viewer-out { animation: viewer-out var(--out) var(--ease) both; }
+
+/* Holding an image on iOS raises the share/save sheet and starts a drag of
+   the image itself. Both are platform gestures competing with the app's own
+   hold, and both are suppressed only where the app has a hold of its own. */
+.no-callout img {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
 /* Staggered list entrance.
 
    Same effect and roughly the same clock as the original — cards rise into

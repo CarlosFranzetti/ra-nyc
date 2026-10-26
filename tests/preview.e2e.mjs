@@ -246,6 +246,52 @@ check("no ticket link before anyone has listened",
 // is promoted to someone who has only just arrived — and that is asserted
 // above.
 
+// ── hold the flyer to see it full size; tap it to leave
+//
+// Two gestures on one element. A hold (pointer down, stay put past HOLD_MS,
+// release) opens the viewer and must NOT close the sheet on release — the
+// browser fires a click after pointerup regardless, and the hook is what
+// swallows it. A plain tap must still close the sheet as it always has.
+{
+  const flyer = page.locator('[role="button"][aria-label^="Back to listings"]');
+  const box = await flyer.boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.waitForTimeout(550); // past HOLD_MS (350), short of anything else
+  await page.mouse.up();
+  // 600ms, not 200: longer than the viewer's exit animation (--out, 340ms).
+  // A viewer that was closed by its own opening gesture's release is still in
+  // the DOM and still "visible" for 340ms while it fades out, so a check taken
+  // sooner than that passed on a viewer that had already been dismissed.
+  await page.waitForTimeout(600);
+
+  const viewer = page.locator('[role="dialog"][aria-label^="Flyer for"]');
+  check("holding the flyer opens it full size, and the release does not close it",
+    await viewer.isVisible());
+  check("and the release does not close the sheet underneath",
+    await page.locator("text=Preview the night").isVisible());
+
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  check("Escape closes the viewer", (await viewer.count()) === 0);
+  // And only the viewer. vaul listens for Escape on the document; a keypress
+  // that reached it dismissed the sheet as well, and the tap below then landed
+  // on the card underneath and opened a *new* sheet — which a text check read
+  // as "the sheet never closed". Asserting the drawer itself is what tells the
+  // two apart.
+  check("and leaves the sheet underneath open",
+    (await page.locator("[data-vaul-drawer]").count()) === 1);
+
+  // A quick tap is still the way out of the sheet.
+  await page.mouse.click(cx, cy);
+  await page.waitForTimeout(700);
+  check("a tap on the flyer still returns to the listings",
+    (await page.locator("[data-vaul-drawer]").count()) === 0);
+}
+
 await browser.close();
 shutdown();
 
