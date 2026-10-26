@@ -41,13 +41,17 @@ export interface EventPreview {
 
 export function useEventPreview(): EventPreview {
   const queryClient = useQueryClient();
-  const { playSets, appendSets } = usePlayer();
+  const { playNext, insertAfter, getEpoch } = usePlayer();
   const [preparing, setPreparing] = useState(false);
   const [empty, setEmpty] = useState(false);
 
   // Guards against a double tap starting two overlapping previews, each
   // appending into the other's queue.
   const runningFor = useRef<string | null>(null);
+  // Which preview is the latest. `runningFor` alone is an event id, so a slow
+  // run for night A kept resolving into night B's queue after the listener
+  // moved on, and its `finally` cleared B's guard while B was still in flight.
+  const runRef = useRef(0);
 
   const start = useCallback(
     (event: Event) => {
@@ -64,7 +68,15 @@ export function useEventPreview(): EventPreview {
         return;
       }
 
+      const run = ++runRef.current;
+      const epoch = getEpoch();
+      // Stale if a newer preview started, or the player was closed meanwhile.
+      const live = () => run === runRef.current && getEpoch() === epoch;
+
       let started = false;
+      // The entry the taster has reached so far, so each later DJ is inserted
+      // behind it and the taster stays contiguous.
+      let anchor: number | null = null;
       const source = { label: event.title, url: event.url };
 
       const resolutions = lineup.map(async (artist) => {
@@ -72,17 +84,24 @@ export function useEventPreview(): EventPreview {
           // `fetchQuery` rather than a bare fetch: an artist already opened this
           // session is served from cache with no request at all, which is what
           // makes a second preview of the same night instant.
-          const details = await queryClient.fetchQuery(artistQuery(artist.id, artist.name));
+          const details = await queryClient.fetchQuery({
+            ...artistQuery(artist.id, artist.name),
+            retry: false,
+          });
+          if (!live()) return;
           const chosen = previewSet(event.id, artist.id, details.sets);
           if (!chosen) return;
 
           // The race is the point: whoever is back first starts the music.
+          // `playNext`, not `playSets`: with a playlist already built the taster
+          // slots in after the live set and the listener's queue resumes behind
+          // it, instead of being replaced. With an empty queue it simply starts.
           if (!started) {
             started = true;
             setPreparing(false);
-            playSets([chosen], 0, artist.name, source);
-          } else {
-            appendSets([chosen]);
+            anchor = playNext(chosen, artist.name, source);
+          } else if (anchor !== null) {
+            anchor = insertAfter(anchor, chosen, artist.name, source) ?? anchor;
           }
         } catch {
           // One unresolvable DJ must not silence the rest of the bill.
@@ -90,14 +109,16 @@ export function useEventPreview(): EventPreview {
       });
 
       void Promise.all(resolutions).then(() => {
+        if (run !== runRef.current) return;
         runningFor.current = null;
-        if (!started) {
+        // A closed player is not "nothing playable".
+        if (!started && live()) {
           setPreparing(false);
           setEmpty(true);
         }
       });
     },
-    [queryClient, playSets, appendSets],
+    [queryClient, playNext, insertAfter, getEpoch],
   );
 
   return { start, preparing, empty };

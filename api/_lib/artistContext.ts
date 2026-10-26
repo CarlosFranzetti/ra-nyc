@@ -25,21 +25,44 @@
 
 import { normalizeName } from "./normalize.js";
 
+/** What RA says about where an artist is from. Every field is optional upstream. */
+export interface RaOrigin {
+  /** Two-letter code, only when RA's `urlCode` actually looks like one. */
+  iso2: string | null;
+  countryName: string | null;
+}
+
 export interface ArtistContext {
-  /** Profile handles stated outright in the biography. Decisive when present. */
+  /**
+   * Profile handles. Decisive when present, but see `handleSource`: one lifted
+   * out of free text is only as trustworthy as the sentence it came from.
+   */
   handles: {
     soundcloud: string | null;
     mixcloud: string | null;
   };
   /**
+   * Where the SoundCloud handle came from. A structured RA field is the
+   * artist's own statement; a handle regexed out of a biography can as easily
+   * be a collaborator, a label or a mix host.
+   */
+  handleSource: { soundcloud: "structured" | "bio" | null };
+  /**
    * Normalised corroborating terms — places, labels, collectives, radio shows.
    * Ranking only.
    */
   terms: string[];
+  /**
+   * Where the artist is from, as far as anything says. Absent when nothing does,
+   * so every consumer has to cope with it missing — which is the normal case
+   * until RA's schema is confirmed.
+   */
+  origin?: { iso2: string | null; places: string[] };
 }
 
 export const EMPTY_CONTEXT: ArtistContext = {
   handles: { soundcloud: null, mixcloud: null },
+  handleSource: { soundcloud: null },
   terms: [],
 };
 
@@ -117,6 +140,20 @@ const PLACES: readonly string[] = [
   "krakow", "prague", "budapest", "vienna", "zurich", "geneva", "brussels",
   "antwerp", "hamburg", "cologne", "frankfurt", "leipzig", "munich",
   "buenos aires", "sao paulo", "rio de janeiro", "santiago", "lima",
+  // US cities and states. The list above was Europe-heavy, so a bio saying
+  // "Southwest Florida-based" never registered as the contradiction it is when
+  // the artist is "(NY)" — and that exact bio was shown as a New York DJ's.
+  "miami", "houston", "atlanta", "dallas", "austin", "seattle", "portland",
+  "denver", "boston", "philadelphia", "baltimore", "washington", "new orleans",
+  "las vegas", "phoenix", "san diego", "minneapolis", "pittsburgh", "cleveland",
+  "columbus", "nashville", "charlotte", "oakland", "honolulu", "san jose",
+  "sacramento", "st louis", "kansas city", "salt lake city", "providence",
+  "hollywood", "florida", "california", "texas", "new jersey", "massachusetts",
+  "illinois", "michigan", "ohio", "pennsylvania", "colorado", "oregon",
+  "nevada", "arizona", "louisiana", "tennessee", "north carolina", "virginia",
+  "maryland", "connecticut", "hawaii", "new mexico", "minnesota", "wisconsin",
+  "great britain", "united kingdom", "england", "scotland", "wales", "ireland",
+  "germany", "france", "canada", "mexico", "japan", "australia", "brazil",
 ];
 
 /** Longest first, so "new york city" wins over "new york" over "york". */

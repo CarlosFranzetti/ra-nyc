@@ -106,6 +106,15 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
   let retry: number | undefined;
 
   /**
+   * What the listener last asked for. `load()` and the first READY used to
+   * call `play()` unconditionally, so a Pause tapped while a skipped-into track
+   * was still swapping was undone about 2.5 s later when the swap callback
+   * fired (P3 and P1 both reproduced it). Every deferred `play()` below checks
+   * this first.
+   */
+  let wantPlay = true;
+
+  /**
    * True between `load()` and the widget confirming the swap.
    *
    * The handle is deliberately reused across tracks — that is what makes the
@@ -123,10 +132,12 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
       useDuration(ms / 1000);
       events.onReady(duration);
     });
-    widget.play();
-    retry = window.setTimeout(() => {
-      if (!started) widget.play();
-    }, 700);
+    if (wantPlay) {
+      widget.play();
+      retry = window.setTimeout(() => {
+        if (!started && wantPlay) widget.play();
+      }, 700);
+    }
   });
   widget.bind(SC.Widget.Events.PLAY, () => {
     started = true;
@@ -145,7 +156,12 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
     events.onPlay();
   });
   widget.bind(SC.Widget.Events.PAUSE, () => events.onPause());
-  widget.bind(SC.Widget.Events.FINISH, () => events.onEnded());
+  widget.bind(SC.Widget.Events.FINISH, () => {
+    // The outgoing track can FINISH after load() has already been called; that
+    // would advance the queue past the set the listener just chose.
+    if (swapping) return;
+    events.onEnded();
+  });
   widget.bind(SC.Widget.Events.ERROR, () =>
     events.onError("SoundCloud couldn't play this set."),
   );
@@ -176,9 +192,17 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
     // PLAY_PROGRESS can be hundreds of milliseconds away, and until it lands
     // the bar would still be showing the outgoing track's position.
     events.onProgress(0, duration);
+    if (!wantPlay) {
+      // `load()` was called with auto_play, so the widget is already playing the
+      // new track; a pause tapped during the swap has to be re-asserted here and
+      // must not arm the retry.
+      widget.pause();
+      events.onPause();
+      return;
+    }
     widget.play();
     retry = window.setTimeout(() => {
-      if (!started) widget.play();
+      if (!started && wantPlay) widget.play();
     }, 700);
   };
 
@@ -189,11 +213,22 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
       duration = next.duration;
       confirmed = false;
       swapping = true;
+      // A skip is a request to play, whatever was asked before it.
+      wantPlay = true;
       // The permalink, not the embed URL — load() takes the track's own page.
+      //
+      // `auto_play: true` stays. The cleaner fix for the pause-during-swap bug is
+      // `auto_play: false` plus a `play()` in the callback, but whether a
+      // `play()` from inside that callback keeps the iframe's user activation on
+      // iOS is unproven. Test it on a real iPhone before switching.
       widget.load(next.url, { auto_play: true, callback: start });
     },
-    play: () => widget.play(),
+    play: () => {
+      wantPlay = true;
+      widget.play();
+    },
     pause: () => {
+      wantPlay = false;
       // Cancel the pending start-retry. Without this a pause within 700ms of
       // loading a track gets undone by the retry firing underneath it, and the
       // set resumes on its own.

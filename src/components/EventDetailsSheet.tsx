@@ -130,6 +130,12 @@ export function EventDetailsSheet({
     ? event.artists
     : event.artists.slice(0, LINEUP_PREVIEW);
   const hiddenArtists = event.artists.length - artists.length;
+  // The DJ whose add found nothing, if the last add was a DJ's. Looked up in
+  // the full bill, not the visible slice: the chip may since have folded away.
+  const failedArtist =
+    playlist.failed && playlist.failed !== NIGHT_KEY
+      ? event.artists.find((a) => (a.id || a.name) === playlist.failed)
+      : undefined;
 
   /**
    * Tap-to-dismiss on dead space.
@@ -311,10 +317,11 @@ export function EventDetailsSheet({
                     the ambush — and it keeps playback tied to a real user
                     gesture, which is also what browsers require. */}
                 {/* Play, and beside it add.
-                    The preview starts a new playlist — it is a different night,
-                    and "preview *this*" means this. The `+` is for when you are
-                    already listening and want the bill to follow rather than
-                    replace it. */}
+                    The preview keeps the playlist: it starts this night's sets
+                    now and leaves whatever was queued behind them, because
+                    "just hit play" must never cost you the list you built. The
+                    `+` is for when you are already listening and want the bill
+                    to follow rather than interrupt. */}
                 <div className="mb-2 flex items-stretch gap-1.5">
                   <button
                     onClick={() => preview.start(event)}
@@ -347,7 +354,11 @@ export function EventDetailsSheet({
                     )}
                   </button>
                 </div>
-                {preview.empty && (
+                {/* The add's answer when it found nothing. `failed` is keyed
+                    like `pending` — the night, or one DJ — so the message sits
+                    under the control that was pressed, and the `+` is enabled
+                    again rather than silently inert (A-F17). */}
+                {(preview.empty || playlist.failed === NIGHT_KEY) && (
                   <p className="mb-2 text-center text-[0.6875rem] text-muted-foreground">
                     No sets found for this lineup.
                   </p>
@@ -405,6 +416,13 @@ export function EventDetailsSheet({
                     </button>
                   )}
                 </div>
+                {/* A chip is too small to carry its own message, so a DJ's
+                    failed add is said once under the row, by name. */}
+                {failedArtist && (
+                  <p className="mt-2 text-center text-[0.6875rem] text-muted-foreground">
+                    No sets found for {failedArtist.name}.
+                  </p>
+                )}
               </div>
             )}
 
