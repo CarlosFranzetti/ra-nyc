@@ -78,11 +78,18 @@ export default async function handler(
       return send(res, 400, { error: "Query param `name` is too long" });
     }
 
-    const links = await getArtistLinks(id, name);
+    const { links, degraded } = await getArtistLinks(id, name);
 
     // Very long edge cache: a DJ's Mixcloud/SoundCloud identity effectively
     // never changes, and this is the layer that protects those APIs from our
     // traffic when there's no database configured.
+    //
+    // Except when the lookup was degraded — an upstream rate limit, a timeout, or
+    // two same-named accounts we declined to choose between. The database
+    // already refuses to remember those, but the edge would: a week at s-maxage
+    // is how a single 429 used to become a permanently empty artist page. Five
+    // minutes keeps the load off SoundCloud and Mixcloud without that, and drops
+    // stale-while-revalidate, which would keep serving the hole while it healed.
     return send(
       res,
       200,
@@ -91,7 +98,9 @@ export default async function handler(
         persisted: isDbEnabled(),
         soundcloud: soundcloudMode(),
       } satisfies ArtistResponse,
-      "public, max-age=3600, s-maxage=604800, stale-while-revalidate=2592000",
+      degraded
+        ? "public, max-age=60, s-maxage=300"
+        : "public, max-age=3600, s-maxage=604800, stale-while-revalidate=2592000",
     );
   } catch (error) {
     console.error("[api/artist] unexpected failure", error);

@@ -152,12 +152,80 @@ const PLACES: readonly string[] = [
   "illinois", "michigan", "ohio", "pennsylvania", "colorado", "oregon",
   "nevada", "arizona", "louisiana", "tennessee", "north carolina", "virginia",
   "maryland", "connecticut", "hawaii", "new mexico", "minnesota", "wisconsin",
-  "great britain", "united kingdom", "england", "scotland", "wales", "ireland",
-  "germany", "france", "canada", "mexico", "japan", "australia", "brazil",
 ];
 
 /** Longest first, so "new york city" wins over "new york" over "york". */
 const PLACES_BY_LENGTH = [...PLACES].sort((a, b) => b.length - a.length);
+
+const PLACE_KEYS = new Set(PLACES.map((p) => compact(p)));
+
+/**
+ * Places that are countries rather than somewhere you could be "from" in the
+ * sense that tells two same-named DJs apart. An artist whose only known origin
+ * is "US" is not contradicted by a bio that says Miami — Miami is in the US.
+ */
+const COUNTRY_LEVEL = new Set(
+  ["united states", "usa", "america", "us", "united kingdom", "uk", "england",
+    "scotland", "wales", "great britain", "britain"].map((p) => compact(p)),
+);
+
+/**
+ * Short region codes, and what a bio or a profile says instead of them.
+ *
+ * RA disambiguates with "Cosmo (NY)", but nobody writes "NY" in a SoundCloud
+ * bio; they write Brooklyn, or New York, or NYC. Without this the one signal
+ * that survives an artist having no biography matched "company" and missed
+ * "Brooklyn / New York resident".
+ *
+ * `metro` regions are small enough that knowing one place means knowing the
+ * rest: a Brooklyn DJ is a New York DJ. Country-sized ones are not — a London
+ * DJ has not told us they are from Glasgow.
+ *
+ * `codeIsWord` marks codes that are also ordinary English or Romance words, so
+ * the bare code only counts when written in capitals: "join us" is not a claim
+ * about the United States, "LA-based" is a claim about Los Angeles.
+ */
+const REGIONS: Record<string, { aliases: string[]; metro: boolean; codeIsWord?: boolean }> = {
+  ny: {
+    aliases: ["new york", "new york city", "nyc", "brooklyn", "queens", "manhattan", "bronx"],
+    metro: true,
+  },
+  la: { aliases: ["los angeles", "hollywood"], metro: true, codeIsWord: true },
+  sf: { aliases: ["san francisco", "oakland", "bay area"], metro: true },
+  dc: { aliases: ["washington dc", "washington"], metro: true },
+  us: { aliases: ["united states", "usa", "america"], metro: false, codeIsWord: true },
+  uk: {
+    aliases: [
+      "united kingdom", "great britain", "britain", "england", "scotland", "wales",
+      "london", "manchester", "glasgow", "bristol", "leeds",
+    ],
+    metro: false,
+  },
+};
+
+const REGION_ALIASES: Record<string, string[]> = Object.fromEntries(
+  Object.entries(REGIONS).map(([code, r]) => [code, r.aliases.map(compact)]),
+);
+
+/** `normalizeName` for one phrase, hoisted so the tables above can use it. */
+function compact(value: string): string {
+  return normalizeName(value);
+}
+
+/**
+ * Everything a region code stands for, itself included, or just `[place]` when
+ * it is not one. Metro-level places pull in their whole region (see above).
+ */
+function expandPlace(place: string, viaCode: boolean): string[] {
+  const key = compact(place);
+  if (REGION_ALIASES[key]) return [key, ...REGION_ALIASES[key]!];
+  for (const [code, region] of Object.entries(REGIONS)) {
+    if (!viaCode && !region.metro) continue;
+    const aliases = REGION_ALIASES[code]!;
+    if (aliases.includes(key)) return [code, ...aliases];
+  }
+  return [key];
+}
 
 /** Bounds the work done per candidate later; bios can be several paragraphs. */
 const MAX_TERMS = 24;
@@ -202,6 +270,95 @@ function addRun(into: Set<string>, run: string, exclude: string): void {
   for (const word of words) addTerm(into, word, exclude);
 }
 
+// ─── Word-boundary matching ─────────────────────────────────────────────────
+
+/** Longest multi-word term we ever look for; PROPER_NOUN tops out at four words. */
+const MAX_GRAM_WORDS = 5;
+
+interface Haystack {
+  /** Every run of 1..5 adjacent words, each joined with no separator. */
+  grams: Set<string>;
+  /** Two-letter tokens written in capitals, lowercased — see `codeIsWord`. */
+  capitals: Set<string>;
+}
+
+/**
+ * Terms are compared as whole words, never as substrings.
+ *
+ * The old test was `haystack.includes(term)` over a string with every space and
+ * punctuation mark removed — which is how "ny" matched inside "company", "many",
+ * "funny" and "sunny" (1 point each) while "Brooklyn / New York resident"
+ * scored 0. Tokenising first and joining *runs of whole tokens* keeps the one
+ * property the old approach had on purpose: the term `newyork` still finds
+ * "New York", and `rapodcast` still finds "RA Podcast", because both normalise
+ * to the same run of tokens. What it can no longer do is find a term in the
+ * middle of a word.
+ */
+function haystackOf(texts: (string | null | undefined)[]): Haystack {
+  const grams = new Set<string>();
+  const capitals = new Set<string>();
+  for (const text of texts) {
+    if (!text) continue;
+    const tokens = text
+      .split(/[^\p{L}\p{N}]+/u)
+      .map((t) => normalizeName(t))
+      .filter(Boolean);
+    for (let i = 0; i < tokens.length; i += 1) {
+      let gram = "";
+      for (let n = 0; n < MAX_GRAM_WORDS && i + n < tokens.length; n += 1) {
+        gram += tokens[i + n];
+        grams.add(gram);
+      }
+    }
+    for (const m of text.matchAll(/(?<![A-Za-z0-9])[A-Z]{2}(?![A-Za-z0-9])/g)) {
+      capitals.add(m[0].toLowerCase());
+    }
+  }
+  return { grams, capitals };
+}
+
+function termHit(term: string, hay: Haystack): boolean {
+  const region = REGIONS[term];
+  if (region?.codeIsWord ? hay.capitals.has(term) : hay.grams.has(term)) return true;
+  return REGION_ALIASES[term]?.some((alias) => hay.grams.has(alias)) ?? false;
+}
+
+/** Which curated places a text names, as normalised terms. */
+export function placesMentioned(...texts: (string | null | undefined)[]): string[] {
+  const hay = haystackOf(texts);
+  const found: string[] = [];
+  for (const place of PLACES_BY_LENGTH) {
+    const key = compact(place);
+    if (hay.grams.has(key) && !found.includes(key)) found.push(key);
+  }
+  return found;
+}
+
+// ─── Building a context ─────────────────────────────────────────────────────
+
+/**
+ * Reads a SoundCloud handle out of whatever RA's structured `soundcloud` field
+ * holds, which is not something we have seen: a URL, `@name` or a bare name are
+ * all plausible, so all three are accepted and anything else is ignored.
+ */
+export function soundcloudHandleFrom(raw: string | null | undefined): string | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  if (/soundcloud\.com\//i.test(value)) {
+    return firstHandle(value, HANDLE_PATTERNS.soundcloud);
+  }
+  const bare = value.replace(/^@/, "");
+  if (!/^[a-zA-Z0-9_-]{2,40}$/.test(bare)) return null;
+  return RESERVED_HANDLES.has(bare.toLowerCase()) ? null : bare;
+}
+
+export interface ArtistContextExtras {
+  /** From RA's `country` / `residentCountry`, when RA exposes them. */
+  origin?: RaOrigin | null;
+  /** From RA's `soundcloud` field, when RA exposes it. */
+  soundcloud?: string | null;
+}
+
 /**
  * Builds the corroborating context for one artist.
  *
@@ -210,13 +367,19 @@ function addRun(into: Set<string>, run: string, exclude: string): void {
  * throws that away before matching ever sees it. It is the only signal here
  * that survives an artist having no biography at all, which makes it worth
  * reading off the name before anything else.
+ *
+ * `extras` is everything RA might tell us that is not the name or the
+ * biography. All of it is optional and none of it is required downstream: with
+ * every field absent this behaves as it did before they existed.
  */
 export function buildArtistContext(
   name: string,
   biography: string | null,
+  extras: ArtistContextExtras = {},
 ): ArtistContext {
   const self = normalizeName(name);
   const terms = new Set<string>();
+  const places = new Set<string>();
 
   for (const match of name.matchAll(/\(([^)]+)\)/g)) {
     const inner = match[1];
@@ -226,44 +389,54 @@ export function buildArtistContext(
     // country or state code, and "NY" is both two characters and the single
     // most useful thing RA will ever tell us about which Cosmo this is.
     addTerm(terms, inner, self, 2);
+    for (const place of expandPlace(inner, true)) places.add(place);
   }
 
-  if (!biography) {
-    return { handles: { soundcloud: null, mixcloud: null }, terms: [...terms] };
+  if (biography) {
+    for (const place of placesMentioned(biography)) {
+      if (terms.size >= MAX_TERMS) break;
+      // Exempt from the length floor, which exists to throw out *accidental*
+      // short tokens from the proper-noun sweep below. Nothing arrives here by
+      // accident — every entry is on a curated list. Applying the floor here
+      // silently dropped "nyc" and "usa", so a bio reading "based in NYC"
+      // contributed nothing at all on an app named ra-nyc.
+      addTerm(terms, place, self, 2);
+      for (const p of expandPlace(place, false)) places.add(p);
+    }
+
+    for (const match of biography.matchAll(PROPER_NOUN)) {
+      if (terms.size >= MAX_TERMS) break;
+      if (match[1]) addRun(terms, match[1], self);
+    }
   }
 
-  const lower = biography.toLowerCase();
-  for (const place of PLACES_BY_LENGTH) {
-    if (terms.size >= MAX_TERMS) break;
-    // Exempt from the length floor, which exists to throw out *accidental*
-    // short tokens from the proper-noun sweep below. Nothing arrives here by
-    // accident — every entry is on a curated list. Applying the floor here
-    // silently dropped "nyc" and "usa", so a bio reading "based in NYC"
-    // contributed nothing at all on an app named ra-nyc.
-    if (lower.includes(place)) addTerm(terms, place, self, 2);
-  }
+  const countryName = extras.origin?.countryName ? compact(extras.origin.countryName) : "";
+  if (countryName) places.add(countryName);
+  const iso2 = extras.origin?.iso2 ? extras.origin.iso2.toUpperCase() : null;
 
-  for (const match of biography.matchAll(PROPER_NOUN)) {
-    if (terms.size >= MAX_TERMS) break;
-    if (match[1]) addRun(terms, match[1], self);
-  }
+  const structured = soundcloudHandleFrom(extras.soundcloud);
+  const fromBio = biography ? firstHandle(biography, HANDLE_PATTERNS.soundcloud) : null;
 
   return {
     handles: {
-      soundcloud: firstHandle(biography, HANDLE_PATTERNS.soundcloud),
-      mixcloud: firstHandle(biography, HANDLE_PATTERNS.mixcloud),
+      // A structured field is the artist's own statement and outranks anything
+      // regexed out of prose.
+      soundcloud: structured ?? fromBio,
+      mixcloud: biography ? firstHandle(biography, HANDLE_PATTERNS.mixcloud) : null,
     },
+    handleSource: { soundcloud: structured ? "structured" : fromBio ? "bio" : null },
     terms: [...terms],
+    ...(iso2 || places.size > 0 ? { origin: { iso2, places: [...places] } } : {}),
   };
 }
+
+// ─── Scoring ────────────────────────────────────────────────────────────────
 
 /**
  * How much of the artist's context a candidate account echoes back.
  *
- * Substring rather than token equality, because both sides are normalised down
- * to bare letters — "undergroundresistance" has to be found inside a run-on
- * profile blurb. Cheap enough at a handful of candidates times a couple of
- * dozen terms; nowhere near hot.
+ * Whole words only (see `haystackOf`). Cheap enough at a handful of candidates
+ * times a couple of dozen terms; nowhere near hot.
  *
  * Zero is the common answer and carries no information: most SoundCloud bios
  * say nothing useful. It is a tie-break, not a gate.
@@ -273,12 +446,9 @@ export function contextScore(
   ...texts: (string | null | undefined)[]
 ): number {
   if (context.terms.length === 0) return 0;
-  const haystack = normalizeName(texts.filter(Boolean).join(" "));
-  if (!haystack) return 0;
-  return context.terms.reduce(
-    (score, term) => (haystack.includes(term) ? score + 1 : score),
-    0,
-  );
+  const hay = haystackOf(texts);
+  if (hay.grams.size === 0) return 0;
+  return context.terms.reduce((score, term) => (termHit(term, hay) ? score + 1 : score), 0);
 }
 
 /**
@@ -288,6 +458,9 @@ export function contextScore(
  * them. Ties keep the upstream provider's own relevance ranking, which is what
  * the previous `.find()` did for every case and is still the right answer when
  * there is nothing to go on.
+ *
+ * No longer used by artist resolution, which ranks with `scoreCandidate`;
+ * kept because it is the simple form of the same idea.
  */
 export function pickByContext<T>(
   candidates: T[],
@@ -306,4 +479,106 @@ export function pickByContext<T>(
     }
   }
   return best;
+}
+
+/** What a provider's search result says about an account. Every field optional. */
+export interface CandidateProfile {
+  /** The account's real handle, as opposed to its freely-chosen display name. */
+  permalink?: string | null;
+  description?: string | null;
+  city?: string | null;
+  countryCode?: string | null;
+  followers?: number | null;
+  trackCount?: number | null;
+  verified?: boolean | null;
+}
+
+/**
+ * Whether a candidate describes itself somewhere the artist is not from.
+ *
+ * Only fires when the artist's origin is *specific* (a city or a state, not
+ * just a country), and only when *every* place the candidate names is outside
+ * it: a New York DJ whose bio says "NYC / Berlin" has not contradicted
+ * anything. Nothing named, nothing known → not contradicted, because absence
+ * of evidence is the common case and must not count against anyone.
+ */
+export function contradictsOrigin(
+  context: ArtistContext,
+  candidate: Pick<CandidateProfile, "description" | "city">,
+): boolean {
+  const origin = context.origin?.places ?? [];
+  if (!origin.some((p) => !COUNTRY_LEVEL.has(p) && PLACE_KEYS.has(p))) {
+    return false;
+  }
+  const mentioned = placesMentioned(candidate.description, candidate.city);
+  if (mentioned.length === 0) return false;
+  return mentioned.every((p) => !origin.includes(p));
+}
+
+function countryAgrees(context: ArtistContext, candidate: CandidateProfile): boolean | null {
+  const mine = context.origin?.iso2;
+  const theirs = candidate.countryCode?.trim().toUpperCase();
+  if (!mine || !theirs) return null;
+  return mine === theirs;
+}
+
+/**
+ * Scores an account that has already passed the name test.
+ *
+ * Every term applies only when the field it reads is present, because none of
+ * these fields has been confirmed against a live response from this sandbox: an
+ * absent field must score as "no information", never as a penalty.
+ *
+ * | Signal | Score |
+ * | --- | --- |
+ * | country matches RA's | +6 |
+ * | country conflicts (soft — DJs relocate) | -4 |
+ * | city is one of the artist's places | +5 |
+ * | context terms echoed, capped | +min(hits, 4) |
+ * | names only places outside the artist's origin | -4 |
+ * | permalink is exactly the artist's name | +3 |
+ * | follower count, log-scaled | up to +3 |
+ * | verified | +2 |
+ * | no uploads and under ten followers | -8 |
+ */
+export function scoreCandidate(
+  artistName: string,
+  context: ArtistContext,
+  candidate: CandidateProfile,
+): number {
+  let score = 0;
+
+  const agrees = countryAgrees(context, candidate);
+  if (agrees === true) score += 6;
+  if (agrees === false) score -= 4;
+
+  const places = context.origin?.places ?? [];
+  if (candidate.city && places.length > 0) {
+    const city = compact(candidate.city);
+    const named = placesMentioned(candidate.city);
+    if (places.includes(city) || named.some((p) => places.includes(p))) score += 5;
+  }
+
+  score += Math.min(contextScore(context, candidate.description, candidate.city), 4);
+  if (contradictsOrigin(context, candidate)) score -= 4;
+
+  const self = normalizeName(artistName);
+  if (self && candidate.permalink && normalizeName(candidate.permalink) === self) score += 3;
+
+  const followers = typeof candidate.followers === "number" ? candidate.followers : null;
+  if (followers !== null) score += Math.min(3, Math.log10(Math.max(followers, 0) + 1));
+  if (candidate.verified) score += 2;
+  if (candidate.trackCount === 0 && followers !== null && followers < 10) score -= 8;
+
+  return score;
+}
+
+/**
+ * Whether a candidate should be dropped on the evidence even when it is the
+ * only one left: it names somewhere else and nothing corroborates it. This is
+ * what separates "Cosmo (NY)" from a Southwest Florida DJ called Cosmo when
+ * the Florida account is the sole name match and there is nothing to out-rank.
+ */
+export function isContradicted(context: ArtistContext, candidate: CandidateProfile): boolean {
+  return countryAgrees(context, candidate) !== true && contradictsOrigin(context, candidate);
 }
