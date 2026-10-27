@@ -41,8 +41,6 @@ Everything outstanding that needs a human.
   are no longer cached, so origin traffic rises until the misses fill in.
 - **Vercel Web Analytics is still off.** vercel.com → ra-nyc → Analytics →
   Enable. Every `track()` call is deployed and inert until then.
-- **~19 merged `claude/…` branches** to delete on github.com — the git proxy
-  returns 403 for deletions from a session. Keep `ra-alt`.
 - **Usage.** The nine-agent hunt hit the session limit. The repair phase ran
   on one Opus resume and two Sonnet repairers, and finished.
 
@@ -110,15 +108,11 @@ worth doing unless you notice DJs with no sets.
 
 ## 2 · Still outstanding
 
-**Delete the merged branches.** github.com → ra-nyc → **Branches** → *All
-branches* → bin icon. Everything named `claude/…` is merged. Then tick
-**Settings → General → Automatically delete head branches** so it stops
-happening.
-
-I cannot do this from a session: `git push --delete` returns 403 on
-`git-receive-pack`, and the REST `DELETE` returns 403 with *"Write access to
-this GitHub API path is not permitted through this proxy."* Both are proxy
-policy, not permissions.
+**Branches — done.** Checked 2026-10-27: GitHub holds `main` and `ra-alt`,
+nothing else. Every `claude/…` branch is gone and no pull request is open. To
+keep it that way, tick **Settings → General → Automatically delete head
+branches**; a session cannot delete a branch (the git proxy returns 403 on
+both routes), so without that setting each merge leaves one behind.
 
 ---
 
@@ -127,7 +121,7 @@ policy, not permissions.
 | Thing | Reason |
 | --- | --- |
 | Run the migrations | This sandbox has no route to Neon, and no `DATABASE_URL`. Asking you to paste a live connection string into chat would put a production credential in the transcript. |
-| Delete the merged branches | The git proxy returns **HTTP 403** on `git-receive-pack` for a delete. Pushes work; deletions are blocked. Confirmed twice. |
+| ~~Delete the merged branches~~ | You did it on 2026-10-27. The constraint stands for next time: the git proxy returns **HTTP 403** on `git-receive-pack` for a delete. Pushes work; deletions are blocked. |
 | ~~Verify anything against production~~ | **No longer true, and this is worth knowing.** Direct egress to `ra-nyc.vercel.app`, `ra.co`, SoundCloud, Mixcloud and CARTO is still denied — `curl` gets `CONNECT tunnel failed, 403`. But Vercel's MCP server has `web_fetch_vercel_url`, which fetches a deployment *from Vercel's side*, and that reaches the app fine. `/api/health`, `/api/search` and the rest are all readable. Several rounds of "open this on your phone and tell me what it says" were unnecessary. |
 | Set the repo Website / topics | No repository-metadata write exists in this session — you did both already. |
 | Run the last Sonnet code review | The review agent died on an API session limit mid-run. I did the review passes myself, which is how three hook bugs were caught, but that is not a second pair of eyes. |
