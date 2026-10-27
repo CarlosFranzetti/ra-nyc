@@ -10,11 +10,26 @@ Everything outstanding that needs a human.
   do you mean moving the venue map to an OpenStreetMap-based API, or adding a
   keyed maps provider? The venue sheet currently draws OSM-style tiles and
   geocodes through Nominatim with the `ra-nyc/1.0` user agent.
-- **The junk row no longer needs a `DELETE`.** The bug hunt's S1 agent wrote
-  a `link_source='none'` row for RA artist **173682** (Gianna (US)) to
-  production `artist_links`. Since the repair, a `none` row older than 24
-  hours is treated as a miss and re-resolved on the next view, so it heals
-  itself. Nothing to do unless you want it gone today.
+- **Cosmo (NY) still shows the Florida Cosmo, and will until one row goes.**
+  Checked in production right after the repair deployed: `/api/artist` for
+  RA **103962** answers from the database with the `auto` row written before
+  the fix (SoundCloud `cosmobandz`, Mixcloud `djcosmo_sns`, a "Southwest
+  Florida-based DJ" bio). The new rule gives `auto` rows ninety days, so the
+  wrong match is served until then unless the row is removed. I do not run a
+  `DELETE` against production without your word. If you want it gone now,
+  this is the whole of it (column name checked against
+  `api/_lib/artistLinks.ts`):
+
+  ```sql
+  delete from artist_links where ra_artist_id = '103962';
+  ```
+
+  The next view re-resolves him, and the contradiction rule drops the
+  Florida account. Cosmo **4421** is the other half of that pair.
+- **The Gianna row needs nothing.** The bug hunt's S1 agent wrote a
+  `link_source='none'` row for RA artist **173682** (Gianna (US)). A `none`
+  row older than 24 hours is now treated as a miss and re-resolved on the
+  next view, so it heals itself.
 - **After the repair deploy, read the runtime logs once.** Each cold artist
   resolve now asks RA six questions in parallel and logs each failure as
   `[ra] artist query <selection> <message>`. A selection that logs "Cannot
