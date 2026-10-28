@@ -12,8 +12,10 @@
 
 import {
   cacheEvents,
+  olderCoverage,
   recentCachedEvents,
   searchCachedEvents,
+  searchOlderCachedEvents,
 } from "./eventCache.js";
 import { normalizeName, searchKey, withinEditDistance } from "./normalize.js";
 import { expandTerm } from "./vocab.js";
@@ -22,6 +24,50 @@ export const RA_GRAPHQL_URL = "https://ra.co/graphql";
 
 /** RA's internal area id for New York City. */
 export const NYC_AREA_ID = 8;
+
+const NEW_YORK_DAY = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/**
+ * The calendar date in New York, as `YYYY-MM-DD`.
+ *
+ * "Today" here used to be `new Date().toISOString().slice(0, 10)`, which is the
+ * date in UTC, and Vercel runs in UTC. New York is four or five hours behind it,
+ * so from about 20:00 ET (19:00 in winter) the server believed it was already
+ * tomorrow: tonight's listings were filed under `past`, the search window moved
+ * a day early, and the cache's `current_date` agreed with all of it. RA's own
+ * dates are naive New York local days, so this is the only clock that can be
+ * compared against them.
+ *
+ * Asked of `Intl` by zone name rather than by subtracting a fixed offset,
+ * because the offset is not fixed — it is four hours until the first Sunday of
+ * November and five after, and a constant would be wrong for half the year.
+ * `formatToParts` rather than a locale that happens to print ISO order, so the
+ * answer does not depend on which locale data the runtime shipped.
+ */
+export function newYorkDay(at: number = Date.now()): string {
+  const parts: Record<string, string> = {};
+  for (const part of NEW_YORK_DAY.formatToParts(at)) parts[part.type] = part.value;
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+/**
+ * A calendar day moved by whole days, as `YYYY-MM-DD`.
+ *
+ * Arithmetic on the date itself, in UTC, where every day is exactly 86,400
+ * seconds long. Adding days to an instant and reading it back in New York would
+ * land an hour off across the two DST changes a year; a bare date has no hour
+ * to lose.
+ */
+export function shiftDay(day: string, days: number): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
 
 export interface RAArtist {
   id: string;
@@ -187,6 +233,12 @@ export interface FetchEventsOptions {
   signal?: AbortSignal;
 }
 
+/** One page of listings, and how many RA says exist across all pages. */
+interface ListingsPage {
+  rows: RAListing[];
+  total: number;
+}
+
 /** One page of listings for a date range. The only place that talks to RA. */
 async function fetchListings(options: {
   from: string;
@@ -195,7 +247,7 @@ async function fetchListings(options: {
   pageSize: number;
   page: number;
   signal?: AbortSignal;
-}): Promise<RAListing[]> {
+}): Promise<ListingsPage> {
   const res = await fetch(RA_GRAPHQL_URL, {
     method: "POST",
     headers: {
@@ -227,7 +279,7 @@ async function fetchListings(options: {
   }
 
   const json = (await res.json()) as {
-    data?: { eventListings?: { data?: RAListing[] } };
+    data?: { eventListings?: { data?: RAListing[]; totalResults?: number } };
     errors?: { message: string }[];
   };
 
@@ -235,31 +287,77 @@ async function fetchListings(options: {
     throw new RAError(json.errors[0]?.message ?? "GraphQL error", 502);
   }
 
-  return json.data?.eventListings?.data ?? [];
+  const rows = json.data?.eventListings?.data ?? [];
+  const total = json.data?.eventListings?.totalResults;
+  // `totalResults` was in the query from the start and nothing ever read it.
+  // When RA leaves it out the honest reading is "this page is all there is" —
+  // guessing that there is more would spend requests on empty pages.
+  return { rows, total: typeof total === "number" && total >= rows.length ? total : rows.length };
+}
+
+/**
+ * Rows of a day RA lists in one page, and the most pages one day may take.
+ *
+ * Fifty rows was a cap with no pagination behind it, and a busy Saturday
+ * overlaps more than fifty listings once residencies are counted — every day of
+ * a multi-day run is its own row, and `startsOn` drops them only *after* they
+ * have used up the page. The tail of the night was simply never fetched, and
+ * because `attending` sorts the survivors, the tail is also where the small
+ * rooms are. A page of 100 is the most RA accepts; `totalResults` says how many
+ * more pages there are, and three of them (300 rows) is far past any real night
+ * in this city while still bounding what one day view can cost RA.
+ */
+const DAY_PAGE_SIZE = 100;
+const DAY_MAX_PAGES = 3;
+
+/**
+ * Every listing RA has for one day, following `totalResults` up to the page cap.
+ *
+ * `complete` is false when RA says there were more rows than the pages taken —
+ * the one fact search needs to keep calling its answer partial.
+ */
+async function fetchDayListings(options: {
+  date: string;
+  areaId: number;
+  pageSize: number;
+  signal?: AbortSignal;
+}): Promise<{ events: RAEvent[]; complete: boolean }> {
+  const request = (page: number) =>
+    fetchListings({
+      from: options.date,
+      to: options.date,
+      areaId: options.areaId,
+      pageSize: options.pageSize,
+      page,
+      signal: options.signal,
+    });
+
+  const first = await request(1);
+  const pages = Math.min(DAY_MAX_PAGES, Math.ceil(first.total / options.pageSize));
+  // The rest in parallel: the page count is known up front, so there is nothing
+  // to wait for between them.
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(0, pages - 1) }, (_, i) => request(i + 2)),
+  );
+
+  const rows = [first, ...rest].flatMap((page) => page.rows);
+  return {
+    events: dedupeById(rows.map(transformListing).filter(isEvent))
+      .filter((event) => startsOn(event, options.date))
+      // Busiest first — popularity is a better ordering than whatever RA returns.
+      .sort((a, b) => b.attending - a.attending),
+    complete: rows.length >= first.total,
+  };
 }
 
 export async function fetchRAEvents({
   date,
   areaId = NYC_AREA_ID,
-  pageSize = 50,
+  pageSize = DAY_PAGE_SIZE,
   signal,
 }: FetchEventsOptions): Promise<RAEvent[]> {
-  const listings = await fetchListings({
-    from: date,
-    to: date,
-    areaId,
-    pageSize,
-    page: 1,
-    signal,
-  });
-
-  return (
-    dedupeById(listings.map(transformListing).filter(isEvent))
-      .filter((event) => startsOn(event, date))
-      // Busiest first — with a 50-event cap and no pagination, popularity is a
-      // better ordering than whatever RA returns.
-      .sort((a, b) => b.attending - a.attending)
-  );
+  const { events } = await fetchDayListings({ date, areaId, pageSize, signal });
+  return events;
 }
 
 /** The `YYYY-MM-DD` part of an RA timestamp, or null if there isn't one. */
@@ -312,17 +410,52 @@ function dedupeById(events: RAEvent[]): RAEvent[] {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Guards against passing arbitrary user input into the upstream filter. */
-export function isValidDate(value: string): boolean {
-  if (!DATE_RE.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) return false;
+/**
+ * How far either side of today a day view may reach, and so how much history
+ * the durable index can come to hold.
+ *
+ * It was a year each way, measured in milliseconds from "now" in UTC, to keep
+ * the cache key space bounded. The bound is still the point, but the index is
+ * now meant to remember: every night someone browses is banked, and five years
+ * of nights is what "when did they last play" and "what was that party called"
+ * actually reach for. Ahead stays at a year, because RA has nothing useful
+ * beyond it and an unannounced night is not worth a row.
+ *
+ * Nothing preloads this. The nightly cron still fills only the search window
+ * (`SEARCH_BEHIND_DAYS` / `SEARCH_AHEAD_DAYS`); history beyond it exists only
+ * where a person asked for that day, which is also why it costs RA nothing
+ * until somebody does.
+ */
+export const HISTORY_BEHIND_DAYS = 1825;
+export const HISTORY_AHEAD_DAYS = 365;
 
-  // Reject anything more than a year out either way; RA has nothing useful
-  // there and it keeps the cache key space bounded.
-  const now = Date.now();
-  const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
-  return Math.abs(parsed.getTime() - now) <= YEAR_MS;
+/** Is this a real calendar date written `YYYY-MM-DD`? Says nothing about range. */
+export function isCalendarDate(value: string): boolean {
+  if (!DATE_RE.test(value)) return false;
+  // Round-tripped, not just parsed: V8 reads some impossible dates by rolling
+  // them over, and "2026-02-30" must not become a request for 2 March.
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+/**
+ * Is this day inside the range the app keeps?
+ *
+ * Compared as strings against New York's today. Both sides are bare calendar
+ * dates, which sort correctly as text, so there is no instant to be a few hours
+ * wrong about: the old version subtracted a UTC midnight from `Date.now()` and
+ * so moved its edges by the time of day.
+ */
+export function isWithinHistory(value: string, today: string = newYorkDay()): boolean {
+  return (
+    value >= shiftDay(today, -HISTORY_BEHIND_DAYS) &&
+    value <= shiftDay(today, HISTORY_AHEAD_DAYS)
+  );
+}
+
+/** Guards against passing arbitrary user input into the upstream filter. */
+export function isValidDate(value: string, today: string = newYorkDay()): boolean {
+  return isCalendarDate(value) && isWithinHistory(value, today);
 }
 
 // ─── Search ─────────────────────────────────────────────────────────────────
@@ -414,12 +547,23 @@ export interface SearchResults {
   truncated: boolean;
   /** Days of the window the durable index holds, and how many it could. */
   coverage: { indexed: number; window: number };
+  /**
+   * What the index holds beyond the window, back to `HISTORY_BEHIND_DAYS`, or
+   * null with no database. Reported separately so `coverage` and `truncated`
+   * keep meaning the recent band they always described.
+   */
+  older: { days: number; oldest: string | null } | null;
 }
 
-function shiftDate(days: number): string {
-  const at = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-  return at.toISOString().slice(0, 10);
-}
+/**
+ * Fewer past hits than this in the recent band, and search reads the older one.
+ *
+ * Ten because that is a screenful, and a screenful of recent matches is an
+ * answer to "when did they last play" — going further back would only push the
+ * recent ones down a list nobody scrolls. Below it, the person is plausibly
+ * asking about something older, and one extra indexed query is a small price.
+ */
+const OLDER_MIN_RECENT_HITS = 10;
 
 /** Below this, an edit-distance match matches half the city. */
 const FUZZY_MIN_LENGTH = 5;
@@ -543,12 +687,30 @@ function matchesTerm(event: RAEvent, term: string): boolean {
   return termWords.every(near);
 }
 
+/** What a group of live requests found, and whether RA had more than it took. */
+interface Gathered {
+  events: RAEvent[];
+  full: boolean;
+}
+
+/**
+ * One dead request must not fail the whole search, but swallowing it silently
+ * is how a rejected pageSize looked exactly like "this artist has no past gigs"
+ * for three rounds of debugging.
+ */
+function warnDead(label: string, cause: unknown): void {
+  console.warn(
+    `[search] window ${label} failed`,
+    cause instanceof Error ? cause.message : cause,
+  );
+}
+
 /** Runs a set of range/page requests in parallel and flattens the results. */
 async function collect(
   requests: { from: string; to: string; page: number }[],
   areaId: number,
   signal?: AbortSignal,
-): Promise<{ events: RAEvent[]; full: boolean }> {
+): Promise<Gathered> {
   const pages = await Promise.all(
     requests.map((request) =>
       fetchListings({
@@ -557,24 +719,49 @@ async function collect(
         pageSize: SEARCH_PAGE_SIZE,
         signal,
       }).catch((cause: unknown) => {
-        // One dead window must not fail the whole search, but swallowing it
-        // silently is how a rejected pageSize looked exactly like "this artist
-        // has no past gigs" for three rounds of debugging.
-        console.warn(
-          `[search] window ${request.from}..${request.to} p${request.page} failed`,
-          cause instanceof Error ? cause.message : cause,
-        );
-        return [] as RAListing[];
+        warnDead(`${request.from}..${request.to} p${request.page}`, cause);
+        return { rows: [], total: 0 } as ListingsPage;
       }),
     ),
   );
   return {
-    events: dedupeById(pages.flat().map(transformListing).filter(isEvent)),
+    events: dedupeById(
+      pages.flatMap((page) => page.rows).map(transformListing).filter(isEvent),
+    ),
     // Any saturated request means RA had more in that window than we took.
     // `some`, not `every`: the trailing page of a window is usually short even
     // when earlier windows were cut off, and reporting "complete" then would be
     // a lie in the direction that matters.
-    full: pages.some((page) => page.length >= SEARCH_PAGE_SIZE),
+    full: pages.some((page) => page.rows.length >= SEARCH_PAGE_SIZE),
+  };
+}
+
+/**
+ * Whole days, one at a time, through the same fetch the day view uses.
+ *
+ * A day is exactly what `fetchRAEvents` fetches, so search asks it rather than
+ * keeping a second, weaker copy of the same request: one page of 100 silently
+ * lost the tail of any night with more rows than that, and the day view had
+ * already stopped doing so.
+ */
+async function collectDays(
+  days: string[],
+  areaId: number,
+  signal?: AbortSignal,
+): Promise<Gathered> {
+  const fetched = await Promise.all(
+    days.map((date) =>
+      fetchDayListings({ date, areaId, pageSize: SEARCH_PAGE_SIZE, signal }).catch(
+        (cause: unknown) => {
+          warnDead(`${date}..${date}`, cause);
+          return { events: [] as RAEvent[], complete: true };
+        },
+      ),
+    ),
+  );
+  return {
+    events: dedupeById(fetched.flatMap((day) => day.events)),
+    full: fetched.some((day) => !day.complete),
   };
 }
 
@@ -597,6 +784,12 @@ async function collect(
  *
  * Everything the live windows fetch is written back, so searching warms the
  * index for the next person.
+ *
+ * Beyond the window there is a fourth, read-only source: the older band of the
+ * index, five years deep, consulted only when the recent past has fewer than
+ * ten hits. It is never fetched live and never preloaded — those days are there
+ * because somebody browsed them — which is why `older` reports what it holds
+ * and `coverage` / `truncated` keep describing the window alone.
  */
 export async function searchRAEvents(options: {
   term: string;
@@ -604,10 +797,18 @@ export async function searchRAEvents(options: {
   signal?: AbortSignal;
 }): Promise<SearchResults> {
   const areaId = options.areaId ?? NYC_AREA_ID;
-  const today = shiftDate(0);
+  // One New York "today" for the whole request, and every edge of every window
+  // measured from it. Reading the clock again per window would let a search that
+  // straddles midnight disagree with itself about which day is which.
+  const today = newYorkDay();
+  const shiftDate = (days: number) => shiftDay(today, days);
   const windowFrom = shiftDate(-SEARCH_BEHIND_DAYS);
   const windowTo = shiftDate(SEARCH_AHEAD_DAYS);
   const windowDays = SEARCH_AHEAD_DAYS + SEARCH_BEHIND_DAYS + 1;
+  // The band behind the window, up to the edge of what the app keeps. Starts the
+  // day after the window ends so the two never overlap and never leave a gap.
+  const olderFrom = shiftDate(-HISTORY_BEHIND_DAYS);
+  const olderTo = shiftDate(-(SEARCH_BEHIND_DAYS + 1));
 
   // Forward and backward are paged differently, and the reason is not symmetry.
   //
@@ -618,7 +819,7 @@ export async function searchRAEvents(options: {
   // last week was never fetched, which is the opposite of "when did they last
   // play". So the backward direction is split into consecutive sub-windows and
   // the nearest one is fetched first.
-  const [ahead, behind, cached] = await Promise.all([
+  const [ahead, behind, cached, olderStats] = await Promise.all([
     collect(
       Array.from({ length: SEARCH_PAGES }, (_, i) => ({
         from: today,
@@ -628,24 +829,28 @@ export async function searchRAEvents(options: {
       areaId,
       options.signal,
     ),
-    collect(
-      [
-        // One request per day for the recent past: exact, not estimated.
-        ...Array.from({ length: PAST_DAYS_EXACT }, (_, i) => {
-          const day = shiftDate(-(i + 1));
-          return { from: day, to: day, page: 1 };
-        }),
-        ...PAST_SAMPLED.flatMap(([from, to], i) =>
+    Promise.all([
+      // One request per day for the recent past: exact, not estimated.
+      collectDays(
+        Array.from({ length: PAST_DAYS_EXACT }, (_, i) => shiftDate(-(i + 1))),
+        areaId,
+        options.signal,
+      ),
+      collect(
+        PAST_SAMPLED.flatMap(([from, to], i) =>
           Array.from({ length: SAMPLED_PAGES[i] ?? 1 }, (_, page) => ({
             from: shiftDate(-from),
             to: shiftDate(-to),
             page: page + 1,
           })),
         ),
-      ],
-      areaId,
-      options.signal,
-    ),
+        areaId,
+        options.signal,
+      ),
+    ]).then(([exact, sampled]) => ({
+      events: dedupeById([...exact.events, ...sampled.events]),
+      full: exact.full || sampled.full,
+    })),
     searchCachedEvents({
       term: options.term,
       areaId,
@@ -653,7 +858,11 @@ export async function searchRAEvents(options: {
       to: windowTo,
       // Both buckets come out of one query, so it has to hold both.
       limit: SEARCH_LIMIT * 2,
+      today,
     }),
+    // Once per search, beside everything else, so the response can say how much
+    // history exists even when it did not need to read any.
+    olderCoverage({ areaId, from: olderFrom, to: olderTo }),
   ]);
 
   const live = dedupeById([...ahead.events, ...behind.events]);
@@ -683,7 +892,12 @@ export async function searchRAEvents(options: {
   //
   // So the exact-spelling path was strictly *weaker* than the typo path. That
   // is worth one extra bounded query on every search.
-  const scanned = await recentCachedEvents({ areaId, from: windowFrom, to: windowTo });
+  const scanned = await recentCachedEvents({
+    areaId,
+    from: windowFrom,
+    to: windowTo,
+    today,
+  });
 
   // `matching` over the indexed rows too — the comment above promised it and
   // the code did not do it. Two things got through unfiltered: the index's
@@ -707,8 +921,29 @@ export async function searchRAEvents(options: {
 
   // An event on today's date belongs to one list, not both.
   const upcomingIds = new Set(upcoming.map((event) => event.id));
-  const past = hits
-    .filter((event) => !upcomingIds.has(event.id) && day(event) < today)
+  let pastHits = hits.filter(
+    (event) => !upcomingIds.has(event.id) && day(event) < today,
+  );
+
+  // The older band is read only when the recent past is thin. A separate query
+  // over days the window never fetched live — nothing here asks RA for them, and
+  // nothing preloads them: they are in the index only because somebody once
+  // browsed that day. Its rows get the same matcher as every other source.
+  let olderCut = false;
+  if (pastHits.length < OLDER_MIN_RECENT_HITS) {
+    const older = await searchOlderCachedEvents({
+      term: options.term,
+      areaId,
+      from: olderFrom,
+      to: olderTo,
+      // One more than is shown, so "there was more" can be told from "that was all".
+      limit: SEARCH_LIMIT + 1,
+    });
+    olderCut = older.length > SEARCH_LIMIT;
+    pastHits = dedupeById([...pastHits, ...matching(older)]);
+  }
+
+  const past = pastHits
     // Most recent first: the last time someone played is more interesting than
     // the first.
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -719,8 +954,13 @@ export async function searchRAEvents(options: {
     past,
     // Saturated live windows still mean RA had more than we took — but only
     // matters where the index has not covered the day anyway.
+    // Past the window, truncation means the list itself was cut: the older query
+    // came back full, or the merge held more than a list shows.
     truncated:
-      (ahead.full || behind.full) && cached.daysCovered < windowDays,
+      ((ahead.full || behind.full) && cached.daysCovered < windowDays) ||
+      olderCut ||
+      pastHits.length > SEARCH_LIMIT,
     coverage: { indexed: cached.daysCovered, window: windowDays },
+    older: olderStats,
   };
 }

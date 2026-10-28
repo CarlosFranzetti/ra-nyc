@@ -2,9 +2,12 @@ import type { IncomingMessage, ServerResponse } from "http";
 import { cacheEvents, cachedEventsForDay } from "./_lib/eventCache.js";
 import {
   fetchRAEvents,
-  isValidDate,
+  isCalendarDate,
+  isWithinHistory,
+  newYorkDay,
   NYC_AREA_ID,
   RAError,
+  shiftDay,
   type RAEvent,
 } from "./_lib/ra.js";
 import { clientIp, rateLimit, rateLimitHeaders } from "./_lib/rateLimit.js";
@@ -21,6 +24,29 @@ export interface EventsResponse {
 }
 
 const UPSTREAM_TIMEOUT_MS = 10_000;
+
+/**
+ * Days older than this are settled, and the edge may keep them for a week.
+ *
+ * A week, because a listing does move for a few days after its night — a
+ * cancellation, an attendance count catching up — and then stops. Nothing is
+ * announced for a night that has happened.
+ */
+const SETTLED_AFTER_DAYS = 7;
+
+/**
+ * The areas this app serves. A second city is one entry away.
+ *
+ * `?area=` used to accept any positive integer, and every one of them did two
+ * things: it fetched that area's listings from RA, and it wrote them into the
+ * durable index under that area id. Anyone could therefore fill the database
+ * with cities nothing reads, one request per id, and each distinct value was
+ * also its own edge-cache entry. The five-year history makes the first of those
+ * worth closing now: the index is meant to grow only by people browsing days of
+ * the city the app is about. An area that is not listed here is refused before
+ * RA is asked and before anything is cached.
+ */
+const AREAS: ReadonlySet<number> = new Set([NYC_AREA_ID]);
 
 /**
  * A visitor clicking through a week costs 8 requests, and only cache misses get
@@ -91,8 +117,18 @@ export default async function handler(
     const date = url.searchParams.get("date");
     const areaParam = url.searchParams.get("area");
 
-    if (!date || !isValidDate(date)) {
+    // Two different mistakes, so two different messages: a typo in the format
+    // and a date the app deliberately does not keep read the same to the code
+    // but not to the person who has to fix the request.
+    if (!date || !isCalendarDate(date)) {
       return send(res, 400, { error: "Query param `date` must be YYYY-MM-DD" });
+    }
+    const today = newYorkDay();
+    if (!isWithinHistory(date, today)) {
+      return send(res, 400, {
+        error:
+          "Query param `date` is outside the range this app keeps (five years back, one year ahead)",
+      });
     }
 
     const areaId = areaParam ? Number(areaParam) : NYC_AREA_ID;
@@ -100,6 +136,9 @@ export default async function handler(
       return send(res, 400, {
         error: "Query param `area` must be a positive integer",
       });
+    }
+    if (!AREAS.has(areaId)) {
+      return send(res, 400, { error: "Query param `area` is not an area this app serves" });
     }
 
     const controller = new AbortController();
@@ -125,11 +164,17 @@ export default async function handler(
         res,
         200,
         { date, events, count: events.length } satisfies EventsResponse,
-        // s-maxage: fresh window. SWR: how long the edge may serve a stale
-        // copy *instantly* while refreshing behind it. A full day of SWR means
-        // a cold region or an RA outage degrades to slightly-old listings
-        // rather than an error state.
-        "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
+        date < shiftDay(today, -SETTLED_AFTER_DAYS)
+          ? // A past night does not change, so a week at the edge and a month of
+            // stale-while-revalidate cost nothing in accuracy and spare RA
+            // every repeat visit to a day somebody has already browsed. Five
+            // years of history makes those repeat visits the common case.
+            "public, max-age=3600, s-maxage=604800, stale-while-revalidate=2592000"
+          : // s-maxage: fresh window. SWR: how long the edge may serve a stale
+            // copy *instantly* while refreshing behind it. A full day of SWR
+            // means a cold region or an RA outage degrades to slightly-old
+            // listings rather than an error state.
+            "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
       );
     } catch (upstream) {
       // RA is unreachable, blocking, or timed out. A day view has always been

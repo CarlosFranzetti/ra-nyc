@@ -1,7 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { indexStatus } from "./_lib/eventCache.js";
+import { historyStatus, indexStatus } from "./_lib/eventCache.js";
 import { soundcloudMode } from "./_lib/artistLinks.js";
-import { NYC_AREA_ID, SEARCH_AHEAD_DAYS, SEARCH_BEHIND_DAYS } from "./_lib/ra.js";
+import {
+  HISTORY_BEHIND_DAYS,
+  newYorkDay,
+  NYC_AREA_ID,
+  SEARCH_AHEAD_DAYS,
+  SEARCH_BEHIND_DAYS,
+  shiftDay,
+} from "./_lib/ra.js";
 
 /**
  * What is actually configured and working in this deployment.
@@ -33,6 +40,13 @@ export interface HealthResponse {
     oldest: string | null;
     newest: string | null;
   };
+  /**
+   * What the index holds beyond the search window, back to the five-year edge:
+   * distinct days, the oldest day, and rows. Null when there is no database or
+   * the query failed. This is the history people have browsed into the index,
+   * which nothing preloads — so it growing is the feature working.
+   */
+  history: { days: number; oldest: string | null; rows: number } | null;
   soundcloud: "official" | "api-v2" | "off";
 }
 
@@ -55,11 +69,22 @@ export default async function handler(
     }
 
     const configured = Boolean(process.env.DATABASE_URL);
-    const status = await indexStatus({
-      areaId: NYC_AREA_ID,
-      behindDays: SEARCH_BEHIND_DAYS,
-      aheadDays: SEARCH_AHEAD_DAYS,
-    });
+    const today = newYorkDay();
+    const [status, history] = await Promise.all([
+      indexStatus({
+        areaId: NYC_AREA_ID,
+        behindDays: SEARCH_BEHIND_DAYS,
+        aheadDays: SEARCH_AHEAD_DAYS,
+        today,
+      }),
+      // The band behind the search window, so `search` and `history` never count
+      // the same row twice.
+      historyStatus({
+        areaId: NYC_AREA_ID,
+        from: shiftDay(today, -HISTORY_BEHIND_DAYS),
+        to: shiftDay(today, -(SEARCH_BEHIND_DAYS + 1)),
+      }),
+    ]);
 
     const body: HealthResponse = {
       // A missing database is a supported configuration, not a failure — so
@@ -77,6 +102,7 @@ export default async function handler(
         oldest: status.oldest,
         newest: status.newest,
       },
+      history,
       soundcloud: soundcloudMode(),
     };
 

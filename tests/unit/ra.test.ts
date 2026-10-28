@@ -2,14 +2,31 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchRAEvents,
   isValidDate,
+  newYorkDay,
   normalizeImageUrl,
   searchRAEvents,
   SEARCH_AHEAD_DAYS,
   SEARCH_BEHIND_DAYS,
+  type RAEvent,
 } from "../../api/_lib/ra.js";
 
+/**
+ * A New York calendar day, `offset` days from today.
+ *
+ * Asks `Intl` for the zone directly (`en-CA` happens to print ISO order) rather
+ * than going through `newYorkDay`, so these tests are not checking the helper
+ * against itself. The offset is applied to the date, in UTC, where days have no
+ * DST. Between about 20:00 and midnight ET the UTC date is tomorrow, and the old
+ * helper here — UTC all the way down — quietly agreed with the server's matching
+ * mistake, which is how the bug survived.
+ */
+const nyToday = (at: number = Date.now()) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(at);
+
 const day = (offset: number) =>
-  new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  new Date(Date.parse(`${nyToday()}T00:00:00Z`) + offset * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
 /** One RA listing row, in the shape the real API returns. */
 function listing(options: {
@@ -45,15 +62,18 @@ function listing(options: {
 /** Stubs RA, honouring the date range and page window it is asked for. */
 function stubRA(
   rows: ReturnType<typeof listing>[],
-  opts: { pageCap?: number; onRequest?: (range: { from: string; to: string }) => void } = {},
+  opts: {
+    pageCap?: number;
+    onRequest?: (range: { from: string; to: string; page: number }) => void;
+  } = {},
 ) {
   const cap = opts.pageCap ?? 100;
   vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
     const body = JSON.parse(init.body);
     const { gte, lte } = body.variables.filters.listingDate;
-    opts.onRequest?.({ from: gte, to: lte });
     const size = body.variables.pageSize;
     const page = body.variables.page;
+    opts.onRequest?.({ from: gte, to: lte, page });
     // RA errors on an oversized page rather than truncating — the behaviour
     // that made a bad pageSize look like "this artist has no gigs".
     if (size > cap) return { ok: false, status: 400, json: async () => ({}) };
@@ -69,13 +89,38 @@ function stubRA(
     return {
       ok: true,
       json: async () => ({
-        data: { eventListings: { data: inRange.slice((page - 1) * size, page * size) } },
+        data: {
+          eventListings: {
+            data: inRange.slice((page - 1) * size, page * size),
+            // The whole range's count, as RA reports it, not this page's.
+            totalResults: inRange.length,
+          },
+        },
       }),
     };
   });
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe("newYorkDay", () => {
+  it("is the New York date, not the UTC one, in the evening", () => {
+    // 01:00 UTC on the 29th is 21:00 EDT on the 28th.
+    expect(newYorkDay(Date.parse("2026-10-29T01:00:00Z"))).toBe("2026-10-28");
+  });
+
+  it("follows daylight saving rather than a fixed offset", () => {
+    // EDT (UTC-4) until 06:00 UTC on 1 Nov 2026, EST (UTC-5) after: midnight in
+    // New York is 04:00 UTC before the change and 05:00 UTC after it.
+    expect(newYorkDay(Date.parse("2026-10-31T03:59:00Z"))).toBe("2026-10-30");
+    expect(newYorkDay(Date.parse("2026-10-31T04:00:00Z"))).toBe("2026-10-31");
+    expect(newYorkDay(Date.parse("2026-12-01T04:59:00Z"))).toBe("2026-11-30");
+    expect(newYorkDay(Date.parse("2026-12-01T05:00:00Z"))).toBe("2026-12-01");
+  });
+});
 
 describe("normalizeImageUrl", () => {
   it("passes absolute URLs through", () => {
@@ -110,9 +155,32 @@ describe("isValidDate", () => {
     expect(isValidDate("")).toBe(false);
   });
 
-  it("rejects dates more than a year out, which bounds the cache key space", () => {
+  // The bound moved from a year each way to five years back and one ahead: the
+  // index now remembers every night somebody browses. It is still a bound — it
+  // is what keeps the cache key space finite.
+  it("keeps five years back and one year ahead", () => {
+    expect(isValidDate(day(-400))).toBe(true);
     expect(isValidDate(day(400))).toBe(false);
-    expect(isValidDate(day(-400))).toBe(false);
+    expect(isValidDate(day(-1825))).toBe(true);
+    expect(isValidDate(day(-1826))).toBe(false);
+    expect(isValidDate(day(365))).toBe(true);
+    expect(isValidDate(day(366))).toBe(false);
+  });
+
+  it("measures the edges from the New York day, not the UTC one", () => {
+    // 01:00 UTC on 29 Oct is still the 28th in New York, so the oldest day kept
+    // is 1825 days before the 28th. Measured from UTC it would be a day later.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse("2026-10-29T01:00:00Z"));
+    expect(isValidDate("2021-10-29")).toBe(true);
+    expect(isValidDate("2021-10-28")).toBe(false);
+    expect(isValidDate("2027-10-28")).toBe(true);
+    expect(isValidDate("2027-10-29")).toBe(false);
+  });
+
+  it("rejects a day that does not exist rather than rolling it over", () => {
+    expect(isValidDate("2026-02-30")).toBe(false);
+    expect(isValidDate("2026-13-01")).toBe(false);
   });
 });
 
@@ -163,6 +231,49 @@ describe("fetchRAEvents — the repeating-event rule", () => {
     stubRA([listing({ id: "a", date: "2026-08-02" }), listing({ id: "b", date: "2026-08-02" })]);
     const events = await fetchRAEvents({ date: "2026-08-02" });
     expect(events.every((e, i) => i === 0 || events[i - 1]!.attending >= e.attending)).toBe(true);
+  });
+});
+
+describe("fetchRAEvents — a busy night is fetched whole", () => {
+  const night = (count: number) =>
+    Array.from({ length: count }, (_, i) => listing({ id: `n${i}`, date: "2026-08-02" }));
+
+  // `totalResults` was queried and never read, so any night with more rows than
+  // one page lost its tail.
+  it("follows totalResults: 100 rows of 140 means a second request, and 140 events", async () => {
+    const pages: number[] = [];
+    stubRA(night(140), { onRequest: (r) => pages.push(r.page) });
+    const events = await fetchRAEvents({ date: "2026-08-02" });
+    expect(pages.sort()).toEqual([1, 2]);
+    expect(events).toHaveLength(140);
+  });
+
+  it("makes exactly one request when everything fits in the first page", async () => {
+    const pages: number[] = [];
+    stubRA(night(50), { onRequest: (r) => pages.push(r.page) });
+    const events = await fetchRAEvents({ date: "2026-08-02" });
+    expect(pages).toEqual([1]);
+    expect(events).toHaveLength(50);
+  });
+
+  it("stops at three pages however many rows RA claims", async () => {
+    const pages: number[] = [];
+    stubRA(night(350), { onRequest: (r) => pages.push(r.page) });
+    const events = await fetchRAEvents({ date: "2026-08-02" });
+    expect(pages.sort()).toEqual([1, 2, 3]);
+    expect(events).toHaveLength(300);
+  });
+
+  it("still applies the start-day rule across pages", async () => {
+    // 120 rows, the last 20 of them a residency that began the day before: they
+    // arrive on page 2 and must still be dropped.
+    stubRA([
+      ...night(100),
+      ...Array.from({ length: 20 }, (_, i) =>
+        listing({ id: `r${i}`, date: "2026-08-02", start: "2026-08-01T18:00:00.000" }),
+      ),
+    ]);
+    expect(await fetchRAEvents({ date: "2026-08-02" })).toHaveLength(100);
   });
 });
 
@@ -303,6 +414,21 @@ describe("searchRAEvents", () => {
     expect(upcoming.every((e) => !past.some((p) => p.id === e.id))).toBe(true);
   });
 
+  // The server used the UTC date, so from 20:00 ET tonight's listings were
+  // filed under past and the window began a day early. 01:00 UTC on the 29th is
+  // 21:00 on the 28th in New York: the 28th is still tonight.
+  it("keeps tonight upcoming in the New York evening, when UTC is already tomorrow", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse("2026-10-29T01:00:00Z"));
+    stubRA([
+      listing({ id: "tonight", title: "Tonight", date: "2026-10-28", artists: ["Lakuti"] }),
+      listing({ id: "last", title: "Last night", date: "2026-10-27", artists: ["Lakuti"] }),
+    ]);
+    const { upcoming, past } = await searchRAEvents({ term: "lakuti" });
+    expect(upcoming.map((e) => e.id)).toEqual(["tonight"]);
+    expect(past.map((e) => e.id)).toEqual(["last"]);
+  });
+
   it("returns nothing rather than everything when there is no match", async () => {
     stubRA(corpus);
     const { upcoming, past } = await searchRAEvents({ term: "qqqqzzz" });
@@ -365,6 +491,26 @@ describe("searchRAEvents", () => {
     const furthestBack = ranges.map((r) => r.from).sort()[0]!;
     expect(furthestAhead).toBe(day(SEARCH_AHEAD_DAYS));
     expect(furthestBack).toBe(day(-SEARCH_BEHIND_DAYS));
+  });
+
+  // The no-preload rule, pinned. Nothing a search does may ask RA about the
+  // history beyond the window: those days are in the index only because a person
+  // once browsed them, and a search that fetched them live would turn every
+  // query into a crawl of five years.
+  it("never asks RA for anything older than the search window", async () => {
+    const ranges: { from: string; to: string }[] = [];
+    stubRA(corpus, { onRequest: (r) => ranges.push(r) });
+    await searchRAEvents({ term: "nothing matches this at all" });
+
+    expect(ranges.length).toBeGreaterThan(0);
+    for (const range of ranges) {
+      expect(range.from >= day(-SEARCH_BEHIND_DAYS), `${range.from}..${range.to}`).toBe(true);
+    }
+  });
+
+  it("reports no older band at all when there is no database", async () => {
+    stubRA(corpus);
+    expect((await searchRAEvents({ term: "lakuti" })).older).toBeNull();
   });
 
   it("reports how much of the window the index actually holds", async () => {
