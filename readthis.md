@@ -39,6 +39,28 @@ Everything outstanding that needs a human.
   but `iso2` stays null, `urlCode` is not an ISO code and `isoCode` is the
   next field to try. Also watch for RA 429s for a few days: degraded answers
   are no longer cached, so origin traffic rises until the misses fill in.
+- **One look at a phone's Network tab, for the flyers.** Open the app with
+  devtools attached (Safari → Develop → your iPhone, or Chrome on Android)
+  and watch a flyer load. If the `images.ra.co` request comes back 403 and
+  the flyer then loads from `/api/image`, every flyer is paying a failed
+  round trip first, and the proxy should become the first attempt. If the
+  direct request succeeds, nothing to do. Nobody has been able to see this
+  from a session; the sandbox cannot reach RA's CDN. The real slowness, the
+  service worker throwing every flyer away the moment it served it, is fixed
+  regardless.
+- **Does RA serve NYC listings five years back?** Open
+  `ra-nyc.vercel.app` and pick a date from 2022 in the calendar. If the day
+  loads, history works end to end; if it is empty for every old date, RA's
+  listing query does not reach that far and the five-year window is only as
+  deep as RA allows. One tap answers it.
+- **Yearly prune, by hand, if you want one.** The index keeps five years of
+  past days and nothing deletes. Rows older than that are about a year's
+  worth per year. If it ever matters:
+  `delete from event_cache where event_date < current_date - 1825;`
+- **Which Neon project is the app's?** The Neon connector in this session
+  shows three projects (crates, DustBox, comic) and none is ra-nyc, so no
+  session can measure the table or run that prune. If you want sessions to
+  see it, connect the right project; if not, leave it.
 - **Vercel Web Analytics is still off.** vercel.com → ra-nyc → Analytics →
   Enable. Every `track()` call is deployed and inert until then.
 - **Usage.** The nine-agent hunt hit the session limit. The repair phase ran

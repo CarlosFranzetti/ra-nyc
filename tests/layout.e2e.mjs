@@ -714,6 +714,64 @@ check("and does not move type",
   );
 }
 
+// ── the calendar stops where the server stops
+//
+// `/api/events` answers 400 for a date more than five years back or a year
+// ahead, so a calendar that let you page past that would be a way to reach an
+// error screen. 1825 and 365 are copies of `HISTORY_BEHIND_DAYS` in
+// `api/_lib/ra.ts` and the bounds in `CalendarPopover.tsx`, kept here rather
+// than imported for the same reason as the rollover above: a change to the
+// range has to be meant. The end months are what is asserted, not a count of
+// clicks, so the check does not care how many it takes to get there.
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const p = await ctx.newPage();
+  await p.route("**/api/events*", (route) =>
+    route.fulfill({ contentType: "application/json", body: PAYLOAD }),
+  );
+  await p.route("**/images.ra.co/**", (route) => route.abort());
+  await p.goto(BASE, { waitUntil: "domcontentloaded" });
+  await p.waitForSelector("article", { timeout: 20000 });
+
+  const now = new Date();
+  const night = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+  if (now.getHours() * 60 + now.getMinutes() < 3 * 60 + 30) night.setDate(night.getDate() - 1);
+  const monthName = (daysFromTonight) => {
+    const d = new Date(night);
+    d.setDate(d.getDate() + daysFromTonight);
+    return d.toLocaleString("en-US", { month: "long", year: "numeric" });
+  };
+
+  await p.locator('button[aria-label="Pick a date"]').click();
+  const popover = p.locator("[data-radix-popper-content-wrapper]");
+  await popover.waitFor({ timeout: 5000 });
+
+  // Clicks in the page until the arrow gives up, a frame apart so React has
+  // rendered the new month before the next click reads the button again. At a
+  // bound react-day-picker does not set `disabled`: it sets `aria-disabled` and
+  // drops the "Go to the previous month" label, so the arrow is found by that
+  // label and counts as stopped once the label is gone or the flag is set. The
+  // month asserted below is what stops this passing because it never started.
+  const walk = (label) =>
+    p.evaluate(async (aria) => {
+      const arrow = () => document.querySelector(`[data-radix-popper-content-wrapper] button[aria-label^="${aria}"]`);
+      const stopped = () => !arrow() || arrow().getAttribute("aria-disabled") === "true";
+      for (let i = 0; i < 200 && !stopped(); i += 1) {
+        arrow().click();
+        await new Promise((r) => requestAnimationFrame(r));
+      }
+      return { disabled: stopped(), text: document.querySelector("[data-radix-popper-content-wrapper]").innerText };
+    }, label);
+
+  const back = await walk("Go to the Previous");
+  check("the calendar cannot page back past five years", back.disabled && back.text.includes(monthName(-1825)),
+    `${monthName(-1825)} / ${back.text.split("\n")[0]}`);
+  const ahead = await walk("Go to the Next");
+  check("nor forward past a year ahead", ahead.disabled && ahead.text.includes(monthName(365)),
+    `${monthName(365)} / ${ahead.text.split("\n")[0]}`);
+  await ctx.close();
+}
+
 await browser.close();
 shutdown();
 

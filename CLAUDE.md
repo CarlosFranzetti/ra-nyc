@@ -55,9 +55,12 @@ through `tail`; a full untruncated dump of all eight suites is thousands of
 tokens of PASS lines nobody reads.
 
 ```
-npm run test          # 274 Vitest units
+npm run test          # 306 Vitest units
 npm run test:all      # typecheck, then units + player, search, layout, preview,
-                      # donate, settings, offline and playlist e2e (~3 minutes)
+                      # donate, settings, offline and playlist e2e (~4 minutes;
+                      # on the cloud container it can exceed a 10-minute command
+                      # limit because offline builds first — run it in the
+                      # background, or run offline and playlist on their own)
 ```
 
 `test:all` starts with `npm run typecheck`, and that is not decoration.

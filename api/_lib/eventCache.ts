@@ -236,6 +236,17 @@ export interface CachedWindow {
 const EMPTY: CachedWindow = { events: [], daysCovered: 0 };
 
 /**
+ * `search_key like '%key%'` for each key, ORed, numbered from `first`.
+ *
+ * Built rather than interpolated: the number of keys is data-dependent, so the
+ * placeholders have to be too. The values still go through the driver —
+ * nothing from the query string is ever concatenated into SQL.
+ */
+function anyKeyLike(keys: string[], first: number): string {
+  return keys.map((_, i) => `search_key like '%' || $${i + first} || '%'`).join(" or ");
+}
+
+/**
  * Events in the index matching `term`, between two days.
  *
  * The SQL filter is a substring test on `search_key`, which covers the
@@ -253,6 +264,8 @@ export async function searchCachedEvents(options: {
   from: string;
   to: string;
   limit: number;
+  /** The New York day, from the caller — see the note on `recentCachedEvents`. */
+  today: string;
 }): Promise<CachedWindow> {
   const sql = getSql();
   if (!sql) return EMPTY;
@@ -263,12 +276,7 @@ export async function searchCachedEvents(options: {
   const keys = expandTerm(options.term);
   if (keys.length === 0) return EMPTY;
 
-  // Built rather than interpolated: the number of keys is data-dependent, so
-  // the placeholders have to be too. The values still go through the driver —
-  // nothing from the query string is ever concatenated into SQL.
-  const predicate = keys
-    .map((_, i) => `search_key like '%' || $${i + 5} || '%'`)
-    .join(" or ");
+  const predicate = anyKeyLike(keys, 6);
 
   try {
     const rows = (await sql.query(
@@ -282,15 +290,129 @@ export async function searchCachedEvents(options: {
         -- by date descending spends the whole budget on the furthest-future
         -- matches and drops the past entirely. A DJ with a busy autumn would
         -- hide their own summer.
-        order by abs(event_date - current_date) asc
+        order by abs(event_date - $5::date) asc
         limit $4`,
-      [options.areaId, options.from, options.to, options.limit, ...keys],
+      [options.areaId, options.from, options.to, options.limit, options.today, ...keys],
     )) as unknown as CacheRow[];
 
     return { events: rows.map(toEvent), daysCovered: await coverage(options) };
   } catch (error) {
     console.warn("[eventCache] read failed, falling back to live", error);
     return EMPTY;
+  }
+}
+
+/**
+ * Matches in the part of the past that the recent band does not reach.
+ *
+ * A separate query, and deliberately not a wider window on the one above. That
+ * one is ordered by distance from today and capped, which is right for a band
+ * that is read in both directions and wrong for five years of history: nearest
+ * first would hand back the same recent rows the band already returned. Here
+ * the question is only "the last time they played", so it is newest first, and
+ * the caller asks for one more row than it will show so that a full answer can
+ * say it was cut instead of looking complete.
+ *
+ * The caller runs it only when the recent past came up short. Substring only,
+ * as in the band — the in-memory typo pass stays on the recent band, because
+ * reading five years of rows into memory per search is exactly the cost the
+ * index exists to avoid.
+ */
+export async function searchOlderCachedEvents(options: {
+  term: string;
+  areaId: number;
+  from: string;
+  to: string;
+  limit: number;
+}): Promise<RAEvent[]> {
+  const sql = getSql();
+  if (!sql) return [];
+
+  const keys = expandTerm(options.term);
+  if (keys.length === 0) return [];
+
+  try {
+    const rows = (await sql.query(
+      `select ra_event_id, event_date, title, venue_name, venue_area, artists,
+              url, image_url, attending, is_pick, pick_blurb, start_time, end_time
+         from event_cache
+        where area_id = $1
+          and event_date between $2::date and $3::date
+          and (${anyKeyLike(keys, 5)})
+        -- The id breaks ties between listings of one night, so a row sitting on
+        -- the limit does not swap places from one request to the next.
+        order by event_date desc, ra_event_id
+        limit $4`,
+      [options.areaId, options.from, options.to, options.limit, ...keys],
+    )) as unknown as CacheRow[];
+    return rows.map(toEvent);
+  } catch (error) {
+    console.warn("[eventCache] older read failed", error);
+    return [];
+  }
+}
+
+/**
+ * What the index holds in the older band, for the search response to report.
+ *
+ * `null` means there is no answer — no database, or a query that failed — which
+ * is different from `{ days: 0 }`, a database that was asked and has nothing
+ * there. One count over an index on `(area_id, event_date)`, run once per
+ * search alongside the others.
+ */
+export async function olderCoverage(options: {
+  areaId: number;
+  from: string;
+  to: string;
+}): Promise<{ days: number; oldest: string | null } | null> {
+  const sql = getSql();
+  if (!sql) return null;
+  try {
+    const rows = (await sql.query(
+      `select count(distinct event_date)::int as days,
+              min(event_date)::text as oldest
+         from event_cache
+        where area_id = $1 and event_date between $2::date and $3::date`,
+      [options.areaId, options.from, options.to],
+    )) as unknown as { days: number; oldest: string | null }[];
+    return { days: rows[0]?.days ?? 0, oldest: rows[0]?.oldest ?? null };
+  } catch (error) {
+    console.warn("[eventCache] older coverage failed", error);
+    return null;
+  }
+}
+
+/**
+ * The same band, for `/api/health`: days, rows and how far back it goes.
+ *
+ * Unclamped, as the health report should be — a count of what is there, with no
+ * `limit` to make a large index look like a small one. `null` for no database or
+ * a failed query, so a missing table reads as "unknown" rather than "empty".
+ */
+export async function historyStatus(options: {
+  areaId: number;
+  from: string;
+  to: string;
+}): Promise<{ days: number; oldest: string | null; rows: number } | null> {
+  const sql = getSql();
+  if (!sql) return null;
+  try {
+    const rows = (await sql.query(
+      `select count(distinct event_date)::int as days,
+              min(event_date)::text as oldest,
+              count(*)::int as rows
+         from event_cache
+        where area_id = $1 and event_date between $2::date and $3::date`,
+      [options.areaId, options.from, options.to],
+    )) as unknown as { days: number; oldest: string | null; rows: number }[];
+    return {
+      days: rows[0]?.days ?? 0,
+      oldest: rows[0]?.oldest ?? null,
+      rows: rows[0]?.rows ?? 0,
+    };
+  } catch (error) {
+    console.warn("[eventCache] history status failed", error);
+    return null;
   }
 }
 
@@ -335,6 +457,12 @@ export async function recentCachedEvents(options: {
   areaId: number;
   from: string;
   to: string;
+  /**
+   * The New York day, passed in rather than asked of Postgres. `current_date`
+   * is the database's own zone — UTC on Neon — so for four or five evening hours
+   * a day it named tomorrow, and "nearest to today" was nearest to the wrong one.
+   */
+  today: string;
 }): Promise<RAEvent[]> {
   const sql = getSql();
   if (!sql) return [];
@@ -350,9 +478,9 @@ export async function recentCachedEvents(options: {
         -- dates in Postgres gives an integer number of days, so this is the
         -- cheapest way to say "nearest first", and it needs no index beyond the
         -- one already on the date.
-        order by abs(event_date - current_date) asc
+        order by abs(event_date - $5::date) asc
         limit $4`,
-      [options.areaId, options.from, options.to, FUZZY_SCAN_LIMIT],
+      [options.areaId, options.from, options.to, FUZZY_SCAN_LIMIT, options.today],
     )) as unknown as CacheRow[];
     return rows.map(toEvent);
   } catch (error) {
@@ -384,6 +512,8 @@ export async function indexStatus(options: {
   areaId: number;
   behindDays: number;
   aheadDays: number;
+  /** The New York day the window is measured from. */
+  today: string;
 }): Promise<IndexStatus> {
   const sql = getSql();
   const unreachable: IndexStatus = {
@@ -406,8 +536,13 @@ export async function indexStatus(options: {
       return { ...unreachable, reachable: true, tables: present };
     }
 
+    // Calendar arithmetic on the New York day the caller passed in, not on the
+    // instant: a UTC "now" is a day ahead of the listings for the last few
+    // hours of every New York evening.
     const shift = (days: number) =>
-      new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+      new Date(Date.parse(`${options.today}T00:00:00Z`) + days * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
 
     const stats = (await sql.query(
       `select count(distinct event_date)::int as days,

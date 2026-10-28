@@ -1,8 +1,9 @@
 import { createRoot } from "react-dom/client";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, defaultShouldDehydrateQuery } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { ThemeProvider } from "./context/ThemeContext";
+import { isLiveDay } from "./hooks/useEvents";
 import App from "./App";
 import "./index.css";
 
@@ -63,6 +64,21 @@ createRoot(document.getElementById("root")!).render(
     persistOptions={{
       persister,
       maxAge: DAY_MS,
+      dehydrateOptions: {
+        // A day outside the live window — a night reached through the calendar,
+        // up to five years back — is not written to localStorage. It is looked
+        // at once and never changes, so the next visit gains nothing from it,
+        // while the cache is serialised whole and synchronously: a few dozen
+        // old nights would grow every write on the main thread and push the
+        // days that *are* worth painting from disk towards the browser's quota.
+        // The service worker keeps those nights (`ra-history`), which is where
+        // they belong.
+        shouldDehydrateQuery: (query) => {
+          if (!defaultShouldDehydrateQuery(query)) return false;
+          const [scope, date] = query.queryKey;
+          return !(scope === "events" && typeof date === "string" && !isLiveDay(date));
+        },
+      },
       // Bumping this string invalidates every persisted cache — do it whenever
       // an API response shape changes, or restored data will be the wrong shape.
       buster: "v2-artists",

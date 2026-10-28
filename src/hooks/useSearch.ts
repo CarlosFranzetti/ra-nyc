@@ -7,7 +7,15 @@ export interface SearchResponse {
   upcoming: Event[];
   past: Event[];
   truncated: boolean;
+  /** The recent band: 120 days back, 45 ahead. What "thin" is judged against. */
   coverage?: { indexed: number; window: number };
+  /**
+   * Nights older than that band which the index holds, because someone browsed
+   * or searched them. Sparse by design, so it is reported on its own and never
+   * folded into `coverage`. `null` when there is no database; absent from a
+   * server that predates it, which the sheet treats the same way.
+   */
+  older?: { days: number; oldest: string | null } | null;
 }
 
 /** Below this a search matches half the city and costs a round trip to say so. */

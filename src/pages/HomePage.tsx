@@ -19,6 +19,7 @@ import { SplashScreen } from "@/components/SplashScreen";
 import { useTheme } from "@/context/ThemeContext";
 import {
   useEventCacheUpdates,
+  isLiveDay,
   useEvents,
   useWarmDayImages,
   useWeekScan,
@@ -152,10 +153,17 @@ export default function HomePage() {
    * night, and flipping to Low-key should not be the moment a dozen flyers
    * start loading. Warming the whole day once costs the same requests in total
    * and makes every filter instant.
+   *
+   * An empty list for a night outside the live window — one reached through the
+   * calendar, up to five years back. It is looked at once, and sixty flyers
+   * fetched for it would be sixty requests (and, behind them, cache entries
+   * that push out the flyers of the nights people actually keep opening). The
+   * cards still load theirs lazily, as they do on any day.
    */
   const flyerUrls = useMemo(
-    () => allEvents.map((event) => event.imageUrl),
-    [allEvents],
+    () =>
+      isLiveDay(dateString) ? allEvents.map((event) => event.imageUrl) : [],
+    [allEvents, dateString],
   );
   useWarmDayImages(flyerUrls);
   const visibleEvents = useMemo(

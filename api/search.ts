@@ -15,9 +15,19 @@ export interface SearchResponse {
   truncated: boolean;
   /** Days of the window the durable index holds, out of how many it spans. */
   coverage: { indexed: number; window: number };
+  /**
+   * What the index holds *beyond* that window, back five years: distinct days
+   * and the oldest one. Null when there is no database to ask. `coverage` and
+   * `truncated` describe the recent window only, and still do.
+   */
+  older: { days: number; oldest: string | null } | null;
 }
 
-/** Six pages of listings per search, so this is the most expensive endpoint. */
+/**
+ * Twenty upstream requests per search — three ahead, one for each of the last
+ * ten days, seven sampled further back — plus a page or two for any day busier
+ * than one page, so this is the most expensive endpoint.
+ */
 const UPSTREAM_TIMEOUT_MS = 12_000;
 
 /**
@@ -80,7 +90,7 @@ export default async function handler(
     const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
     try {
-      const { upcoming, past, truncated, coverage } = await searchRAEvents({
+      const { upcoming, past, truncated, coverage, older } = await searchRAEvents({
         term: q,
         areaId: NYC_AREA_ID,
         signal: controller.signal,
@@ -92,7 +102,7 @@ export default async function handler(
       return send(
         res,
         200,
-        { q, upcoming, past, truncated, coverage } satisfies SearchResponse,
+        { q, upcoming, past, truncated, coverage, older } satisfies SearchResponse,
         "public, max-age=120, s-maxage=900, stale-while-revalidate=86400",
       );
     } finally {

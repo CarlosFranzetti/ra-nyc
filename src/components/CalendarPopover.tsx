@@ -1,7 +1,9 @@
 import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { DayPicker } from "react-day-picker";
+import { addDays, endOfMonth, startOfMonth } from "date-fns";
 import { CalendarDays } from "lucide-react";
+import { currentNight } from "@/lib/night";
 
 interface CalendarPopoverProps {
   selectedDate: Date;
@@ -42,12 +44,36 @@ interface CalendarPopoverProps {
  */
 const FIXED_SCALE = 1.157;
 const px = (base: number) => `${Math.round(base * FIXED_SCALE)}px`;
+
+/**
+ * How far back the calendar will go: five years, in days.
+ *
+ * This mirrors `HISTORY_BEHIND_DAYS` in `api/_lib/ra.ts` and the two must change
+ * together. The server answers 400 for a date outside the range it keeps, and a
+ * calendar that offered one anyway would be a button that leads to a red error
+ * screen. The suites mirror the rollover constant the same way, for the same
+ * reason: it is a number two halves of the app must agree on, and nothing can
+ * make them.
+ */
+const HISTORY_BEHIND_DAYS = 1825;
+
+/** One year ahead, the other end of the same range. */
+const HISTORY_AHEAD_DAYS = 365;
+
 export function CalendarPopover({
   selectedDate,
   onDateChange,
   align = "end",
 }: CalendarPopoverProps) {
   const [open, setOpen] = useState(false);
+
+  // Measured from tonight rather than from the calendar's today, so the range
+  // rolls over at the same moment the rest of the app does (see `night.ts`).
+  // Computed per render: it is two additions, and a popover left mounted across
+  // the rollover should not keep offering yesterday's range.
+  const tonight = currentNight();
+  const earliest = addDays(tonight, -HISTORY_BEHIND_DAYS);
+  const latest = addDays(tonight, HISTORY_AHEAD_DAYS);
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -70,6 +96,12 @@ export function CalendarPopover({
             mode="single"
             selected={selectedDate}
             defaultMonth={selectedDate}
+            // The months stop the arrows; `disabled` stops the days in the first
+            // and last month that fall outside the range, which the month
+            // bounds alone leave tappable.
+            startMonth={startOfMonth(earliest)}
+            endMonth={endOfMonth(latest)}
+            disabled={{ before: earliest, after: latest }}
             onSelect={(date) => {
               if (date) {
                 onDateChange(date);
@@ -106,6 +138,7 @@ export function CalendarPopover({
                 "[&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:font-semibold",
               today: "[&>button]:text-primary [&>button]:font-semibold",
               outside: "opacity-30",
+              disabled: "opacity-30 pointer-events-none",
             }}
           />
         </Popover.Content>
