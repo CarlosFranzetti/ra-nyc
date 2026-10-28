@@ -507,12 +507,38 @@ check("and does not move type",
   const night = new Date(now);
   if (now.getHours() * 60 + now.getMinutes() < 3 * 60 + 30) night.setDate(night.getDate() - 1);
   const todayKey = `${night.getFullYear()}-${String(night.getMonth() + 1).padStart(2, "0")}-${String(night.getDate()).padStart(2, "0")}`;
+  // Polls the Node-side counter rather than sleeping for a guessed interval:
+  // the container is slow and the fetch lands when it lands.
+  const hitsReach = async (n, ms = 8000) => {
+    const end = Date.now() + ms;
+    while ((hits.get(todayKey) ?? 0) < n && Date.now() < end) await p.waitForTimeout(100);
+    return hits.get(todayKey) ?? 0;
+  };
+
   const before = hits.get(todayKey) ?? 0;
   await p.locator("h1.logo").dblclick();
-  await p.waitForTimeout(600);
+  const after = await hitsReach(before + 1);
   check("a double-tap on the logo comes back to tonight", (await selectedLabel()) === tonight, `${await selectedLabel()}`);
-  check("and asks for that night again", (hits.get(todayKey) ?? 0) > before, `${todayKey}: ${before} -> ${hits.get(todayKey)}`);
-  check("without zooming the page", (await p.evaluate(() => window.visualViewport?.scale ?? 1)) === 1);
+  check("and asks for that night again", after === before + 1, `${todayKey}: ${before} -> ${after}`);
+
+  // Already on tonight: the query is active, so the same gesture refetches
+  // in place — once, not once per tap.
+  await p.waitForTimeout(500);
+  await p.locator("h1.logo").dblclick();
+  await hitsReach(after + 1);
+  await p.waitForTimeout(500); // room for a wrong second fetch to show up
+  check("a double-tap while on tonight fetches it again, exactly once", (hits.get(todayKey) ?? 0) === after + 1, `${after} -> ${hits.get(todayKey)}`);
+  check("and stays on tonight", (await selectedLabel()) === tonight);
+
+  // Chromium's dblclick is mouse events, so double-tap zoom never runs here
+  // and `visualViewport.scale` would pass with or without the fix. Assert the
+  // style Safari honours instead.
+  const logoStyle = await p.locator("h1.logo").evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { touchAction: s.touchAction, userSelect: s.userSelect || s.webkitUserSelect };
+  });
+  check("the logo opts out of double-tap zoom and text selection",
+    logoStyle.touchAction === "manipulation" && logoStyle.userSelect === "none", JSON.stringify(logoStyle));
   await ctx.close();
 }
 

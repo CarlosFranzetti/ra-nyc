@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { format, isSameDay } from "date-fns";
 import { CloudOff } from "lucide-react";
 import { DatePicker } from "@/components/DatePicker";
 import { EmptyState } from "@/components/EmptyState";
@@ -66,7 +66,12 @@ export default function HomePage() {
       queryKey: ["events", format(tonight, "yyyy-MM-dd")],
       exact: true,
     });
-    setSelectedDate(tonight);
+    // Keep the same Date object when already on tonight: a new one is a new
+    // value to React, and the rail's effect would smooth-scroll to the chip
+    // it is already on.
+    setSelectedDate((current) => (isSameDay(current, tonight) ? current : tonight));
+    // The document is the scroller (the header is `sticky` against it), so
+    // this is the right call; nothing sets `scroll-behavior`, so it is a jump.
     window.scrollTo({ top: 0 });
   }, [queryClient]);
 

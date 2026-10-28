@@ -90,12 +90,16 @@ export function Header({
   const onLogoTap = () => {
     const now = Date.now();
     // The double-tap first, and on every device: a mouse double-clicks too.
-    // Then the counter below carries on regardless — a double-tap is taps two
-    // and three of seventeen as much as it is a shortcut, and jumping to
-    // tonight on the way through costs the sequence nothing.
+    // But not while a seventeen-tap run is under way. A steady run is a
+    // double-tap every two taps, and firing on each one re-fetched tonight
+    // and scrolled the page to the top eight times on the way to the hidden
+    // screen (the first review of this change caught it). The run is allowed
+    // its first pair — someone who double-taps straight after closing
+    // Customize still gets tonight — and nothing after.
+    const inRun = armed.current && taps.current.count >= 2;
     if (now - lastLogoTap.current < DOUBLE_TAP_MS) {
       lastLogoTap.current = 0;
-      onToday();
+      if (!inRun) onToday();
     } else {
       lastLogoTap.current = now;
     }
@@ -172,8 +176,10 @@ export function Header({
             do in every other app. `touch-manipulation` is what the buttons
             get in index.css and the logo did not, being an h1: without it
             Safari holds the first tap for 300ms to see whether a second is
-            coming, and answers the pair with a page zoom. `select-none` for
-            the same reason — a double-tap on text selects the word. */}
+            coming, and answers the pair with a page zoom. The viewport meta
+            asks for no zoom, but Safari has ignored that since iOS 10;
+            touch-action is the thing it honours. `select-none` for the same
+            reason — a double-tap on text selects the word. */}
         <h1
           className="logo flex touch-manipulation select-none items-center gap-2"
           onClick={onLogoTap}
