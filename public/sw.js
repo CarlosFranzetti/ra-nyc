@@ -293,14 +293,32 @@ async function handleEvents(request, settled) {
  * whatever merely arrived first. A flyer inside the priority window is, by
  * definition, one people keep reopening, so this is what keeps it resident
  * without this file ever having to compute what the window is.
+ *
+ * The clone is taken *before* the hit is returned, and that order is the whole
+ * fix for a bug this cache had from the day it was born (5027de2): it used to
+ * delete, then clone inside the `.then` — by which time the page was already
+ * reading the body, so the clone threw "Response body is already used" with
+ * the delete already done. Every flyer was evicted the moment it was served,
+ * and cached again only on the next view, so it lived in here on alternate
+ * visits only. The offline suite checked a first hit and never a second. Same
+ * bug class as the data branch's note above; the fix is the same shape.
+ *
+ * `close` is the `waitUntil` resolver (see the fetch listener): without it the
+ * re-insert raced the worker going idle, which on a cold phone is a coin toss.
  */
-async function handleImage(request) {
+async function handleImage(request, close = () => {}) {
   const cache = await caches.open(IMG_CACHE);
   const cached = await cache.match(request);
   if (cached) {
-    void cache.delete(request).then(() => cache.put(request, cached.clone()));
+    const keep = cached.clone();
+    cache
+      .delete(request)
+      .then(() => cache.put(request, keep))
+      .catch(() => {})
+      .finally(close);
     return cached;
   }
+  close();
 
   try {
     const response = await fetch(request);
@@ -334,7 +352,7 @@ self.addEventListener("fetch", (event) => {
   // `IMG_HOSTS`. Checked before the origin bail-out because this host is, by
   // definition, cross-origin.
   if (IMG_HOSTS.has(url.hostname)) {
-    event.respondWith(handleImage(request));
+    event.respondWith(handleImage(request, hold(event)));
     return;
   }
 
@@ -367,6 +385,21 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.pathname === "/api/image") {
-    event.respondWith(handleImage(request));
+    event.respondWith(handleImage(request, hold(event)));
   }
 });
+
+/**
+ * Keeps the worker alive until the returned function is called.
+ *
+ * `waitUntil` may only be called while the fetch listener is on the stack, so
+ * the promise is opened here, synchronously, and resolved by whoever finishes
+ * the background work — the same pattern the events branch writes out inline.
+ */
+function hold(event) {
+  let close;
+  event.waitUntil(new Promise((resolve) => {
+    close = resolve;
+  }));
+  return close;
+}

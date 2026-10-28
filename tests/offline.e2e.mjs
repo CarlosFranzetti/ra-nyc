@@ -237,6 +237,33 @@ const proxiedFlyer = await page.evaluate(async (flyerUrl) => {
 }, FLYER_URL);
 check("the flyer's proxied fallback landed in the image cache", proxiedFlyer);
 
+// ── a flyer served from the cache stays in the cache
+//
+// The hit path re-inserts the entry to move it to the back of the LRU, and
+// for two months it did so by deleting first and cloning a body the page was
+// already reading — the clone threw, the delete stood, and every flyer was
+// evicted the moment it was served. One reload hid it (the cache was still
+// full when the reload started); the second reload re-fetched everything.
+// Three reloads, checking after each, is the smallest thing that sees it.
+const hitsBefore = imageHits;
+let stayed = true;
+for (let i = 0; i < 3; i += 1) {
+  await page.reload({ waitUntil: "load" });
+  await page.waitForSelector("text=Live Night", { timeout: 20000 });
+  await page.waitForTimeout(800);
+  const present = await page.evaluate(async (flyerUrl) => {
+    const names = await caches.keys();
+    const img = names.find((n) => n.startsWith("ra-img"));
+    if (!img) return false;
+    const cache = await caches.open(img);
+    const url = `${location.origin}/api/image?u=${encodeURIComponent(flyerUrl)}`;
+    return Boolean(await cache.match(url));
+  }, FLYER_URL);
+  stayed = stayed && present;
+}
+check("a flyer served from the cache stays in it across three reloads", stayed);
+check("and the proxy is not asked for it again", imageHits === hitsBefore, `${hitsBefore} -> ${imageHits}`);
+
 // ── a day that changed after it was cached corrects itself
 //
 // This is the other half of stale-while-revalidate, and its absence was a real
