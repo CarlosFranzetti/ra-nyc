@@ -21,10 +21,21 @@ interface HeaderProps {
   onSearchClick: () => void;
   /** How many events the current filters leave, for the caption to alternate to. */
   eventCount: number;
+  /** Double-tap on the logo: back to tonight, freshly loaded. */
+  onToday: () => void;
 }
 
 /** How long each face of the caption holds before it swaps. */
 const CAPTION_HOLD_MS = 6_000;
+
+/**
+ * Two taps this close together are one gesture.
+ *
+ * iOS counts a double-tap at about 300ms; a little over that so a slightly
+ * slow second tap still lands, and well under the ~500ms where two deliberate
+ * single taps start to read as one.
+ */
+const DOUBLE_TAP_MS = 350;
 
 /**
  * Is this a phone?
@@ -48,7 +59,20 @@ export function Header({
   onDateChange,
   onSearchClick,
   eventCount,
+  onToday,
 }: HeaderProps) {
+  /**
+   * Double-tap the logo and you are back on tonight.
+   *
+   * The way home from three weeks out, without finding "Today" on the rail or
+   * opening the calendar — the same gesture a tab bar icon answers to in a
+   * native app. It also reloads the night, because the reason you came back
+   * is usually "what is on *now*", and the cached copy can be an hour old.
+   *
+   * A ref for the same reason the secret counter is one: the first tap
+   * changes nothing anyone can see.
+   */
+  const lastLogoTap = useRef(0);
   /**
    * The hidden screen: open Customize, close it, then tap the logo seventeen
    * times in a row. Nothing announces it and nothing counts down.
@@ -64,10 +88,22 @@ export function Header({
   const [secret, setSecret] = useState(false);
 
   const onLogoTap = () => {
+    const now = Date.now();
+    // The double-tap first, and on every device: a mouse double-clicks too.
+    // Then the counter below carries on regardless — a double-tap is taps two
+    // and three of seventeen as much as it is a shortcut, and jumping to
+    // tonight on the way through costs the sequence nothing.
+    if (now - lastLogoTap.current < DOUBLE_TAP_MS) {
+      lastLogoTap.current = 0;
+      onToday();
+    } else {
+      lastLogoTap.current = now;
+    }
+
     // Phones only. Checked here rather than by hiding the trigger, because the
     // trigger is the logo and the logo is not going anywhere.
     if (!IS_TOUCH) return;
-    const result = tap(taps.current, armed.current, Date.now());
+    const result = tap(taps.current, armed.current, now);
     taps.current = result.state;
     if (result.unlocked) {
       // Disarm on the way in, so leaving the screen and tapping the logo again
@@ -130,11 +166,18 @@ export function Header({
 
             The mark echoes the home-screen icon exactly: RA in a filled block,
             same typeface, same weight. */}
-        {/* The tap target for the sequence above. No role, no aria-label and
-            no hover state: an easter egg that advertises itself is a feature.
-            Nothing about the logo's behaviour changes for anyone not counting —
-            it was inert before and it still looks inert. */}
-        <h1 className="logo flex items-center gap-2" onClick={onLogoTap}>
+        {/* The tap target for both gestures above. No role, no aria-label and
+            no hover state: an easter egg that advertises itself is a feature,
+            and the double-tap is the kind of thing you find by doing what you
+            do in every other app. `touch-manipulation` is what the buttons
+            get in index.css and the logo did not, being an h1: without it
+            Safari holds the first tap for 300ms to see whether a second is
+            coming, and answers the pair with a page zoom. `select-none` for
+            the same reason — a double-tap on text selects the word. */}
+        <h1
+          className="logo flex touch-manipulation select-none items-center gap-2"
+          onClick={onLogoTap}
+        >
           <span className="logo-mark">RA</span>
           <span className="logo-word">NYC</span>
         </h1>

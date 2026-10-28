@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { CloudOff } from "lucide-react";
 import { DatePicker } from "@/components/DatePicker";
@@ -45,6 +46,29 @@ export default function HomePage() {
   const { layoutDensity } = useTheme();
   const dateString = format(selectedDate, "yyyy-MM-dd");
   const { data, isLoading, isFetching, error, refetch } = useEvents(dateString);
+
+  /**
+   * Back to tonight, reloaded — the logo's double-tap.
+   *
+   * Invalidate first, then select. The night's query is either active (you
+   * are already on tonight, so this refetches it in place) or not (you were
+   * elsewhere, so it is marked stale and the switch below mounts an observer
+   * that fetches because it is stale). Either way the list you land on is the
+   * one RA has now, not the one the cache had an hour ago — which is the
+   * difference between "go to today" and "what is on tonight". Re-read from
+   * the clock rather than remembered: past 3:30am tonight is a different day
+   * from the one the app opened on.
+   */
+  const queryClient = useQueryClient();
+  const goToTonight = useCallback(() => {
+    const tonight = currentNight();
+    void queryClient.invalidateQueries({
+      queryKey: ["events", format(tonight, "yyyy-MM-dd")],
+      exact: true,
+    });
+    setSelectedDate(tonight);
+    window.scrollTo({ top: 0 });
+  }, [queryClient]);
 
   // Go and ask about the coming week once, on open, and take the answer when
   // the service worker says a day it served from cache has since changed.
@@ -164,6 +188,7 @@ export default function HomePage() {
         <Header
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}
+          onToday={goToTonight}
           onSearchClick={() => setSearchOpen(true)}
           // The count the caption alternates to. Filtered, because it answers
           // "how many am I looking at" rather than "how many exist".
