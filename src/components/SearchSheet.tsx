@@ -46,6 +46,19 @@ interface SearchSheetProps {
   browsingLabel: string;
 }
 
+/**
+ * "Mar 2023" for the oldest night the index holds.
+ *
+ * Built the way `formatEventDay` builds its date, and for the same reason: the
+ * server sends a bare `yyyy-MM-dd`, which `new Date` would read in the viewer's
+ * zone and put in the previous month for anyone west of UTC on the 1st.
+ */
+function formatOldest(day: string): string {
+  const at = new Date(`${day.slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(at.getTime())) return "";
+  return at.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 function Section({
   title,
   events,
@@ -224,10 +237,27 @@ export function SearchSheet({
   const past = data?.past ?? [];
   const nothing = enabled && !busy && !error && upcoming.length === 0 && past.length === 0;
   // "Thin" rather than "empty": a search over a window the index only half
-  // holds is a partial answer whether or not it found something.
+  // holds is a partial answer whether or not it found something. Judged against
+  // `coverage` alone — the recent band — and never against `older`: nights
+  // before it are only indexed once someone has looked at them, so a sparse
+  // older band is how it is meant to be, not a cold index to apologise for.
   const thin = Boolean(
     data?.coverage && data.coverage.indexed < data.coverage.window * 0.9,
   );
+
+  // Nights before the recent band that the index holds. Said in the footer
+  // because it is the one place a person can learn that an old name was looked
+  // for in more than four months, and only when there are some: "0 older
+  // nights" is not news, and the footer is not where to hold that a day is
+  // missing.
+  const olderDays = data?.older?.days ?? 0;
+  const olderSentence = `Also searched ${olderDays} older ${
+    olderDays === 1 ? "night" : "nights"
+  } you have browsed${
+    data?.older?.oldest && formatOldest(data.older.oldest)
+      ? `, back to ${formatOldest(data.older.oldest)}`
+      : ""
+  }.`;
 
   // Renders nothing when closed, but this component is not unmounted — HomePage
   // keeps it in the tree — so `query` and `recent` above survive and come back
@@ -414,9 +444,16 @@ export function SearchSheet({
           {/* Only shown when the answer really is partial. Once the index
               covers the window there is nothing to disclaim, and a permanent
               "this may be incomplete" teaches people to ignore it. */}
-          {data?.truncated && (upcoming.length > 0 || past.length > 0) && (
+          {(data?.truncated || olderDays > 0) &&
+            (upcoming.length > 0 || past.length > 0) && (
             <p className="px-1 pb-2 text-center text-[0.6875rem] text-muted-foreground/60">
-              Searching the next six weeks and the last four months.
+              {[
+                data?.truncated &&
+                  "Searching the next six weeks and the last four months.",
+                olderDays > 0 && olderSentence,
+              ]
+                .filter(Boolean)
+                .join(" ")}
             </p>
           )}
         </div>

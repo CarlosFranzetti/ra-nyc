@@ -9,6 +9,47 @@ const STALE_TIME = 5 * 60 * 1000;
 const GC_TIME = 30 * 60 * 1000;
 
 /**
+ * How long a day outside the live window stays in memory once nothing is
+ * looking at it.
+ *
+ * A past night does not change, so there is nothing to keep it warm for, and
+ * the index now reaches five years back: a person paging through the calendar
+ * could otherwise pile up a day of 60-event payloads for every month they
+ * passed through. Ten minutes is long enough that stepping back to the night
+ * you just left is instant, and short enough that the pile cannot form.
+ */
+const HISTORY_GC_TIME = 10 * 60 * 1000;
+
+/**
+ * The live window: the days the server keeps fresh and the app warms around.
+ *
+ * These two mirror `SEARCH_BEHIND_DAYS` and `SEARCH_AHEAD_DAYS` in
+ * `api/_lib/ra.ts` and must change together. Inside it a day is one the search
+ * index covers on its own, so neighbours are prefetched, flyers are warmed and
+ * the query is persisted to disk. Outside it — a night someone reached through
+ * the calendar, up to five years back — none of that applies: it is looked at
+ * once, it never changes, and warming its neighbours would ask the server to
+ * go and fetch four more old days that nobody has asked about, which is the
+ * one thing the history index is built never to do.
+ */
+const LIVE_BEHIND_DAYS = 120;
+const LIVE_AHEAD_DAYS = 45;
+
+/**
+ * Whether `date` (`yyyy-MM-dd`) is inside the live window around tonight.
+ *
+ * Compared as strings, which is correct for zero-padded ISO dates and avoids
+ * parsing a naive date in the viewer's zone. Measured from `currentNight()` so
+ * that it rolls over with the rest of the app, not at midnight.
+ */
+export function isLiveDay(date: string): boolean {
+  const tonight = currentNight();
+  const first = format(addDays(tonight, -LIVE_BEHIND_DAYS), "yyyy-MM-dd");
+  const last = format(addDays(tonight, LIVE_AHEAD_DAYS), "yyyy-MM-dd");
+  return date >= first && date <= last;
+}
+
+/**
  * Reads a day's listings from our own `/api/events` function rather than
  * hitting ra.co from the browser — see `api/_lib/ra.ts` for why.
  */
@@ -28,10 +69,17 @@ export function useEvents(date: string) {
 
   // Warm the next two days and the previous one. Most are edge-cache hits, so
   // this is cheap, and it's what makes stepping through the strip feel instant.
+  //
+  // Only for a day inside the live window, and only for neighbours inside it
+  // too. A night five years ago has no neighbours worth warming — and each
+  // would be a request that makes the server fetch and keep a day nobody asked
+  // for.
   useEffect(() => {
+    if (!isLiveDay(date)) return;
     const current = new Date(`${date}T00:00:00`);
     for (const offset of [1, 2, -1]) {
       const neighbour = format(addDays(current, offset), "yyyy-MM-dd");
+      if (!isLiveDay(neighbour)) continue;
       void queryClient.prefetchQuery({
         queryKey: ["events", neighbour],
         queryFn: () => fetchEvents(neighbour),
@@ -44,7 +92,7 @@ export function useEvents(date: string) {
     queryKey: ["events", date],
     queryFn: ({ signal }) => fetchEvents(date, signal),
     staleTime: STALE_TIME,
-    gcTime: GC_TIME,
+    gcTime: isLiveDay(date) ? GC_TIME : HISTORY_GC_TIME,
     refetchOnWindowFocus: false,
     // Hold the previous day on screen while the next loads, instead of blanking
     // to a skeleton on every tap.

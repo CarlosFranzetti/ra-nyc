@@ -131,7 +131,22 @@ await page.route("**/api/search*", (route) => {
   const q = new URL(route.request().url()).searchParams.get("q") ?? "";
   route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify(q.startsWith("lakuti") ? RESULTS : EMPTY),
+    // The two `older` shapes are keyed off the query rather than a flag the
+    // test flips, so each is a distinct cache entry and neither answer can be
+    // served from the other's.
+    body: JSON.stringify(
+      q === "lakuti older"
+        ? { ...RESULTS, truncated: true, older: { days: 12, oldest: "2023-03-18" } }
+        : q === "lakuti once"
+          ? { ...RESULTS, truncated: true, older: { days: 1, oldest: "2024-11-02" } }
+          : q === "lakuti none"
+            ? { ...RESULTS, truncated: true, older: null }
+            : q === "lakuti zero"
+              ? { ...RESULTS, truncated: true, older: { days: 0, oldest: null } }
+              : q.startsWith("lakuti")
+                ? RESULTS
+                : EMPTY,
+    ),
   });
 });
 await page.route("**/images.ra.co/**", (route) => route.abort());
@@ -336,6 +351,57 @@ await input.fill("");
 await input.type("zzzz", { delay: 30 });
 await page.waitForSelector("text=No events found", { timeout: 8000 });
 check("empty results say so plainly", true);
+
+// ── the footer says what was searched beyond the recent band
+//
+// The index keeps nights older than four months only once someone has browsed
+// or searched them, so the server reports how many there are. The footer says
+// so when there are some, and says nothing new when there are none or when the
+// server has no database. `truncated` is on in every stub because the footer
+// has always been the "this answer is partial" line and the existing sentence
+// must survive beside the new one.
+const footerText = async () =>
+  (await page.locator("p", { hasText: "Searching the next six weeks" }).count()) +
+    (await page.locator("p", { hasText: "older night" }).count()) >
+  0
+    ? await page.evaluate(() =>
+        [...document.querySelectorAll('[role="dialog"] p')]
+          .map((p) => p.textContent ?? "")
+          .filter((t) => t.startsWith("Searching the next") || t.startsWith("Also searched"))
+          .join(" | "),
+      )
+    : "";
+await input.fill("lakuti older");
+await page.waitForSelector("text=Also searched", { timeout: 8000 });
+const olderFooter = await footerText();
+check(
+  "the footer counts the older nights searched and how far back they go",
+  olderFooter.includes("12 older nights") && olderFooter.includes("Mar 2023"),
+  olderFooter,
+);
+check(
+  "and keeps the sentence about the recent band",
+  olderFooter.includes("Searching the next six weeks and the last four months."),
+  olderFooter,
+);
+await input.fill("lakuti once");
+await page.waitForSelector("text=Also searched 1 older night", { timeout: 8000 });
+check("one older night is singular", (await footerText()).includes("1 older night you have"), await footerText());
+await input.fill("lakuti none");
+await page.waitForSelector("text=Searching the next six weeks", { timeout: 8000 });
+await page.waitForFunction(() => !document.body.textContent?.includes("Also searched"), null, { timeout: 8000 });
+check(
+  "with no older band the footer is what it always was",
+  (await footerText()) === "Searching the next six weeks and the last four months.",
+  await footerText(),
+);
+await input.fill("lakuti zero");
+await page.waitForSelector("text=Searching the next six weeks", { timeout: 8000 });
+check(
+  "and zero older nights adds nothing",
+  !(await footerText()).includes("older"),
+  await footerText(),
+);
 
 // ── the query outlives the panel
 //

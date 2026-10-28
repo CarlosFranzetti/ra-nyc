@@ -23,7 +23,14 @@
  *   well-formed empty response rather than an error — see `handleEvents`.
  *   When the refreshed copy differs from the one that was served, every open
  *   tab is told so it can show it — see `announceUpdate`, and the note there
- *   about the bug that came from not doing it.
+ *   about the bug that came from not doing it. A degraded answer (`stale:
+ *   true`, which the API serves as a plain 200 when RA is down) is handed to the
+ *   page but never saved.
+ * - **`/api/events` for a night more than a month back** — cache first, with no
+ *   revalidation, in its own cache (`ra-history`). A past night does not
+ *   change, so asking again would be pure waste, and the index now reaches five
+ *   years back: those nights must not compete with the live window for
+ *   `ra-data`'s 200 places, nor be evicted by it. See `handleHistory`.
  * - **RA flyers** (`images.ra.co`, direct, and `/api/image`, our own proxy
  *   fallback) — cache first, capped at `MAX_IMG_ENTRIES` with the oldest
  *   *touch* evicted first. This is the one deliberate exception to leaving
@@ -62,6 +69,7 @@ const SHELL_CACHE = `ra-shell-${VERSION}`;
 const ASSET_CACHE = `ra-assets-${VERSION}`;
 const DATA_CACHE = `ra-data-${VERSION}`;
 const IMG_CACHE = `ra-img-${VERSION}`;
+const HISTORY_CACHE = `ra-history-${VERSION}`;
 
 /** Enough to render the app with no network at all. */
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/ra-favicon.svg"];
@@ -77,6 +85,27 @@ const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/ra-favicon.svg"];
  * day someone deliberately jumped back to five minutes ago.
  */
 const MAX_DATA_ENTRIES = 200;
+
+/**
+ * Bounds the history cache: one entry per past night someone has opened.
+ *
+ * Four hundred is about thirteen months of nights, which is more than anyone
+ * pages through in practice and a few megabytes at most — a day's listings are
+ * a few tens of kilobytes. It is a bound against a person who scrolls the
+ * calendar for an afternoon, not a window to be tuned. Oldest-fetched-first
+ * (see `trim`), like `ra-data`.
+ */
+const MAX_HISTORY_ENTRIES = 400;
+
+/**
+ * How far back a night must be before it is history rather than live.
+ *
+ * A month, because that is comfortably past anything RA still edits: a lineup
+ * announced late, a venue change, a cancellation all land well inside it. Inside
+ * a month a day is served stale-while-revalidate like any other; beyond it,
+ * revalidating would be asking whether the past has changed.
+ */
+const HISTORY_AFTER_DAYS = 30;
 
 /**
  * Bounds the flyer cache. Sized off the priority window product design asked
@@ -111,7 +140,7 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  const keep = new Set([SHELL_CACHE, ASSET_CACHE, DATA_CACHE, IMG_CACHE]);
+  const keep = new Set([SHELL_CACHE, ASSET_CACHE, DATA_CACHE, IMG_CACHE, HISTORY_CACHE]);
   event.waitUntil(
     caches
       .keys()
@@ -180,6 +209,66 @@ async function announceUpdate(request) {
 }
 
 /**
+ * The answer for a day with nothing saved and no network to ask.
+ *
+ * A 503 with a bare error body used to land here, which the app renders as the
+ * same red "failed to load" screen a real RA outage produces — indistinguishable
+ * from an actual bug while just being offline. The app already has a rendering
+ * for "nothing here, and here's why" (the `stale` banner over an empty list —
+ * see `EventsResponse` / `HomePage`), so answer in that shape instead: a
+ * normal 200, not fabricated events, just an honest zero. `stale` here means
+ * exactly what it always means to the UI — don't trust this as current —
+ * it's just this file saying it instead of the API.
+ */
+function emptyDay(request) {
+  const date = new URL(request.url).searchParams.get("date") ?? "";
+  return new Response(
+    JSON.stringify({ date, events: [], count: 0, stale: true }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
+/**
+ * Whether a response body is the API's degraded answer.
+ *
+ * When RA is down the API serves what it has with `stale: true` — as a plain
+ * HTTP 200, because the page can render it. That is the problem: `response.ok`
+ * cannot tell it from a good day, so the check that was meant to keep the
+ * degraded answer out of the cache (see the comment in `handleEvents`) never
+ * could. It pinned a half-empty day in place until something evicted it. The
+ * only place the flag lives is the body, so the body is read.
+ */
+function isDegraded(text) {
+  try {
+    return JSON.parse(text)?.stale === true;
+  } catch {
+    // Not JSON at all — an HTML error page from a proxy, say — is no more
+    // worth keeping than a degraded answer.
+    return true;
+  }
+}
+
+/** The last `yyyy-MM-dd` that still counts as live, in the device's own zone. */
+function liveSince() {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - HISTORY_AFTER_DAYS);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${cutoff.getFullYear()}-${pad(cutoff.getMonth() + 1)}-${pad(cutoff.getDate())}`;
+}
+
+/**
+ * True for a request for a night more than `HISTORY_AFTER_DAYS` ago.
+ *
+ * Strings compared as strings: both sides are zero-padded ISO dates. A request
+ * with no date, or one that is not shaped like one, is not history — it falls
+ * through to the live branch, which is what it did before this existed.
+ */
+function isHistory(request) {
+  const date = new URL(request.url).searchParams.get("date") ?? "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) && date < liveSince();
+}
+
+/**
  * `settled` is called when the background refresh finishes.
  *
  * The refresh runs *after* the cached response has been handed back, so by then
@@ -220,7 +309,10 @@ async function handleEvents(request, settled) {
   const network = fetch(request, { cache: "no-store" })
     .then(async (response) => {
       // Never cache the degraded answer the API serves when RA is down — it
-      // would pin a stale day in place long after RA recovered.
+      // would pin a stale day in place long after RA recovered. An error status
+      // is caught here; the degraded answer is a 200, so it is caught below,
+      // once the body has been read (see `isDegraded`). This line alone was all
+      // the check there used to be, and it let the degraded answer through.
       if (!response.ok) return response;
 
       // Read once, then rebuild — rather than cloning twice.
@@ -234,6 +326,11 @@ async function handleEvents(request, settled) {
       // never attempted. This cost several rounds to find. One clone, taken
       // before anything reads it, and everything downstream works from text.
       const text = await response.clone().text();
+
+      // The degraded answer goes to the page and no further. Neither stored nor
+      // announced: it would overwrite a good copy with a worse one, and then
+      // tell every tab to go and show it.
+      if (isDegraded(text)) return response;
 
       const before = previous ? await previous.text().catch(() => null) : null;
       // Only wake the page when the answer actually changed. Most revalidations
@@ -266,20 +363,75 @@ async function handleEvents(request, settled) {
   const response = await network;
   if (response) return response;
 
-  // Nothing saved for this day and no network to ask: a 503 with a bare error
-  // body used to land here, which the app renders as the same red "failed to
-  // load" screen a real RA outage produces — indistinguishable from an actual
-  // bug while just being offline. The app already has a rendering for
-  // "nothing here, and here's why" (the `stale` banner over an empty list —
-  // see `EventsResponse` / `HomePage`), so answer in that shape instead: a
-  // normal 200, not fabricated events, just an honest zero. `stale` here means
-  // exactly what it always means to the UI — don't trust this as current —
-  // it's just this file saying it instead of the API.
-  const date = new URL(request.url).searchParams.get("date") ?? "";
-  return new Response(
-    JSON.stringify({ date, events: [], count: 0, stale: true }),
-    { status: 200, headers: { "Content-Type": "application/json" } },
-  );
+  // Nothing saved for this day and no network to ask — see `emptyDay`.
+  return emptyDay(request);
+}
+
+/**
+ * Cache-first for a night more than a month back, with no revalidation.
+ *
+ * A past night does not change, so a saved copy is the answer and asking the
+ * network whether it is still the answer is a request spent on nothing. That is
+ * the opposite of `handleEvents`, and it is the reason these nights have a
+ * cache of their own rather than a different eviction rule in `ra-data`.
+ *
+ * Only a good day is saved. The degraded answer (`stale: true`) is returned to
+ * the page and forgotten, as in the live branch — and here the stakes are
+ * higher, because with no revalidation a bad copy would never be replaced.
+ *
+ * On a network failure the old `ra-data` entry is tried before giving up:
+ * a night browsed before this cache existed was saved there, and an offline
+ * visit should not find it suddenly gone.
+ *
+ * The save happens *after* the response has been handed back, not before it:
+ * a cold history day should cost the page one network wait, not a network
+ * wait plus a disk write plus a walk of the cache's keys. `close` is the
+ * `waitUntil` resolver (see the fetch listener), and it is what keeps the
+ * worker alive for that trailing work once the page has its answer.
+ */
+async function handleHistory(request, close = () => {}) {
+  const cache = await caches.open(HISTORY_CACHE);
+  const cached = await cache.match(request);
+  if (cached) {
+    close();
+    return cached;
+  }
+
+  let response;
+  try {
+    response = await fetch(request);
+  } catch {
+    close();
+    const older = await caches.match(request, { cacheName: DATA_CACHE });
+    return older ?? emptyDay(request);
+  }
+  if (!response.ok) {
+    close();
+    return response;
+  }
+
+  // The clone is taken before the return, for the same reason as in
+  // `handleImage`: once the page starts reading the body it cannot be cloned.
+  // Saving is best effort: a full disk must cost the next visit a request, not
+  // this one its answer.
+  const copy = response.clone();
+  void (async () => {
+    try {
+      const text = await copy.text();
+      if (isDegraded(text)) return;
+      await cache.put(
+        request,
+        new Response(text, {
+          status: response.status,
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+        }),
+      );
+      await trim(HISTORY_CACHE, MAX_HISTORY_ENTRIES);
+    } catch {
+      /* not saved; served all the same */
+    }
+  })().finally(close);
+  return response;
 }
 
 /**
@@ -368,6 +520,11 @@ self.addEventListener("fetch", (event) => {
 
   if (url.pathname.startsWith("/assets/")) {
     event.respondWith(handleAsset(request));
+    return;
+  }
+
+  if (url.pathname === "/api/events" && isHistory(request)) {
+    event.respondWith(handleHistory(request, hold(event)));
     return;
   }
 

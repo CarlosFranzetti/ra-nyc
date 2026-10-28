@@ -85,6 +85,25 @@ const TODAY = (() => {
   const pad = (n) => String(n).padStart(2, "0");
   return `${night.getFullYear()}-${pad(night.getMonth() + 1)}-${pad(night.getDate())}`;
 })();
+/**
+ * A night `n` days from the night in progress, as `yyyy-MM-dd`.
+ *
+ * Built from `TODAY` at local noon so that adding days across a daylight-saving
+ * boundary cannot land an hour short and roll the date.
+ */
+const shift = (n) => {
+  const [y, m, d] = TODAY.split("-").map(Number);
+  const at = new Date(y, m - 1, d + n, 12);
+  const pad = (v) => String(v).padStart(2, "0");
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+};
+// A night well past the worker's month of "live", so it is history: 200 days,
+// which is also past the 120-day live window the client keeps on disk. And two
+// nights inside the live window, beyond the week the app scans on load, so
+// nothing else in this file has already asked for them.
+const OLD = shift(-200);
+const DEGRADED_DAY = shift(20);
+const SETTLED_DAY = shift(21);
 // The smallest possible valid PNG (a 1x1 transparent pixel) — enough for the
 // browser to treat it as a real image (decodes, paints, no broken-image icon)
 // without needing real flyer bytes.
@@ -115,17 +134,17 @@ const extraEvent = {
   pickBlurb: null,
 };
 
-const payload = (stale) =>
+const payload = (stale, day = TODAY, title = stale ? "Saved Night" : "Live Night") =>
   JSON.stringify({
-    date: TODAY,
+    date: day,
     count: announcedSince ? 2 : 1,
     stale,
     events: [
       {
         id: "e1",
-        title: stale ? "Saved Night" : "Live Night",
-        date: `${TODAY}T00:00:00.000`,
-        startTime: `${TODAY}T22:00:00.000`,
+        title,
+        date: `${day}T00:00:00.000`,
+        startTime: `${day}T22:00:00.000`,
         endTime: null,
         url: "https://ra.co/events/1",
         // A real (unreachable, from this sandbox) images.ra.co URL, so
@@ -150,13 +169,23 @@ const payload = (stale) =>
  */
 let apiHits = 0;
 let imageHits = 0;
+/** Requests that reached the network, by `date=`. */
+const hitsByDate = new Map();
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", BASE);
 
   if (url.pathname === "/api/events") {
     apiHits += 1;
+    const date = url.searchParams.get("date") ?? "";
+    hitsByDate.set(date, (hitsByDate.get(date) ?? 0) + 1);
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(payload(false));
+    // A past night is settled: the same listings every time, and a distinct
+    // title so a test can tell it from tonight's. The degraded day is the
+    // API's answer when RA is down — a plain 200 whose body says `stale`.
+    if (date === OLD) res.end(payload(false, OLD, "Old Night"));
+    else if (date === DEGRADED_DAY) res.end(payload(true, DEGRADED_DAY));
+    else if (date === SETTLED_DAY) res.end(payload(false, SETTLED_DAY));
+    else res.end(payload(false));
     return;
   }
 
@@ -343,6 +372,79 @@ const before = apiHits;
 await page.evaluate(() => fetch("/api/search?q=test").then((r) => r.text()));
 check("only /api/events is cached, other endpoints stay network-only",
   apiHits === before);
+
+// ── a degraded answer is not kept
+//
+// When RA is down the API serves what it has with `stale: true` — as a 200. The
+// worker's guard against caching it was `response.ok`, which that answer
+// passes, so the comment saying it was never cached described a check that
+// could not fail. The settled day beside it is the control: it goes through the
+// same path and *is* kept, so a pass here means the body was read, not that
+// nothing is ever stored.
+/** How many entries for `day` the cache whose name starts with `prefix` holds; null if there is no such cache. */
+const keysIn = (prefix, day) =>
+  page.evaluate(async ({ d, p }) => {
+    const names = await caches.keys();
+    const name = names.find((n) => n.startsWith(p));
+    if (!name) return null;
+    return (await (await caches.open(name)).keys()).filter((k) => k.url.includes(`date=${d}`)).length;
+  }, { d: day, p: prefix });
+const degradedBody = await page.evaluate(async (day) => {
+  const body = await (await fetch(`/api/events?date=${day}`)).json();
+  return { stale: body.stale, count: body.events.length };
+}, DEGRADED_DAY);
+await page.evaluate((day) => fetch(`/api/events?date=${day}`).then((r) => r.text()), SETTLED_DAY);
+check("a degraded answer still reaches the page", degradedBody.stale === true && degradedBody.count === 1,
+  JSON.stringify(degradedBody));
+check("but is not saved in the data cache", (await keysIn("ra-data", DEGRADED_DAY)) === 0);
+check("while a settled day beside it is", (await keysIn("ra-data", SETTLED_DAY)) === 1);
+
+// ── a night from long ago is kept apart, and asked for once
+//
+// It lives in its own cache so that nights nobody will look at twice cannot
+// push the live window out of `ra-data`, and it is cache-first with no
+// revalidation: the past does not change, so a second look costs no request.
+await page.evaluate((day) => fetch(`/api/events?date=${day}`).then((r) => r.text()), OLD);
+check("a night 200 days back is saved in the history cache", (await keysIn("ra-history", OLD)) === 1);
+check("and not in the data cache", (await keysIn("ra-data", OLD)) === 0);
+const oldHitsBefore = hitsByDate.get(OLD) ?? 0;
+const secondLook = await page.evaluate(async (day) => {
+  const body = await (await fetch(`/api/events?date=${day}`)).json();
+  return body.events[0]?.title;
+}, OLD);
+check("a second look at it makes no network request",
+  secondLook === "Old Night" && (hitsByDate.get(OLD) ?? 0) === oldHitsBefore,
+  `${oldHitsBefore} -> ${hitsByDate.get(OLD)}`);
+
+// ── browsing the past leaves no trace on disk and warms nothing around it
+//
+// Reached the way a person reaches it: through the calendar. The query cache is
+// serialised whole into localStorage on every change, so a night from 2026-04
+// would be written out and read back on every launch for a day, for a page
+// nobody opens twice. And its neighbours must not be prefetched, because each
+// would ask the server to go and fetch an old day nobody asked about.
+const [oy, om] = OLD.split("-").map(Number);
+const [ty, tm] = TODAY.split("-").map(Number);
+const monthsBack = (ty - oy) * 12 + (tm - om);
+await page.locator('button[aria-label="Pick a date"]').click();
+for (let i = 0; i < monthsBack; i += 1) {
+  await page.locator('button[aria-label^="Go to the Previous"]').click();
+}
+await page.locator(`td[data-day="${OLD}"] button`).click();
+const browsedOld = await page
+  .waitForSelector("text=Old Night", { timeout: 10000 })
+  .then(() => true)
+  .catch(() => false);
+check("a night picked in the calendar from 200 days back is shown", browsedOld);
+// The persister writes on a two-second trailing throttle; wait it out so the
+// absence below is of a write that has happened, not of one still to come.
+await page.waitForTimeout(2800);
+const persisted = await page.evaluate(() => localStorage.getItem("ra-nyc:query-cache") ?? "");
+check("it is not written to the persisted query cache, though tonight is",
+  persisted.includes(TODAY) && !persisted.includes(OLD),
+  `${persisted.length} bytes, tonight ${persisted.includes(TODAY)}, old ${persisted.includes(OLD)}`);
+const neighbours = [shift(-201), shift(-199), shift(-198)].filter((d) => hitsByDate.has(d));
+check("and its neighbours are not prefetched", neighbours.length === 0, neighbours.join(", "));
 
 // ── the image cache is bounded: flood it well past its cap, then let one
 // more real request land through the worker's own `handleImage`, and confirm

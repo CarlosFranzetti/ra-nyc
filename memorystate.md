@@ -2710,6 +2710,94 @@ agents and a session limit for the investigation. The two-lane shape, with
 file ownership fixed up front, had no merge conflicts and no file was
 touched by two agents.
 
+### 3.x · Flyers that stayed cached, and five years of history nobody preloads
+
+The owner's words: flyers "aren't loading as snappy as they used to", a
+belief that they were cached six months back and three ahead, and the ask
+to keep five years of past listings "but do not preload them — only access
+those if a user does a search or if someone is starting to browse history".
+Plus two Opus researchers on what the app is overlooking and a Haiku on
+local versions. Six investigators, two Sonnet repairers, orchestrated
+here; every report is in `docs/agent-transcript-2026-10-28.md`.
+
+**The belief was wrong, and that was the first finding.** Nothing has ever
+cached flyers by date. The index holds 120 days back and 45 ahead; the
+service worker keeps the last 200 day listings and the last 300 flyers it
+touched; the image proxy edge-caches each flyer for a month. "Six months"
+was the shape of the day-listings cache, not of images.
+
+**The slowness was a two-month-old bug.** The service worker's flyer cache
+re-inserts an entry on every hit to make the eviction LRU — delete, then
+put a clone. The clone was taken *after* the awaited delete, by which time
+the page was reading the body, so the clone threw and the delete stood.
+Every flyer was evicted the moment it was served and cached again only on
+the next view: resident on alternate visits only. F1 reproduced it with
+forty flyers (40, 0, 40, 0 entries across three reloads). The offline
+suite checked a first hit and never a second. Clone before returning, hold
+the worker open with `waitUntil`, and the suite now reloads three times.
+R2 spotted it by reading; F1 proved it. Whether RA's CDN rejects the
+direct, no-referrer load — which would make every flyer pay a failed round
+trip before the proxy — is still unknown and needs a phone's Network tab
+(readthis §0).
+
+**Five years, by the write door, not the cron.** The design, C1's with C2's
+corrections and the orchestrator's rulings: `HISTORY_BEHIND_DAYS = 1825` is
+a new constant used only by `isValidDate` (now `isCalendarDate` plus
+`isWithinHistory`), the search widening and health. The nightly backfill
+reads only the `SEARCH_` constants and was not edited, so it cannot walk
+the range — the trap C2 found was that simply widening
+`SEARCH_BEHIND_DAYS` would have had the cron fill 1,871 gaps at 60 a
+night, which is preloading by another name. A browsed day enters the index
+as it always did; a search queries the recent band and runs a second,
+index-ordered query over the older band only when the recent past has
+fewer than ten hits. The response gains `older: { days, oldest } | null`
+and the sheet says "Also searched N older nights you have browsed, back to
+Mar 2023." No button: the owner said "only access those if a user does a
+search", and a control that advertises an internal band is clutter.
+Coverage and the "thin" warning still mean the recent band — the older
+band is sparse by design and a ratio against 1,705 days would read as
+broken forever.
+
+**What rode along, because the audit found it.** The server's "today" was
+the UTC date everywhere (`ra.ts`, the SQL `current_date`s), so from about
+eight in the evening tonight's parties were filed as past; it is now the
+New York day, computed with `Intl`, passed into SQL as a parameter. Day
+fetches took one page of 50 and never read `totalResults`, so busy nights
+lost their tail in the index; now pages of 100, followed up to three.
+`/api/events?area=` would write any city into the index and vary the edge
+key; it is a `Set` of one now, refused before RA is asked. The degraded
+`stale: true` answer was a plain 200, so the worker's `response.ok` check
+never kept it out of the cache; the body is read now. Settled days (more
+than a week past) get a week at the edge; the worker keeps nights more than
+a month back in a cache-first `ra-history` with no revalidation, capped at
+400, so they neither compete with the live window's 200 places nor evict
+them. History days are not persisted to localStorage, get a ten-minute
+`gcTime`, and warm no flyers and prefetch no neighbours. The calendar is
+bounded to the range the server keeps, with the days outside it disabled,
+so the 400 is unreachable from the UI.
+
+**Deferred, with reasons in the transcript.** An `event_cache_day`
+completeness table (earns its keep when an artist "dig" ships, which needs
+an RA schema probe the sandbox cannot run); diff-on-refetch for cancelled
+events (unsafe while any page cap exists, and it touches `backfill.ts`); a
+trigram index (only if a five-year search exceeds ~300 ms; a hand-run
+extension); `search_words text[]` for whole-word expansions in SQL (a
+separate bug). The cron's own window edges are still UTC; it runs at 09:00
+UTC where the dates agree. Whether RA serves listings five years back is
+unverified: one tap on a 2022 date in production answers it.
+
+**The research.** R1's nine listener-facing features and R2's twelve
+platform ones are in ROADMAP as an unranked shortlist with costs; every
+account-shaped idea was rejected on sight. L1 found NYC baked into about
+thirty places, all tabled, and the data layer already keyed by RA's area
+id, so one deployment with a city switcher is 8–12 days; the area ids for
+Berlin, London, Ibiza and Detroit are unverified from a session.
+
+**Cost.** Six investigators ≈ 990k subagent tokens, two repairers ≈ 340k,
+no agent lost to a limit. Two Opus agents were the owner's explicit ask
+and were the most expensive and the most useful per token: R2's "things
+that look wrong" list found the flyer bug by reading.
+
 ## 4 · Map of the code
 
 ```
