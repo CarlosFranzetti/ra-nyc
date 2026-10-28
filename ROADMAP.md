@@ -26,6 +26,69 @@ on `/api/artist` (touches the bearer check, so it gets its own reviewed
 change); `load()` on the Mixcloud and Archive adapters; fuzzy-4 matching;
 relevance tiers; non-Latin names; a Skip affordance for an unplayable set.
 
+### Candidates from the 2026-10-28 research — unranked, owner to pick
+
+Two Opus researchers and one Haiku looked for what this app is overlooking
+(`docs/agent-transcript-2026-10-28.md`, sections 02, 03 and 05). Nothing
+here is committed to; it is the shortlist, with the researchers' cost
+estimates. Everything needing an account was rejected on sight.
+
+Listener-facing (R1):
+
+1. **Links that open a night or an event, plus Share.** `?date=` and
+   `?event=` in the address bar and `navigator.share` in the event sheet.
+   Today every URL opens tonight, so the P3 Open Graph item below has nothing
+   to preview. Keep the search term out of the URL. S–M.
+2. **After midnight, show what is still going.** `endTime` is fetched and
+   never shown; ended parties dim and sink, running ones read "until 6am".
+   Needs the New York timezone fix first. S.
+3. **"Also in NYC" on the artist and venue sheets.** The next dates for this
+   DJ or room, from the index, which already holds the ids. Brushes
+   `/api/search`'s rate-limit headers, so it is reviewed on sight. S–M.
+4. **Starred nights, on the device.** A star in the sheet, a mark on the rail
+   chip and the card. Safari may erase it after seven days unless installed;
+   say so. M.
+5. **The playlist survives the app being closed.** Save queue and position;
+   reopen paused, play on one tap, never autoplay. M.
+6. **DJs you have listened to, remembered without a button.** Earned from
+   the minute-listened counter the ticket rule already keeps; a quiet mark
+   on their name elsewhere; a "forget" row in Settings; never in analytics. M.
+7. **Subway directions** next to Uber and Lyft. S.
+8. **Add to calendar** (`.ics`, `TZID=America/New_York`). S.
+9. **Sleep timer** behind a long-press on pause; "end of this set" is the
+   reliable option. S.
+
+Platform and data (R2); RA field names are guesses from scrapers until
+probed the way `artistLinks.ts` probes them:
+
+10. **Ticket state on the card** — sold out, ticketed, price text. Display
+    only, hands off to RA. S–M.
+11. **A DJ's NYC history** — "23 NYC dates since 2021", debut, "back after
+    three years" — once the index holds five years. GIN index on the
+    `artists` jsonb. M.
+12. **A venue's calendar and history.** The index drops the venue id today;
+    add it. M.
+13. **Health reporting for the index** — a row per backfill run, RA errors
+    per field, `totalResults` versus rows stored. S.
+14. **Genres and promoters as data.** Would give the genre chip real data. M.
+15. **Trigram index on `search_key`** — needed if a five-year search ever
+    exceeds about 300 ms; a hand-run extension. S.
+16. **Calendar feeds per DJ or venue** (`webcal`) — "tell me when X plays"
+    with no login, no push, works on iOS. S–M.
+17. **Link previews per event** (`/e/:id` with `og:` tags from the index) —
+    the OG item below, without rendering images. M.
+18. Manifest shortcuts and share target (Chromium only); attendance over
+    time; a party's lineage; web push (L, and calendar feeds get most of it).
+
+Local versions (L1): NYC is baked into about thirty places, all listed in
+the transcript with file and line, and the data layer is already keyed by
+RA's area id. One deployment with a city switcher is the cheapest path,
+about 8–12 developer-days; one deployment per city gets its own install
+name and icon for 4–6 days plus a day per city. The RA area ids for Berlin,
+London, Ibiza and Detroit could not be verified from a session (Berlin is
+probably 34, London 13; Ibiza and Detroit unknown). "The name is the scope"
+still stands below until the owner says otherwise.
+
 ### Anchor dates to New York time — P1
 
 **Half done.** The rollover question is answered: `src/lib/night.ts` puts the
