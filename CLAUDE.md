@@ -35,17 +35,18 @@ Two exceptions, both narrow:
   the count, because the failure mode is not "a bug ships" but "money or a
   secret goes somewhere it should not".
 
-Last review: the theme-ladder / card-rhythm change. It found three real
-defects — a display face that never reached the settings preview because the
-rule was a descendant selector and the preview puts both classes on one
-element; a `.text-glow` left at the old radii while every box-shadow around it
-shrank; and a font weight fetched that nothing can set. All three fixed before
-merge. The cadence then widened from 5 to 7 to conserve tokens.
+Last review: landing 56, the logo double-tap (2026-10-28). One real defect —
+the double-tap fired on every second tap of the seventeen-tap hidden-screen
+run, refetching tonight and scrolling to the top eight times on the way —
+plus a check that could not fail (Chromium's `dblclick` never runs double-tap
+zoom, so `visualViewport.scale` was 1 with or without the fix) and a guessed
+600ms sleep. All three fixed before merge. The review before that, the
+theme-ladder / card-rhythm change, found three real defects too; so far every
+review has paid for itself.
 
-**Recount before deciding.** This note once recorded that review as "landing
-60"; the command above read **52** on 2026-10-26, so that number was wrong.
-The command is the truth, the note is not. Next review falls on the next
-multiple of seven the command reports.
+**Recount before deciding.** This note once recorded a review as "landing 60"
+when the command read **52**. The command is the truth, the note is not. Next
+review falls on the next multiple of seven the command reports, which is 63.
 
 ## Tests
 

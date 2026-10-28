@@ -473,6 +473,75 @@ check("and does not move type",
   await ctx.close();
 }
 
+// ── double-tap the logo: back to tonight, reloaded
+//
+// The way home from wherever the rail or the calendar took you. Two taps on
+// the wordmark select tonight's chip and fetch that night again, even if the
+// cache still thinks its copy is fresh — the reason you came back is "what is
+// on now".
+{
+  const hits = new Map();
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const p = await ctx.newPage();
+  await p.route("**/api/events*", (route) => {
+    const date = new URL(route.request().url()).searchParams.get("date");
+    if (date) hits.set(date, (hits.get(date) ?? 0) + 1);
+    return route.fulfill({ contentType: "application/json", body: PAYLOAD });
+  });
+  await p.route("**/images.ra.co/**", (route) => route.abort());
+  await p.goto(BASE, { waitUntil: "domcontentloaded" });
+  await p.waitForSelector("article", { timeout: 20000 });
+  await p.waitForTimeout(3500); // let the opening scan finish, so its fetches do not count
+
+  const selectedLabel = () => p.locator('button[aria-pressed="true"]').first().getAttribute("aria-label");
+  const tonight = await p.locator('button[aria-label^="Today, "]').getAttribute("aria-label");
+
+  // Go somewhere else first: the chip two to the right of tonight.
+  await p.locator('button[aria-label^="Today, "]').locator("xpath=following-sibling::button[2]").click();
+  await p.waitForTimeout(400);
+  const away = await selectedLabel();
+  check("a tap on another chip leaves tonight", away !== tonight, `${away}`);
+
+  // Tonight's key, with the 3:30am rollover copied as in the scan check above.
+  const now = new Date();
+  const night = new Date(now);
+  if (now.getHours() * 60 + now.getMinutes() < 3 * 60 + 30) night.setDate(night.getDate() - 1);
+  const todayKey = `${night.getFullYear()}-${String(night.getMonth() + 1).padStart(2, "0")}-${String(night.getDate()).padStart(2, "0")}`;
+  // Polls the Node-side counter rather than sleeping for a guessed interval:
+  // the container is slow and the fetch lands when it lands.
+  const hitsReach = async (n, ms = 8000) => {
+    const end = Date.now() + ms;
+    while ((hits.get(todayKey) ?? 0) < n && Date.now() < end) await p.waitForTimeout(100);
+    return hits.get(todayKey) ?? 0;
+  };
+
+  const before = hits.get(todayKey) ?? 0;
+  await p.locator("h1.logo").dblclick();
+  const after = await hitsReach(before + 1);
+  check("a double-tap on the logo comes back to tonight", (await selectedLabel()) === tonight, `${await selectedLabel()}`);
+  check("and asks for that night again", after === before + 1, `${todayKey}: ${before} -> ${after}`);
+
+  // Already on tonight: the query is active, so the same gesture refetches
+  // in place — once, not once per tap.
+  await p.waitForTimeout(500);
+  await p.locator("h1.logo").dblclick();
+  await hitsReach(after + 1);
+  await p.waitForTimeout(500); // room for a wrong second fetch to show up
+  check("a double-tap while on tonight fetches it again, exactly once", (hits.get(todayKey) ?? 0) === after + 1, `${after} -> ${hits.get(todayKey)}`);
+  check("and stays on tonight", (await selectedLabel()) === tonight);
+
+  // Chromium's dblclick is mouse events, so double-tap zoom never runs here
+  // and `visualViewport.scale` would pass with or without the fix. Assert the
+  // style Safari honours instead.
+  const logoStyle = await p.locator("h1.logo").evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { touchAction: s.touchAction, userSelect: s.userSelect || s.webkitUserSelect };
+  });
+  check("the logo opts out of double-tap zoom and text selection",
+    logoStyle.touchAction === "manipulation" && logoStyle.userSelect === "none", JSON.stringify(logoStyle));
+  await ctx.close();
+}
+
 // ── tap targets: big enough, and the same size whatever the preferences say
 //
 // The app had five different sizes for "an icon button", the smallest of them
