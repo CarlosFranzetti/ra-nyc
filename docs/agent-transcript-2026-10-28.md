@@ -448,3 +448,13 @@ Docs, ROADMAP, readthis and the ship stay with the orchestrator.
 > **(5) Needed from H1:** none; the client works whether or not `older` is present. The 1825/365 bounds and `LIVE_BEHIND_DAYS`/`LIVE_AHEAD_DAYS` are mirrored by hand and must stay in step with `api/_lib/ra.ts`.
 
 *(Orchestrator: 167,283 tokens, 39 tool uses, 8m 44s.)*
+
+## 12 · Orchestrator — verification and ship
+
+Both lanes verified independently. H1: `api/backfill.ts` untouched (confirmed by `git diff --name-only`), the events-endpoint diff read line by line — the area allowlist refuses before RA is asked and before `cacheEvents`, the 429 path is unchanged, the settled-day header applies only to dates more than seven days before the New York day. H2: the worker diff read line by line; one refinement by the orchestrator — `handleHistory` awaited the cache write and the key walk before returning, so a cold history day paid for storage before the page had its body and the `waitUntil` hold did nothing; the save now runs behind the response, clone taken first, `close` on every exit. Offline re-run on the final worker: 23/23.
+
+Full suite: typecheck clean; units 306; player 41; search 49; layout 49; preview 12; donate 9; settings 31; offline 23; playlist 55. The combined `test:all` run exited 1 only because the offline suite's static server found port 5871 still held by the suite before it (`EADDRINUSE`, the documented case); offline and playlist were re-run alone and passed.
+
+Cadence: `main` is at 56 landings; this merge is 57, not a multiple of seven. The diff changes no rate-limit header, no bearer check, nothing under donate or the image allowlist. No review.
+
+Commits on the branch over `c80f79f`: `dc541e5` (worker flyer fix), the docs checkpoint, the server lane, the client lane with docs. One PR, normal merge.
