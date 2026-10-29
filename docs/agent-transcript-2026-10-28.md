@@ -458,3 +458,13 @@ Full suite: typecheck clean; units 306; player 41; search 49; layout 49; preview
 Cadence: `main` is at 57 landings; this merge is 58, not a multiple of seven. The diff changes no rate-limit header, no bearer check, nothing under donate or the image allowlist. No review.
 
 Commits on the branch over `c80f79f`: `dc541e5` (worker flyer fix), the docs checkpoint, the server lane, the client lane with docs. One PR, normal merge.
+
+## 13 · Orchestrator — production
+
+PR #87 merged as `2cf94dc`; deployment `dpl_2p7B6ip96u1zvTXe8CQuiUZRYkBM` READY on `ra-nyc.vercel.app`. Checks via `web_fetch_vercel_url`:
+
+- `/api/health` → 200. `search` unchanged (165 of 166, 2026-06-30 → 2026-12-12). New `history: { days: 105, oldest: "2026-03-17", rows: 3333 }` — the older band already held 105 days from before the window moved, which C1 predicted ("rows that slide past 120 days are kept, because nothing deletes") and which the clamped health could not show until now.
+- `/api/search?q=sergio` → 200, four past hits newest first including the Crashbeat night that started the search work, `coverage { 164, 166 }`, and `older: { days: 106, oldest: "2026-03-17" }`.
+- `/api/events?date=2024-10-26` → 200, 111 events, not stale, `cache-control: public, max-age=3600` (the settled-day header; the edge-side `s-maxage` is stripped from the client view). **RA serves NYC listings two years back**, so the owner's open question in readthis §0 is answered for that depth; five years remains a one-tap check. That request also wrote the day into the index through the new write door — the first history day filled by browsing.
+
+Round 2 closed: six investigators ≈ 990k subagent tokens, two repairers ≈ 340k, one Sonnet review not due (landing 58).

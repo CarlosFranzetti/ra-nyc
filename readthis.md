@@ -48,7 +48,9 @@ Everything outstanding that needs a human.
   from a session; the sandbox cannot reach RA's CDN. The real slowness, the
   service worker throwing every flyer away the moment it served it, is fixed
   regardless.
-- **Does RA serve NYC listings five years back?** Open
+- **Does RA serve NYC listings five years back?** Two years back, yes: a
+  session fetched 2024-10-26 from production after the deploy and got 111
+  events. Five years is still unchecked. Open
   `ra-nyc.vercel.app` and pick a date from 2022 in the calendar. If the day
   loads, history works end to end; if it is empty for every old date, RA's
   listing query does not reach that far and the five-year window is only as
