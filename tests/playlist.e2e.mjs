@@ -985,6 +985,24 @@ async function panel(page) {
     }
   };
   const nextBtn = (page) => page.locator('button[aria-label="Next mix"]');
+  /** Like advance(), but stops as soon as `pred` holds. The notice is up for 4 s, so waiting for the next title is waiting it out. */
+  const advanceUntil = async (page, pred, max = 30000, step = 250) => {
+    for (let t = 0; t < max; t += step) {
+      if (await pred()) return true;
+      await page.clock.runFor(step);
+      await sleep(25);
+    }
+    return pred();
+  };
+  /** Real-time poll, for the sections that do not install a fake clock. */
+  const pollUntil = async (pred, ms) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (await pred()) return true;
+      await sleep(100);
+    }
+    return pred();
+  };
   const playing = (b) => b.playBtn === "Pause" && !b.spinner;
 
   {
@@ -999,11 +1017,13 @@ async function panel(page) {
     await advance(page, 15000);
     check("a Mixcloud set still loading at 15 s is not given up on", (await bar(page)).title === "Dead Mix");
     await advance(page, 6000);
-    const b = await until(page, (s) => s.title === "Live Mix", 3000);
-    check("a Mixcloud set that never becomes ready is skipped", b.title === "Live Mix", b.title);
-    check("and the notice names the set that was skipped", (await noticeOf(page)) === "skipped");
+    const skipping = await advanceUntil(page, async () => (await noticeOf(page)) === "skipped", 10000);
+    const shown = await bar(page);
+    check("a Mixcloud set that never becomes ready is skipped", skipping, `notice ${await noticeOf(page)}`);
+    check("and while the notice is up the bar names the skipped set", shown.title === "Dead Mix", shown.title);
     await advance(page, 5000);
     check("the notice clears itself", (await noticeOf(page)) === null);
+    check("and the next set is the one playing", (await bar(page)).title === "Live Mix", (await bar(page)).title);
     await context.close();
   }
   {
@@ -1034,10 +1054,13 @@ async function panel(page) {
     await waitBar(page);
     await advance(page, 2000);
     await nextBtn(page).click();
-    await advance(page, 21000);
-    const b = await until(page, (s) => s.title === "Third", 3000);
-    check("a SoundCloud load() that never calls back is skipped", b.title === "Third", b.title);
+    const skipping = await advanceUntil(page, async () => (await noticeOf(page)) === "skipped", 30000);
+    const stuck = await bar(page);
+    check("a SoundCloud load() that never calls back is skipped", skipping && stuck.title === "Stuck", stuck.title);
     check("with a notice", (await noticeOf(page)) === "skipped");
+    await advance(page, 5000);
+    const b = await until(page, (s) => s.title === "Third", 3000);
+    check("and the next set plays once the notice clears", b.title === "Third", b.title);
     await context.close();
   }
   {
@@ -1051,11 +1074,13 @@ async function panel(page) {
     await waitBar(page);
     await until(page, playing);
     await nextBtn(page).click();
-    const b = await until(page, (s) => s.title === "Third" && playing(s), 6000);
-    check("a widget error is skipped", b.title === "Third" && playing(b), `${b.title} ${b.playBtn}`);
+    const gated = await pollUntil(async () => (await noticeOf(page)) === "skipped", 6000);
+    const during = await until(page, playing, 6000);
+    check("a widget error is skipped", gated && during.title === "Broken" && playing(during), `${during.title} ${during.playBtn}`);
     check("and the notice is up while the next set plays", (await noticeOf(page)) === "skipped");
     await sleep(4600);
     check("then it goes", (await noticeOf(page)) === null);
+    check("and the next set is the one playing", (await bar(page)).title === "Third" && playing(await bar(page)), (await bar(page)).title);
     await context.close();
   }
   {
@@ -1218,6 +1243,14 @@ async function panel(page) {
     }
   };
   const playing = (b) => b.playBtn === "Pause" && !b.spinner;
+  const advanceUntil = async (page, pred, max = 30000, step = 250) => {
+    for (let t = 0; t < max; t += step) {
+      if (await pred()) return true;
+      await page.clock.runFor(step);
+      await sleep(25);
+    }
+    return pred();
+  };
   /** The bar's own copy, notice state and scrubber, read off the DOM. */
   const barNow = (page) =>
     page.evaluate(() => {
@@ -1248,14 +1281,14 @@ async function panel(page) {
     await waitBar(page);
     await advance(page, 1000);
     const quiet = await barNow(page);
-    await advance(page, 20000);
+    await advanceUntil(page, async () => (await barNow(page)).notice === "skipped", 30000);
     const skipped = await barNow(page);
     check("a skipped set: the bar says skipping, under the skipped set's own name",
       skipped.notice === "skipped" && skipped.title === "Dead Mix" && /skipping/.test(skipped.sub ?? ""),
       JSON.stringify({ notice: skipped.notice, title: skipped.title, sub: skipped.sub }));
     check("and the scrubber is hidden while the notice is up", skipped.seekOpacity === "0", `opacity ${skipped.seekOpacity}`);
     check("and the drain animation runs on the bar's top edge", skipped.drain === "skip-drain", `animationName ${skipped.drain}`);
-    await advance(page, 4500);
+    await advanceUntil(page, async () => (await barNow(page)).notice === null, 10000);
     const after = await barNow(page);
     check("after the notice clears the bar has no notice", after.notice === null, `notice ${after.notice}`);
     check("the bar is the same height once the notice clears", after.height === quiet.height, `${quiet.height} -> ${after.height}`);
