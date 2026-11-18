@@ -44,6 +44,9 @@ function findChromium() {
   ].filter(Boolean);
   const binaries = [
     ["chrome-linux", "chrome"],
+    // Newer Playwright builds unpack to `chrome-linux64`; the cloud container
+    // moved to one and every suite stopped finding its browser.
+    ["chrome-linux64", "chrome"],
     ["chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"],
     ["chrome-win", "chrome.exe"],
   ];
