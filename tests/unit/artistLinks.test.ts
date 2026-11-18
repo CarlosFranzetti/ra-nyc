@@ -12,6 +12,7 @@ import {
   isStaleRow,
   isTransient,
   orderSets,
+  RESOLVER_EPOCH,
   resolveRa,
   searchName,
   titleMentions,
@@ -281,9 +282,14 @@ beforeEach(() => {
   // feature, and it is noise here. Tests that read the log spy on it again.
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "info").mockImplementation(() => {});
+  // After the resolver epoch, and fixed, so "a row from a moment ago" is fresh
+  // whatever day the suite runs; only `Date` is faked.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2027-01-15T12:00:00Z"));
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
@@ -357,6 +363,28 @@ describe("isStaleRow (B2)", () => {
   it("expires a resolved row after ninety days, not before", () => {
     expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: ago(30 * DAY) })).toBe(false);
     expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: ago(91 * DAY) })).toBe(true);
+  });
+
+  it("treats a row from before the resolver epoch as stale, however recent and however full", () => {
+    const at = (iso: string) => Date.parse(iso);
+    const october = "2026-10-20T12:00:00Z";
+    expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: october }, at("2026-11-20T00:00:00Z"))).toBe(true);
+    // A row from the day before the epoch is stale on the day after it, though a day old.
+    expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: "2026-11-18T23:00:00Z" }, at("2026-11-19T01:00:00Z"))).toBe(true);
+    expect(isStaleRow({ link_source: "none", sets: [], resolved_at: october }, at("2026-10-21T00:00:00Z"))).toBe(true);
+  });
+
+  it("keeps the ninety days for a row resolved after the epoch", () => {
+    const resolved = "2026-11-20T12:00:00Z";
+    const day = 24 * 3_600_000;
+    const base = Date.parse(resolved);
+    expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: resolved }, base + 30 * day)).toBe(false);
+    expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: resolved }, base + 91 * day)).toBe(true);
+    expect(Date.parse(RESOLVER_EPOCH)).toBeLessThan(base);
+  });
+
+  it("never expires a manual row, not even one from 2025", () => {
+    expect(isStaleRow({ link_source: "manual", sets: some, resolved_at: "2025-03-01T00:00:00Z" })).toBe(false);
   });
 
   it("never expires a human's correction", () => {
@@ -921,17 +949,25 @@ const scLog = (): Record<string, unknown> | undefined =>
     | undefined;
 
 describe("PENELOPE: an accepted account with nothing to play", () => {
+  // The biography never mentions Kiosk, as the real one does not.
   const BIO =
-    "French-born, lived in Berlin, based in Lisbon since 2018. Founder of the oDYSea parties and a " +
-    "regular on Kiosk Radio. Releases on Tresydos.";
+    "French-born, lived in Berlin, based in Lisbon since 2018. Founder of the oDYSea parties. " +
+    "Releases on Tresydos.";
+  /** The real upload: no evidence term in its title, tags or description. */
   const kioskSet = (extra: Record<string, unknown> = {}) =>
     track(21, "heads up w penelope", {
       permalink_url: "https://soundcloud.com/kioskradio/heads-up-w-penelope",
       user: { id: 9, username: "Kiosk Radio", permalink: "kioskradio" },
       ...extra,
     });
+  const songs = Array.from({ length: 5 }, (_, i) => track(300 + i, `Penelope (song ${i})`, { duration: 4 * MINUTE }));
 
+  /**
+   * `longHits` answer only the search that asks for long tracks, as SoundCloud
+   * would; the plain search for the bare name returns songs.
+   */
   const penelope = (options: {
+    longHits?: unknown[];
     evidenceHits?: unknown[];
     archive?: { identifier: string; title: string }[];
   }) =>
@@ -947,27 +983,52 @@ describe("PENELOPE: an accepted account with nothing to play", () => {
       ],
       [
         "api-v2.soundcloud.com/search/tracks",
-        (url) => ({
-          collection: /kiosk|odysea/i.test(queryOf(url)) ? (options.evidenceHits ?? []) : [],
-        }),
+        (url) => {
+          if (url.includes("filter.duration=epic")) return { collection: options.longHits ?? [] };
+          if (/odysea|tresydos/i.test(queryOf(url))) return { collection: options.evidenceHits ?? [] };
+          return { collection: songs };
+        },
       ],
       ["api.mixcloud.com/search/", () => ({ data: [] })],
       ["archive.org", () => ({ response: { docs: options.archive ?? [] } })],
     ]);
 
-  it("lists the radio set found by name plus evidence, and never asks the Archive", async () => {
-    const calls = penelope({ evidenceHits: [kioskSet()] });
+  it("lists the Kiosk set through the long-form search and the trusted channel, with no evidence term", async () => {
+    const calls = penelope({ longHits: [kioskSet({ duration: 25 * MINUTE })] });
     const { links } = await getArtistLinks("74814", "Penelope (2)");
 
     expect(links.sets.map((s) => s.title)).toEqual(["heads up w penelope"]);
     expect(links.sets.every((s) => s.provider === "soundcloud")).toBe(true);
     expect(calls.some((u) => u.includes("archive.org"))).toBe(false);
-    // The query is the name beside a thing the biography named.
-    const asked = calls.filter((u) => u.includes("search/tracks")).map((u) => queryOf(u).toLowerCase());
-    expect(asked).toContain("penelope odysea");
-    expect(asked).toContain("penelope kiosk radio");
+    // Both searches were made: the plain one and the long-form one.
+    const bare = calls.filter((u) => u.includes("search/tracks") && queryOf(u) === "Penelope");
+    expect(bare).toHaveLength(2);
+    expect(bare.filter((u) => u.includes("filter.duration=epic"))).toHaveLength(1);
     // The account is still offered, as a link.
     expect(links.soundcloudUrl).toBe("https://soundcloud.com/penelope_sound");
+  });
+
+  it("rejects the same upload from an unknown uploader with no evidence at 25 minutes", async () => {
+    penelope({
+      longHits: [
+        kioskSet({ duration: 25 * MINUTE, user: { id: 8, username: "Some Blog", permalink: "someblog" } }),
+      ],
+    });
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+    expect(links.sets).toEqual([]);
+    expect(scLog()!.rejected as string[]).toContain("heads up w penelope (short)");
+  });
+
+  it("asks for evidence-term searches too, from the oDYSea and Tresydos of the biography", async () => {
+    const calls = penelope({
+      evidenceHits: [
+        kioskSet({ id: 22, title: "Penelope live mix, oDYSea night", duration: 25 * MINUTE, user: { id: 8, username: "Some Blog", permalink: "someblog" } }),
+      ],
+    });
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+    const asked = calls.filter((u) => u.includes("search/tracks")).map((u) => queryOf(u).toLowerCase());
+    expect(asked).toContain("penelope odysea");
+    expect(links.sets.map((s) => s.id)).toEqual(["sc-22"]);
   });
 
   it("rejects the Archive's Penelope Moro and the entrevista when nothing else is found", async () => {
@@ -995,19 +1056,24 @@ describe("PENELOPE: an accepted account with nothing to play", () => {
     expect(links.sets.map((s) => s.id).sort()).toEqual(["ia-ok1", "ia-ok2"]);
   });
 
-  it("holds a 20 to 45 minute upload to the set-word rule, and refuses interviews", async () => {
+  it("holds a 20 to 45 minute upload to the rules, and refuses interviews", async () => {
+    const other = { id: 8, username: "Some Blog", permalink: "someblog" };
     penelope({
       evidenceHits: [
-        kioskSet({ id: 31, title: "penelope @ kiosk radio", duration: 25 * MINUTE }),
-        kioskSet({ id: 32, title: "Penelope - oDYSea", duration: 25 * MINUTE }),
-        kioskSet({ id: 33, title: "Interview with Penelope for Kiosk Radio", duration: 25 * MINUTE }),
-        kioskSet({ id: 34, title: "Entrevista a Penelope, Kiosk Radio", duration: 2 * HOUR_MS }),
-        kioskSet({ id: 35, title: "Penelope live mix, Kiosk Radio", duration: 2 * HOUR_MS }),
-        kioskSet({ id: 36, title: "penelope @ kiosk radio", duration: 15 * MINUTE }),
+        kioskSet({ id: 31, title: "penelope @ oDYSea", duration: 25 * MINUTE, user: other }),
+        kioskSet({ id: 32, title: "Penelope - oDYSea", duration: 25 * MINUTE, user: other }),
+        kioskSet({ id: 33, title: "Interview with Penelope for oDYSea", duration: 25 * MINUTE }),
+        kioskSet({ id: 34, title: "Entrevista a Penelope, oDYSea", duration: 2 * HOUR_MS }),
+        kioskSet({ id: 35, title: "Penelope live mix, oDYSea", duration: 2 * HOUR_MS, user: other }),
+        kioskSet({ id: 36, title: "penelope @ oDYSea", duration: 15 * MINUTE, user: other }),
+        // A trusted channel needs no set word, but still an upload of 20 minutes and no interview.
+        kioskSet({ id: 37, title: "Penelope", duration: 25 * MINUTE }),
+        kioskSet({ id: 38, title: "Penelope", duration: 12 * MINUTE }),
+        kioskSet({ id: 39, title: "Penelope in conversation", duration: 40 * MINUTE }),
       ],
     });
     const { links } = await getArtistLinks("74814", "Penelope (2)");
-    expect(links.sets.map((s) => s.id).sort()).toEqual(["sc-31", "sc-35"]);
+    expect(links.sets.map((s) => s.id).sort()).toEqual(["sc-31", "sc-35", "sc-37"]);
   });
 
   it("does not lower the floor for the artist's own account", async () => {
@@ -1019,7 +1085,7 @@ describe("PENELOPE: an accepted account with nothing to play", () => {
         "api-v2.soundcloud.com/search/tracks",
         () => ({
           collection: [
-            track(41, "penelope @ kiosk radio", { duration: 25 * MINUTE, user: { id: 1, username: "Penelope" } }),
+            track(41, "penelope @ oDYSea", { duration: 25 * MINUTE, user: { id: 1, username: "Penelope" } }),
           ],
         }),
       ],
@@ -1029,13 +1095,23 @@ describe("PENELOPE: an accepted account with nothing to play", () => {
     expect(links.sets).toEqual([]);
   });
 
-  it("logs one diagnostic line per cold resolve: account, counts, and why titles were rejected", async () => {
-    penelope({ evidenceHits: [kioskSet({ id: 51, title: "Penelope lifestyle vlog", duration: 90 * MINUTE })] });
+  it("logs one diagnostic line per cold resolve: account, counts per search, and why titles were rejected", async () => {
+    penelope({ longHits: [kioskSet({ id: 51, title: "Penelope lifestyle vlog", duration: 90 * MINUTE })] });
     await getArtistLinks("74814", "Penelope (2)");
     const infos = vi.mocked(console.info).mock.calls.filter((c) => c[0] === "[sc] resolve");
     expect(infos).toHaveLength(1);
     const line = scLog()!;
-    expect(line).toMatchObject({ artist: "Penelope", account: 1, confirmed: false, common: true, own: 1, ownAtFloor: 0 });
+    expect(line).toMatchObject({
+      artist: "Penelope",
+      account: 1,
+      confirmed: false,
+      common: true,
+      own: 1,
+      ownAtFloor: 0,
+      scoped: 5,
+      scopedLong: 1,
+      scopedLongAtFloor: 1,
+    });
     expect((line.rejected as string[]).length).toBeLessThanOrEqual(10);
     expect((line.rejected as string[]).join("|")).toMatch(/Some single \(name not in title\)/);
   });
@@ -1078,6 +1154,71 @@ describe("HUGO: an account named Hugo, and feedbk", () => {
       ["api.mixcloud.com/search/", () => ({ data: [] })],
       ["archive.org", () => ({ response: { docs: [] } })],
     ]);
+
+  it("accepts a bare 'Hugo' on The Lot Radio, ranked below a set that carries evidence; rejects an audiobook", async () => {
+    sql.state.index = FEEDBK;
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/hugo-dj-usa" } }),
+      ["api-v2.soundcloud.com/search/users", () => ({ collection: [] })],
+      [
+        "api-v2.soundcloud.com/search/tracks",
+        (url) => {
+          if (url.includes("filter.duration=epic")) {
+            return {
+              collection: [
+                track(71, "Hugo", {
+                  duration: 60 * MINUTE,
+                  created_at: "2026-11-01T00:00:00Z",
+                  user: { id: 80, username: "The Lot Radio", permalink: "thelotradio" },
+                }),
+                track(72, "Victor Hugo - Les Misérables (audiobook) part 3", {
+                  duration: 55 * MINUTE,
+                  user: { id: 81, username: "Classic Books", permalink: "classicbooks" },
+                }),
+              ],
+            };
+          }
+          if (/feedbk/i.test(queryOf(url))) {
+            return {
+              collection: [
+                track(61, "feedbk w/ Hugo", {
+                  duration: 70 * MINUTE,
+                  created_at: "2026-09-01T00:00:00Z",
+                  user: { id: 77, username: "feedbk", permalink: "feedbk" },
+                }),
+              ],
+            };
+          }
+          return { collection: [] };
+        },
+      ],
+      ...NOTHING.filter(([needle]) => !needle.includes("search/")),
+      ["api.mixcloud.com/search/", () => ({ data: [] })],
+    ]);
+    const { links } = await getArtistLinks("106141", "Hugo (US)");
+    // The newer Lot Radio set is listed after the older one that carries feedbk.
+    expect(links.sets.map((s) => s.id)).toEqual(["sc-61", "sc-71"]);
+    expect(scLog()).toMatchObject({ confirmed: false, weak: 1 });
+  });
+
+  it("never lets a trusted channel confirm an account", async () => {
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/hugo-dj-usa" } }),
+      ["api-v2.soundcloud.com/search/users", () => ({ collection: [scAccount(5, "Hugo", "itshugo")] })],
+      ["api-v2.soundcloud.com/users/5/tracks", () => ({ collection: [track(52, "Untitled mix", { duration: 2 * HOUR_MS })] })],
+      [
+        "api-v2.soundcloud.com/search/tracks",
+        () => ({
+          collection: [track(71, "Hugo", { duration: 60 * MINUTE, user: { id: 80, username: "The Lot Radio", permalink: "thelotradio" } })],
+        }),
+      ],
+      ...NOTHING.filter(([needle]) => !needle.includes("search/")),
+      ["api.mixcloud.com/search/", () => ({ data: [] })],
+    ]);
+    const { links } = await getArtistLinks("106141", "Hugo (US)");
+    expect(scLog()).toMatchObject({ confirmed: false });
+    expect(links.sets.map((s) => s.id)).toEqual(["sc-71"]);
+  });
 
   it("passes 'feedbk w/ Hugo' on the strength of the index, and rejects the four-minute song", async () => {
     sql.state.index = FEEDBK;
@@ -1131,6 +1272,7 @@ describe("HUGO: an account named Hugo, and feedbk", () => {
     stubHugo(hugo(null));
     expect((await getArtistLinks("106141", "Hugo (US)")).degraded).toBe(false);
 
+    vi.useRealTimers();
     vi.useFakeTimers();
     try {
       sql.query.mockImplementationOnce(() => new Promise(() => {}));
@@ -1299,6 +1441,8 @@ describe("BIO: web addresses are removed, handles are kept as evidence", () => {
 
 describe("BUDGET: no upstream is allowed to hold the function past its bounds", () => {
   it("returns within 3 + 7 + 4 seconds when every upstream hangs, degraded and uncached", async () => {
+    // The file's own hooks fake only `Date`; this test needs every timer.
+    vi.useRealTimers();
     vi.useFakeTimers();
     try {
       vi.stubGlobal(
@@ -1326,7 +1470,7 @@ describe("BUDGET: no upstream is allowed to hold the function past its bounds", 
     }
   });
 
-  it("spends at most eight SoundCloud requests on a cold resolve, all in the one window", async () => {
+  it("spends at most nine SoundCloud requests on a cold resolve, all in the one window", async () => {
     sql.state.index = [
       { title: "A party", venue_name: "Nowadays" },
       { title: "Another", venue_name: "Elsewhere" },
@@ -1339,7 +1483,7 @@ describe("BUDGET: no upstream is allowed to hold the function past its bounds", 
       ...NOTHING,
     ]);
     await getArtistLinks("1", "h0l0");
-    expect(calls.filter((u) => u.includes("soundcloud.com")).length).toBeLessThanOrEqual(8);
+    expect(calls.filter((u) => u.includes("soundcloud.com")).length).toBeLessThanOrEqual(9);
   });
 });
 
