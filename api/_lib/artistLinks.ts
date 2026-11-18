@@ -1768,8 +1768,15 @@ const AUTO_ROW_TTL_MS = 90 * 24 * 60 * 60 * 1000;
  * **Bump this by hand** whenever a change to the resolver should reach artists
  * who already have an answer: new account rules, a new source, a removed one.
  * Without it a better resolver does nothing for anyone for up to ninety days.
+ *
+ * **It must already be in the past when the change deploys.** It was first
+ * written as the coming midnight, which reads tidily and is wrong: every row
+ * the new resolver wrote between the deploy and midnight would have been
+ * stamped earlier than the epoch, judged stale, and resolved again on every
+ * single view until the clock caught up. Set it to a moment before the
+ * deploy, not a round date after it.
  */
-export const RESOLVER_EPOCH = "2026-11-19T00:00:00Z";
+export const RESOLVER_EPOCH = "2026-11-18T21:00:00Z";
 
 interface ArtistRow {
   ra_artist_id: string;

@@ -369,8 +369,8 @@ describe("isStaleRow (B2)", () => {
     const at = (iso: string) => Date.parse(iso);
     const october = "2026-10-20T12:00:00Z";
     expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: october }, at("2026-11-20T00:00:00Z"))).toBe(true);
-    // A row from the day before the epoch is stale on the day after it, though a day old.
-    expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: "2026-11-18T23:00:00Z" }, at("2026-11-19T01:00:00Z"))).toBe(true);
+    // A row from an hour before the epoch is stale an hour after it, though two hours old.
+    expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: "2026-11-18T20:00:00Z" }, at("2026-11-18T22:00:00Z"))).toBe(true);
     expect(isStaleRow({ link_source: "none", sets: [], resolved_at: october }, at("2026-10-21T00:00:00Z"))).toBe(true);
   });
 
@@ -381,6 +381,13 @@ describe("isStaleRow (B2)", () => {
     expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: resolved }, base + 30 * day)).toBe(false);
     expect(isStaleRow({ link_source: "auto", sets: some, resolved_at: resolved }, base + 91 * day)).toBe(true);
     expect(Date.parse(RESOLVER_EPOCH)).toBeLessThan(base);
+  });
+
+  it("has an epoch that is already in the past", () => {
+    // A future epoch reads tidily and makes every freshly written row stale
+    // until the clock reaches it: resolved, stored, thrown away, resolved
+    // again, on every view. It was first written as the coming midnight.
+    expect(Date.parse(RESOLVER_EPOCH)).toBeLessThan(Date.now());
   });
 
   it("never expires a manual row, not even one from 2025", () => {
