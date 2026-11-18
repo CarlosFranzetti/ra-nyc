@@ -164,7 +164,7 @@ function EventCardRow({ event, onSelect, showDate = false }: EventCardProps) {
                 right edge by `ml-auto`, in the same column down the whole
                 list. */}
             {event.startTime && (
-              <span className="card-time flex flex-shrink-0 items-center gap-[0.3em]">
+              <span className="flex flex-shrink-0 items-center gap-[0.3em]">
                 <Clock className="h-[12px] w-[12px] flex-shrink-0" />
                 {showDate && `${formatEventDay(event.date)}, `}
                 {formatTime(event.startTime)}

@@ -540,6 +540,107 @@ await page.waitForTimeout(500);
 const seeked = await at();
 check("seek jumps the playhead", seeked >= 1795 && seeked < 1830, `${seeked}s`);
 
+// ── Transport fixes (scrubber hit area, inset track, bubble over the thumb) and
+//    the settings sheet clearing the docked bar on a small phone.
+await page.setViewportSize({ width: 375, height: 667 });
+for (let i = 0; i < 3; i++) { await page.keyboard.press("Escape"); await page.waitForTimeout(250); }
+await page.waitForTimeout(500);
+{
+  const geo = await page.evaluate(() => {
+    const input = document.querySelector('input[aria-label="Seek"]');
+    const r = input.getBoundingClientRect();
+    const bar = input.closest("div.fixed").getBoundingClientRect();
+    return { x: r.x, right: r.right, height: r.height, vw: window.innerWidth, barTop: bar.top };
+  });
+  check("the scrubber's touch target is 44px tall", Math.round(geo.height) === 44, `${geo.height}px`);
+  check("the thumb's centre never comes within 20px of a screen edge",
+    geo.x + 6 >= 19.5 && geo.vw - (geo.right - 6) >= 19.5, `centre runs ${geo.x + 6}..${geo.right - 6} of ${geo.vw}`);
+
+  const hit = await page.evaluate(() => {
+    const play = document.querySelector('button[aria-label="Play"], button[aria-label="Pause"]').getBoundingClientRect();
+    const el = document.elementFromPoint(play.x + play.width / 2, play.top + 2);
+    return el?.closest("button")?.getAttribute("aria-label") ?? el?.tagName;
+  });
+  check("the taller scrubber does not steal the top edge of the play button", hit === "Pause" || hit === "Play", String(hit));
+
+  const input = await seek.boundingBox();
+  const value = await at();
+  const max = Number(await seek.getAttribute("max"));
+  const thumbX = input.x + 6 + (input.width - 12) * (value / max);
+  const midY = input.y + input.height / 2;
+  await page.mouse.move(thumbX, midY);
+  await page.mouse.down();
+  await page.mouse.move(input.x + input.width * 0.6, midY, { steps: 6 });
+  await page.waitForTimeout(150);
+  const bubble = await page.evaluate(() => {
+    const b = document.querySelector("[data-scrub-bubble]");
+    const input = document.querySelector('input[aria-label="Seek"]');
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    const i = input.getBoundingClientRect();
+    const frac = Number(input.value) / Number(input.max);
+    return { cx: r.x + r.width / 2, thumb: i.x + 6 + (i.width - 12) * frac, left: r.x, right: r.right, vw: window.innerWidth };
+  });
+  await page.mouse.up();
+  check("the drag bubble sits over the thumb and stays inside the bar",
+    bubble && Math.abs(bubble.cx - bubble.thumb) < 4 && bubble.left >= 0 && bubble.right <= bubble.vw, JSON.stringify(bubble));
+}
+
+// Notice states, driven through the test hook until the watchdog's context field lands.
+const notice = (detail) => page.evaluate((d) => window.dispatchEvent(new CustomEvent("ra-test-notice", { detail: d })), detail);
+const barState = () =>
+  page.evaluate(() => {
+    const bar = document.querySelector("div.fixed[data-notice], div.fixed.player-live");
+    const rng = document.querySelector('input[aria-label="Seek"]');
+    return {
+      kind: bar?.getAttribute("data-notice") ?? null,
+      title: bar?.querySelector(".player-title")?.textContent,
+      sub: bar?.querySelector(".player-sub")?.textContent,
+      rangeOpacity: rng ? getComputedStyle(rng).opacity : null,
+      anim: getComputedStyle(bar, "::before").animationName,
+    };
+  });
+const heightBefore = await barHeight();
+await notice({ kind: "skipped", title: "Skipped Set Name", reason: "timeout" });
+await page.waitForTimeout(200);
+const skipped = await barState();
+check("a skipped set shows its own name, a quiet reason, and hides the scrubber",
+  skipped.kind === "skipped" && skipped.title === "Skipped Set Name" && /skipping/.test(skipped.sub) &&
+    skipped.rangeOpacity === "0" && skipped.anim === "skip-drain", JSON.stringify(skipped));
+await notice({ kind: "blocked", title: "Stopped", reason: "stalled" });
+await page.waitForTimeout(200);
+const blocked = await barState();
+check("a blocked queue says tap play, with no drain animation",
+  blocked.kind === "blocked" && blocked.sub === "Tap play to continue" && blocked.anim === "none", JSON.stringify(blocked));
+await notice(null);
+await page.waitForTimeout(200);
+check("and clearing the notice restores the bar at the same height",
+  (await barState()).kind === null && (await barHeight()) === heightBefore, `${heightBefore}px`);
+
+// Settings sheet over the docked bar at 375x667: the last row must be reachable.
+await page.locator('button[aria-label="Customize"]').click();
+await page.waitForTimeout(800);
+await page.evaluate(() => {
+  const c = document.querySelector("[data-controls]");
+  let el = c;
+  while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
+  el?.scrollTo(0, 99999);
+});
+await page.waitForTimeout(400);
+const clear = await page.evaluate(() => {
+  const barTop = document.querySelector('input[aria-label="Seek"]').closest("div.fixed").getBoundingClientRect().top;
+  const reset = [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Reset");
+  const last = [...document.querySelectorAll("[data-controls] a, [data-controls] button")].pop();
+  const r = reset.getBoundingClientRect();
+  const l = last.getBoundingClientRect();
+  return { resetBottom: r.bottom, lastBottom: l.bottom, barTop, resetH: r.height };
+});
+check("settings: Reset and the last row clear the docked bar at 375x667",
+  clear.resetBottom <= clear.barTop && clear.lastBottom <= clear.barTop + 1 && clear.resetH >= 44, JSON.stringify(clear));
+await page.keyboard.press("Escape");
+await page.waitForTimeout(400);
+await page.setViewportSize({ width: 390, height: 844 });
+
 // ── teardown
 await page.locator('button[aria-label="Close player"]').click();
 await page.waitForTimeout(400);

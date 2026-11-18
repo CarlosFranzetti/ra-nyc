@@ -43,7 +43,19 @@ const controlClass =
  * owned by PlayerProvider, which is what lets a set keep playing while sheets
  * open and close over the top of it.
  */
+/**
+ * Shape of the notice Pax is adding to the player context. Declared locally and
+ * read defensively so this branch and his merge cleanly in either order; the
+ * orchestrator swaps in the exported type after the merge.
+ */
+type PlayerNotice = {
+  kind: "skipped" | "blocked";
+  title: string;
+  reason: "timeout" | "error" | "stalled";
+};
+
 export function PlayerBar() {
+  const player = usePlayer();
   const {
     current,
     artistName,
@@ -67,7 +79,18 @@ export function PlayerBar() {
     stop,
     jumpTo,
     removeAt,
-  } = usePlayer();
+  } = player;
+  // Orchestrator: replace this cast with `player.notice` once the context exports it.
+  const contextNotice = (player as { notice?: PlayerNotice | null }).notice ?? null;
+  // TEST HOOK, remove after the merge: lets a suite drive the notice before the
+  // watchdog exists, by dispatching `ra-test-notice` with a PlayerNotice or null.
+  const [testNotice, setTestNotice] = useState<PlayerNotice | null>(null);
+  useEffect(() => {
+    const on = (event: Event) => setTestNotice((event as CustomEvent<PlayerNotice | null>).detail);
+    window.addEventListener("ra-test-notice", on);
+    return () => window.removeEventListener("ra-test-notice", on);
+  }, []);
+  const notice = contextNotice ?? testNotice;
 
   const ticketsVisible = shouldOfferTickets(source, listened);
 
@@ -202,6 +225,11 @@ export function PlayerBar() {
   const percent = length > 0 ? Math.min(100, (shown / length) * 100) : 0;
 
   const subtitle =
+    (notice?.kind === "skipped"
+      ? "Can\u2019t play this one \u00b7 skipping\u2026"
+      : notice?.kind === "blocked"
+        ? "Tap play to continue"
+        : null) ??
     error ??
     [
       artistName,
@@ -248,6 +276,7 @@ export function PlayerBar() {
         "player-live pointer-events-auto fixed inset-x-0 bottom-0 z-[70] border-t-2 border-primary/70 bg-background/95 pb-safe backdrop-blur-lg",
         "player-enter",
       )}
+      data-notice={notice?.kind}
     >
       {/* The playlist.
 
@@ -359,7 +388,7 @@ export function PlayerBar() {
           aria-label="Seek"
           aria-valuetext={`${formatClock(shown)} of ${formatClock(duration)}`}
           style={{ "--progress": `${percent}%` } as React.CSSProperties}
-          className="player-range absolute inset-x-0 -top-[9px] z-10 w-full"
+          className="player-range absolute -top-[21px] left-[14px] z-10 w-[calc(100%-28px)]"
         />
 
         {/* Only while dragging. A clock that is always on screen is a clock you
@@ -370,10 +399,17 @@ export function PlayerBar() {
              line, which is right for one font size; at the largest text size the
              bubble grows downward into the bar. */
           <div
-            className="pointer-events-none absolute inset-x-0 flex justify-center"
-            style={{ bottom: "calc(100% + 0.75rem)" }}
+            data-scrub-bubble
+            className="pointer-events-none absolute"
+            style={{
+              bottom: "calc(100% + 0.75rem)",
+              // Over the thumb: its centre runs 20px..(100% - 20px) (track inset
+              // 14px, thumb 12px), clamped so the bubble stays inside the bar.
+              left: `clamp(52px, calc(20px + (100% - 40px) * ${percent / 100}), calc(100% - 52px))`,
+              transform: "translateX(-50%)",
+            }}
           >
-            <span className="rounded-full bg-secondary px-2 py-0.5 text-[0.625rem] font-medium tabular-nums text-foreground shadow-lg">
+            <span className="block min-w-[88px] text-center rounded-full bg-secondary px-2 py-0.5 text-[0.625rem] font-medium tabular-nums text-foreground shadow-lg">
               {formatClock(shown)} / {formatClock(duration)}
             </span>
           </div>
@@ -383,7 +419,7 @@ export function PlayerBar() {
       {/* No vertical padding: the play button sets the row's height on its own,
           and padding on top of it was making the bar *taller* than the two rows
           it replaced — which is the opposite of the point. */}
-      <div className="shell flex items-center gap-1 px-2">
+      <div className="shell pointer-events-none relative z-20 flex items-center gap-1 px-2 [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
         <button
           onClick={previous}
           disabled={!hasPrevious}
@@ -428,7 +464,7 @@ export function PlayerBar() {
 
         <div className="mx-1 min-w-0 flex-1">
           <p className="player-title truncate text-[0.8125rem] font-medium leading-tight text-foreground">
-            {current.title}
+            {notice?.kind === "skipped" ? notice.title : current.title}
           </p>
           <p
             className={cn(

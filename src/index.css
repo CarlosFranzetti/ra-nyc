@@ -1110,7 +1110,9 @@ html {
 .player-range {
   -webkit-appearance: none;
   appearance: none;
-  height: 20px;
+  /* 44px hit area, centred on the 3px track; the transport row paints above the
+     lower half (z-20) so it never steals a tap from the buttons. */
+  height: 44px;
   background: transparent;
   cursor: pointer;
 }
@@ -1311,23 +1313,23 @@ html {
 .face-poster .type-headline, .face-poster h3 { font-size: 0.8125rem; line-height: 1.2; }
 .face-mono h3, .face-mono .type-headline { font-weight: 700; }
 
-/* ── Polish proposals, all behind <html class="polish"> so before/after come from one build ── */
-.polish-only { display: none; }
-.polish .polish-only { display: flex; }
-.polish .card-time { color: hsl(var(--primary)); font-weight: 600; font-variant-numeric: tabular-nums; }
-.polish .card-time svg { opacity: .8; }
+/* ── Transport notices ── */
 
-/* Transport: a set that will not start is skipped after a short, visible moment.
-   Quiet, not an alarm: the live edge goes grey and drains over the grace period,
-   the scrubber steps aside, and the skipped set's title stays readable. */
-.player-live[data-skipping] { border-top-color: hsl(var(--muted-foreground) / .35); box-shadow: none; }
-.player-live[data-skipping]::before {
+/* Transport notices (driven by player context `notice`).
+   skipped: quiet. The live edge goes grey and drains over the grace period, the
+   scrubber steps aside, the skipped set's title stays readable.
+   blocked: queue stopped; no animation, the play button is the obvious thing. */
+.player-live[data-notice] { border-top-color: hsl(var(--muted-foreground) / .35); box-shadow: none; }
+.player-live[data-notice="skipped"]::before {
   content: ""; position: absolute; left: 0; right: 0; top: -2px; height: 2px;
   background: hsl(var(--muted-foreground) / .85); transform-origin: right center;
   animation: skip-drain 4s linear forwards;
 }
-.player-live[data-skipping] .player-range { opacity: 0; pointer-events: none; }
-.player-live[data-skipping] .player-title { color: hsl(var(--muted-foreground)); }
-.player-live[data-skipping] .player-sub { color: hsl(var(--foreground) / .8); }
+.player-live[data-notice="skipped"] .player-range { opacity: 0; pointer-events: none; }
+.player-live[data-notice] .player-title { color: hsl(var(--muted-foreground)); }
+.player-live[data-notice] .player-sub { color: hsl(var(--foreground) / .8); }
+.player-live[data-notice="blocked"] button[aria-label="Play"] {
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--primary) / .7), 0 0 14px hsl(var(--glow-color) / var(--glow-intensity));
+}
 @keyframes skip-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-@media (prefers-reduced-motion: reduce) { .player-live[data-skipping]::before { animation: none; transform: scaleX(.5); } }
+@media (prefers-reduced-motion: reduce) { .player-live[data-notice="skipped"]::before { animation: none; transform: scaleX(.5); } }

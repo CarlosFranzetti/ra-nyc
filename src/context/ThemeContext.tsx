@@ -113,7 +113,19 @@ function readSettings(): ThemeSettings {
     if (!saved) return defaults;
 
     const parsed = JSON.parse(saved) as Partial<ThemeSettings>;
-    const pinned = parsed.themePinned === true;
+    // MIGRATION, written down on purpose (nothing is left to defaults by accident):
+    //  - A blob saved before faces/glow/corners/pin existed lacks those fields;
+    //    each missing or unrecognised field falls back on its own (ladder, soft,
+    //    soft, unpinned) and never resets its neighbours.
+    //  - Any other unknown stored value (a renamed face, size or density) falls
+    //    back per axis the same way, via `oneOf`.
+    //  - A pin only holds if the stored theme still exists. A pinned theme that
+    //    has been renamed or removed UNPINS (`themePinned` false, so the choice
+    //    is rewritten on the next save) and the usual no-repeat random roll runs.
+    const pinned =
+      parsed.themePinned === true &&
+      typeof parsed.colorTheme === "string" &&
+      (COLOR_THEMES as readonly string[]).includes(parsed.colorTheme);
     return {
       colorTheme: pinned ? oneOf(COLOR_THEMES, parsed.colorTheme, colorTheme) : colorTheme,
       themePinned: pinned,

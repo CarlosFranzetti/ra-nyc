@@ -10,7 +10,7 @@ interface ErrorStateProps {
 export function ErrorState({ onRetry, detail, retrying }: ErrorStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-      <div className="w-16 h-16 rounded-full bg-destructive/10 [.polish_&]:ring-1 [.polish_&]:ring-destructive/40 [.polish_&]:shadow-[0_0_24px_hsl(var(--destructive)/.25)] flex items-center justify-center mb-4">
+      <div className="w-16 h-16 rounded-full bg-destructive/10 ring-1 ring-destructive/40 shadow-[0_0_24px_hsl(var(--destructive)/.25)] flex items-center justify-center mb-4">
         <AlertCircle className="w-8 h-8 text-destructive" />
       </div>
       <h3 className="text-lg font-semibold text-foreground">Failed to load events</h3>
@@ -25,7 +25,7 @@ export function ErrorState({ onRetry, detail, retrying }: ErrorStateProps) {
       <button
         onClick={onRetry}
         disabled={retrying}
-        className="inline-flex min-h-[44px] items-center gap-2 text-sm [.polish_&]:border-primary/60 [.polish_&]:text-primary [.polish_&]:px-5 [.polish_&]:glow-primary-sm border border-border rounded-md px-3 py-1.5 bg-card hover:bg-accent active:bg-accent disabled:opacity-50 transition-smooth"
+        className="inline-flex min-h-[44px] items-center gap-2 text-sm border border-primary/60 text-primary px-5 glow-primary-sm rounded-md py-1.5 bg-card hover:bg-accent active:bg-accent disabled:opacity-50 transition-smooth"
       >
         <RefreshCw className={retrying ? "w-4 h-4 animate-spin" : "w-4 h-4"} />
         {retrying ? "Retrying…" : "Retry"}

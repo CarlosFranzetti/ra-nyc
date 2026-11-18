@@ -438,7 +438,7 @@ export function SettingsSheet({
 
             <p className="px-1 text-[0.6875rem] leading-snug text-muted-foreground">
               Swipe the list left or right to change day. The colour theme is
-              random each time you open the app.
+              random each time you open the app unless you keep one.
             </p>
 
             {/* Bottom of the last panel, one line, no illustration and no
