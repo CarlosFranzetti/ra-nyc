@@ -40,6 +40,12 @@ export interface ArtistContext {
   handles: {
     soundcloud: string | null;
     mixcloud: string | null;
+    /**
+     * Read out of a biography and used only as evidence: an account whose own
+     * description names the same Instagram is very probably the same person.
+     * Never shown, never searched for.
+     */
+    instagram?: string | null;
   };
   /**
    * Where the SoundCloud handle came from. A structured RA field is the
@@ -53,6 +59,14 @@ export interface ArtistContext {
    */
   terms: string[];
   /**
+   * Named things the biography ties the artist to, in display form: a party, a
+   * label, a radio show. A set's title or uploader that carries one of these
+   * next to the artist's name is a set, whoever uploaded it. Places are left
+   * out on purpose (see `bioEvidence`); the lineup index adds venues to this
+   * list in the resolver.
+   */
+  evidence?: string[];
+  /**
    * Where the artist is from, as far as anything says. Absent when nothing does,
    * so every consumer has to cope with it missing — which is the normal case
    * until RA's schema is confirmed.
@@ -61,9 +75,10 @@ export interface ArtistContext {
 }
 
 export const EMPTY_CONTEXT: ArtistContext = {
-  handles: { soundcloud: null, mixcloud: null },
+  handles: { soundcloud: null, mixcloud: null, instagram: null },
   handleSource: { soundcloud: null },
   terms: [],
+  evidence: [],
 };
 
 /**
@@ -75,6 +90,8 @@ const RESERVED_HANDLES = new Set([
   "search", "discover", "stream", "upload", "settings", "you", "pages", "tags",
   "charts", "popular", "categories", "people", "terms", "privacy", "imprint",
   "jobs", "mobile", "premium", "pro", "signin", "login", "logout", "about",
+  // Instagram furniture: a post or a reel is not someone's account.
+  "p", "reel", "reels", "explore", "accounts", "stories", "tv",
 ]);
 
 /**
@@ -86,6 +103,8 @@ const RESERVED_HANDLES = new Set([
 const HANDLE_PATTERNS = {
   soundcloud: /(?:^|[^\w.-])(?:[\w-]+\.)*soundcloud\.com\/([a-zA-Z0-9_-]{2,40})/g,
   mixcloud: /(?:^|[^\w.-])(?:[\w-]+\.)*mixcloud\.com\/([a-zA-Z0-9_-]{2,40})/g,
+  // Instagram handles may carry dots and a leading underscore pair.
+  instagram: /(?:^|[^\w.-])(?:[\w-]+\.)*instagram\.com\/([a-zA-Z0-9_.]{2,30})/g,
 } as const;
 
 function firstHandle(text: string, pattern: RegExp): string | null {
@@ -334,6 +353,96 @@ export function placesMentioned(...texts: (string | null | undefined)[]): string
   return found;
 }
 
+// ─── Evidence terms ─────────────────────────────────────────────────────────
+
+/**
+ * Words a biography is full of that tie the artist to nothing: brands, months,
+ * nationalities. `SENTENCE_WORDS` already keeps out the sentence-initial
+ * capitals; these are the capitalised ones that survive it.
+ */
+const NOT_EVIDENCE = new Set([
+  "soundcloud", "mixcloud", "youtube", "bandcamp", "instagram", "facebook",
+  "twitter", "spotify", "beatport", "discogs", "resident", "advisor",
+  "january", "february", "march", "april", "june", "july", "august",
+  "september", "october", "november", "december", "monday", "tuesday",
+  "wednesday", "thursday", "friday", "saturday", "sunday", "french", "german",
+  "british", "american", "italian", "spanish", "dutch", "english", "european",
+  // Roles and verbs a bio opens a sentence with.
+  "founder", "founders", "cofounder", "curator", "promoter", "member", "owner",
+  "host", "hosts", "based", "raised", "regular", "resident", "residents",
+]);
+
+/**
+ * The named things a biography ties an artist to, in display form, best first:
+ * a party, a label, a radio show. "founder of the oDYSea parties, releases on
+ * Tresydos" yields `oDYSea` and `Tresydos`.
+ *
+ * Three shapes, in this order, because the earlier ones are the more specific:
+ * a word with a capital in the middle (`oDYSea`, which the proper-noun sweep
+ * cannot see because it needs a capital at a word boundary), a multi-word run
+ * of capitals, and a lone capitalised word of six letters or more.
+ *
+ * **Places are excluded.** "Lisbon" is in half the bios on RA and half the
+ * titles of every boiler-room set filmed there; a title carrying the name and
+ * a city is not thereby the artist's set. Places still reach the matcher
+ * through `terms` and `origin`, which is where they are weighed.
+ */
+export function bioEvidence(name: string, biography: string | null | undefined): string[] {
+  if (!biography) return [];
+  const self = normalizeName(name);
+  const seen = new Set<string>();
+  const mixed: string[] = [];
+  const runs: string[] = [];
+  const singles: string[] = [];
+
+  const push = (into: string[], raw: string): void => {
+    const text = raw.replace(/['\u2019]s?$/i, "").trim();
+    const key = compact(text);
+    if (key.length < 4 || key === self || seen.has(key)) return;
+    if (SENTENCE_WORDS.has(key) || NOT_EVIDENCE.has(key) || PLACE_KEYS.has(key)) return;
+    seen.add(key);
+    into.push(text);
+  };
+
+  for (const match of biography.matchAll(/\b[a-z]+[A-Z][A-Za-z]*\b/g)) push(mixed, match[0]);
+
+  for (const match of biography.matchAll(PROPER_NOUN)) {
+    const words = (match[1] ?? "").split(/\s+/);
+    // A capital that opened a sentence is not part of a name: "For Playful
+    // Manners" is "Playful Manners" with a preposition in front.
+    while (words.length > 0 && SENTENCE_WORDS.has(compact(words[0]!))) words.shift();
+    // "French-born" is an adjective with a hyphen in it, not a name.
+    const kept = words.filter((w) => !/-[a-z]/.test(w));
+    if (kept.length !== words.length || kept.length === 0) continue;
+    if (kept.length > 1) push(runs, kept.join(" "));
+    else if (compact(kept[0]!).length >= 6) push(singles, kept[0]!);
+  }
+
+  return [...mixed, ...runs, ...singles].slice(0, 8);
+}
+
+/**
+ * Whether an account's own words about itself fit what we know of the artist,
+ * without counting its popularity: a country that agrees, a city the artist is
+ * from, a context term echoed, or the artist's own Instagram. Followers and
+ * verification are deliberately absent. They say how big an account is, not
+ * whose, and the question here is whether a bare display-name match has been
+ * corroborated.
+ */
+export function isCorroborated(
+  context: ArtistContext,
+  candidate: Pick<CandidateProfile, "description" | "city" | "countryCode">,
+): boolean {
+  if (countryAgrees(context, candidate as CandidateProfile) === true) return true;
+  const places = context.origin?.places ?? [];
+  if (places.length > 0 && placesMentioned(candidate.description, candidate.city).some((p) => places.includes(p))) {
+    return true;
+  }
+  if (contextScore(context, candidate.description, candidate.city) > 0) return true;
+  const insta = context.handles.instagram?.toLowerCase();
+  return Boolean(insta && insta.length >= 4 && candidate.description?.toLowerCase().includes(insta));
+}
+
 // ─── Building a context ─────────────────────────────────────────────────────
 
 /**
@@ -423,9 +532,11 @@ export function buildArtistContext(
       // regexed out of prose.
       soundcloud: structured ?? fromBio,
       mixcloud: biography ? firstHandle(biography, HANDLE_PATTERNS.mixcloud) : null,
+      instagram: biography ? firstHandle(biography, HANDLE_PATTERNS.instagram) : null,
     },
     handleSource: { soundcloud: structured ? "structured" : fromBio ? "bio" : null },
     terms: [...terms],
+    evidence: bioEvidence(name, biography),
     ...(iso2 || places.size > 0 ? { origin: { iso2, places: [...places] } } : {}),
   };
 }

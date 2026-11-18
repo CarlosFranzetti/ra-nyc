@@ -129,17 +129,25 @@ const FAKE_SC = `
       if(cfg.errorOnFirstPlay && plays===1){ window.__log.push('ERROR'); emit(Events.ERROR); return; }
       parsed=true; emit(Events.PLAY);
       timer=setInterval(function(){ pos+=250; tick();
-        if(pos>=dur()){clearInterval(timer);timer=null;pos=0;window.__log.push('FINISH');emit(Events.FINISH);} },250); }
+        if(pos>=dur()){clearInterval(timer);timer=null;
+          // A widget that reaches the end and never says so.
+          if(cfg.noFinish) return;
+          pos=0;window.__log.push('FINISH');emit(Events.FINISH);} },250); }
     return {
       bind:function(e,cb){(l[e]=l[e]||[]).push(cb); if(e===Events.READY) setTimeout(cb,40);},
       getDuration:function(cb){cb(parsed?dur():0);},
       load:function(url,opts){ window.__log.push('load '+url); var stale=pos; pos=0; activated=true;
         if(timer){clearInterval(timer);timer=null;}
+        // A swap that never calls back, and one that fails outright.
+        if(cfg.neverCallback && url.indexOf(cfg.neverCallback)>-1) return;
+        if(cfg.errorOnLoad && url.indexOf(cfg.errorOnLoad)>-1){ setTimeout(function(){emit(Events.ERROR);},30); return; }
         setTimeout(function(){ emit(Events.PLAY_PROGRESS,{currentPosition:stale,relativePosition:stale/dur()}); },5);
         if(opts&&opts.callback) setTimeout(opts.callback,cfg.loadDelay||20); },
       play:function(){ window.__log.push('play'); run(); },
       pause:function(){ window.__log.push('pause'); if(timer){clearInterval(timer);timer=null;} emit(Events.PAUSE); },
-      seekTo:function(ms){ window.__seekLog.push(ms); pos=ms; tick(); }
+      seekTo:function(ms){ var old=pos; window.__seekLog.push(ms); pos=ms; tick();
+        // A progress tick sent from the old position, landing after the seek.
+        if(cfg.staleOnSeek) setTimeout(function(){ emit(Events.PLAY_PROGRESS,{currentPosition:old,relativePosition:old/dur()}); },100); }
     };
   }
   Widget.Events=Events;
@@ -155,7 +163,8 @@ const FAKE_MC = `
     window.__mcBuilt++;
     var slow = /slow/.test(iframe.src);
     var mk=function(){return {on:function(){}};};
-    return { ready: new Promise(function(r){setTimeout(r,slow?3000:800);}),
+    var never = /never/.test(iframe.src);
+    return { ready: new Promise(function(r){ if(!never) setTimeout(r,slow?3000:800); }),
       play:function(){return Promise.resolve();}, pause:function(){return Promise.resolve();},
       seek:function(){return Promise.resolve(true);}, getDuration:function(){return Promise.resolve(slow?2222:1111);},
       events:{play:mk(),pause:mk(),ended:mk(),error:mk(),progress:mk()} };
@@ -937,6 +946,242 @@ async function panel(page) {
   check("and the DJ's message is cleared by the new add", (await dj.count()) === 0);
   check("no player appeared for an empty queue", !(await bar(page)).present);
   await context.close();
+}
+
+
+// ═══ 12. A set that cannot be played does not hold the queue ═══════════════
+
+{
+  console.log("\n== the watchdog ==");
+  const scSet = (title, slug) => ({
+    provider: "soundcloud",
+    id: `sc-${slug}`,
+    title,
+    url: `https://soundcloud.com/dj1/${slug}`,
+    embedUrl: `https://w.soundcloud.com/player/?url=https%3A%2F%2Fsoundcloud.com%2Fdj1%2F${slug}`,
+    duration: 2400,
+    plays: 1,
+    createdAt: null,
+    artwork: null,
+  });
+  const mcSet = (title, slug) => ({
+    provider: "mixcloud",
+    id: `mc-${slug}`,
+    title,
+    url: `https://www.mixcloud.com/a/${slug}/`,
+    embedUrl: `https://www.mixcloud.com/widget/iframe/?feed=%2Fa%2F${slug}%2F`,
+    duration: 2400,
+    plays: 1,
+    createdAt: null,
+    artwork: null,
+  });
+  const noticeOf = (page) =>
+    page.evaluate(() => document.querySelector("[data-player-host]")?.getAttribute("data-player-notice") ?? null);
+  /** Moves the fake clock in small steps so React renders between the timers that matter. */
+  const advance = async (page, ms, step = 500) => {
+    for (let t = 0; t < ms; t += step) {
+      await page.clock.runFor(step);
+      await sleep(25);
+    }
+  };
+  const nextBtn = (page) => page.locator('button[aria-label="Next mix"]');
+  const playing = (b) => b.playBtn === "Pause" && !b.spinner;
+
+  {
+    // A Mixcloud `ready` that never settles: skipped after the long fuse.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      clock: true,
+      artists: { 1: { sets: [mcSet("Dead Mix", "never"), scSet("Live Mix", "live")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await advance(page, 15000);
+    check("a Mixcloud set still loading at 15 s is not given up on", (await bar(page)).title === "Dead Mix");
+    await advance(page, 6000);
+    const b = await until(page, (s) => s.title === "Live Mix", 3000);
+    check("a Mixcloud set that never becomes ready is skipped", b.title === "Live Mix", b.title);
+    check("and the notice names the set that was skipped", (await noticeOf(page)) === "skipped");
+    await advance(page, 5000);
+    check("the notice clears itself", (await noticeOf(page)) === null);
+    await context.close();
+  }
+  {
+    // Leaving a hung Mixcloud build must take its iframe with it.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      artists: { 1: { sets: [mcSet("Dead Mix", "never"), scSet("Live Mix", "live")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await sleep(500);
+    check("the hung build has put its iframe in the host", (await bar(page)).iframes === 1);
+    await nextBtn(page).click();
+    const b = await until(page, (s) => s.title === "Live Mix" && playing(s), 6000);
+    await sleep(300);
+    check("no orphan iframe after Next away from a hung Mixcloud build", (await bar(page)).iframes === 1, `iframes=${(await bar(page)).iframes} ${b.title}`);
+    await context.close();
+  }
+  {
+    // A SoundCloud swap that never calls back.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      clock: true,
+      cfg: { neverCallback: "stuck" },
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Stuck", "stuck"), scSet("Third", "three")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await advance(page, 2000);
+    await nextBtn(page).click();
+    await advance(page, 21000);
+    const b = await until(page, (s) => s.title === "Third", 3000);
+    check("a SoundCloud load() that never calls back is skipped", b.title === "Third", b.title);
+    check("with a notice", (await noticeOf(page)) === "skipped");
+    await context.close();
+  }
+  {
+    // A widget error skips straight away, and the notice outlives the next set starting.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      cfg: { errorOnLoad: "broken" },
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Broken", "broken"), scSet("Third", "three")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await until(page, playing);
+    await nextBtn(page).click();
+    const b = await until(page, (s) => s.title === "Third" && playing(s), 6000);
+    check("a widget error is skipped", b.title === "Third" && playing(b), `${b.title} ${b.playBtn}`);
+    check("and the notice is up while the next set plays", (await noticeOf(page)) === "skipped");
+    await sleep(4600);
+    check("then it goes", (await noticeOf(page)) === null);
+    await context.close();
+  }
+  {
+    // FINISH never arrives.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      cfg: { noFinish: true, duration: 3000 },
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Second", "two")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await sleep(3800);
+    check("at the end with no FINISH the set is not left yet", (await bar(page)).title === "First");
+    const b = await until(page, (s) => s.title === "Second", 8000);
+    check("with FINISH suppressed the queue still advances", b.title === "Second", b.title);
+    await context.close();
+  }
+  {
+    // Three dead sets in a row stop on the third.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      cfg: { errorOnLoad: "dead" },
+      artists: {
+        1: {
+          sets: [
+            scSet("First", "one"),
+            scSet("Dead A", "dead-a"),
+            scSet("Dead B", "dead-b"),
+            scSet("Dead C", "dead-c"),
+            scSet("After", "after"),
+          ],
+        },
+      },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await until(page, playing);
+    await nextBtn(page).click();
+    const b = await until(page, (s) => s.title === "Dead C" && s.playBtn === "Play" && !s.spinner, 8000);
+    await sleep(1500);
+    const stopped = await bar(page);
+    check("three dead sets in a row stop on the third", stopped.title === "Dead C", stopped.title);
+    check("paused, nothing playing", stopped.playBtn === "Play" && !stopped.spinner, `${stopped.playBtn} ${stopped.spinner}`);
+    check("with the blocked notice up, and it does not time out", (await noticeOf(page)) === "blocked");
+    await page.evaluate(() => {
+      window.__cfg.errorOnLoad = null;
+    });
+    const before = loads(await logOf(page));
+    await page.locator('button[aria-label="Play"]').first().click();
+    const again = await until(page, (s) => s.title === "Dead C" && playing(s), 6000);
+    check("a tap on Play tries the set again", loads(await logOf(page)) === before + 1 && playing(again), `loads ${before} -> ${loads(await logOf(page))}, ${again.playBtn}`);
+    check("and the notice goes once it plays", (await noticeOf(page)) === null);
+    await context.close();
+  }
+  {
+    // A seek to the very end must not end the set.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Second", "two")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await until(page, (s) => playing(s) && s.max === "3600", 8000);
+    await page.locator(SEEK).focus();
+    await page.keyboard.press("End");
+    await sleep(900);
+    const seeks = await page.evaluate(() => window.__seekLog);
+    const last = seeks[seeks.length - 1];
+    check("a seek to the far right stops short of the end", last !== undefined && last <= 3597000 && last > 3500000, `seekTo(${last})`);
+    check("and the queue does not advance", (await bar(page)).title === "First");
+    await context.close();
+  }
+  {
+    // A tick from before the seek, landing after it.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      cfg: { staleOnSeek: true },
+      artists: { 1: { sets: [scSet("First", "one")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await until(page, (s) => playing(s) && s.max === "3600" && Number(s.value) >= 1, 8000);
+    await page.locator(SEEK).focus();
+    await page.keyboard.press("End");
+    const low = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const input = document.querySelector('input[aria-label="Seek"]');
+          let min = Infinity;
+          const end = performance.now() + 700;
+          (function sample() {
+            if (input) min = Math.min(min, Number(input.value));
+            if (performance.now() < end) setTimeout(sample, 10);
+            else resolve(min);
+          })();
+        }),
+    );
+    check("a stale pre-seek tick does not drag the playhead back", low > 3000, `lowest ${low}`);
+    await context.close();
+  }
+  {
+    // Previous restarts the set once it is more than a few seconds in.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Second", "two")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    const prev = page.locator('button[aria-label="Previous mix"]');
+    await until(page, (s) => playing(s) && Number(s.value) >= 1, 6000);
+    check("on the first set Previous is off at the start", await prev.isDisabled());
+    await until(page, (s) => Number(s.value) >= 4, 8000);
+    check("on the first set Previous is on once there is something to restart", !(await prev.isDisabled()));
+    await prev.click();
+    const r = await until(page, (s) => Number(s.value) <= 1, 3000);
+    check("Previous on the first set restarts it", r.title === "First" && Number(r.value) <= 1, `${r.title} ${r.value}`);
+    await nextBtn(page).click();
+    await until(page, (s) => s.title === "Second" && Number(s.value) >= 4, 10000);
+    await prev.click();
+    const r2 = await until(page, (s) => Number(s.value) <= 1, 3000);
+    check("Previous more than 3 s into a set restarts that set", r2.title === "Second" && Number(r2.value) <= 1, `${r2.title} ${r2.value}`);
+    await prev.click();
+    const r3 = await until(page, (s) => s.title === "First", 3000);
+    check("and within 3 s of the start it goes back a set", r3.title === "First", r3.title);
+    await context.close();
+  }
 }
 
 await browser.close();

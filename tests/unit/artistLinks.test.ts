@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  cleanBioText,
+  evidenceQueries,
   getArtistLinks,
+  indexEvidence,
+  isBannedUrl,
+  isCommonName,
   isPlausibleMatch,
+  leadingCredit,
+  userQueries,
   isStaleRow,
   isTransient,
   orderSets,
@@ -179,16 +186,25 @@ describe("orderSets", () => {
 // ─── Fixtures for the resolver tests ────────────────────────────────────────
 
 const sql = vi.hoisted(() => {
-  const state = { rows: [] as unknown[], writes: 0 };
-  const fn = vi.fn(async (strings: TemplateStringsArray) => {
+  const state = {
+    rows: [] as unknown[],
+    writes: 0,
+    /** What the lineup index returns for the artist: `{ title, venue_name }` rows. */
+    index: [] as unknown[],
+    /** The last row written, parsed back out of the insert's parameters. */
+    written: [] as unknown[][],
+  };
+  const fn = vi.fn(async (strings: TemplateStringsArray, ...args: unknown[]) => {
     const text = strings.join("?");
     if (/insert into artist_links/i.test(text)) {
       state.writes += 1;
+      state.written.push([...args]);
       return [];
     }
     return state.rows;
   });
-  return Object.assign(fn, { state });
+  const query = vi.fn(async () => state.index);
+  return Object.assign(fn, { state, query });
 });
 
 vi.mock("../../api/_lib/db.js", () => ({ getSql: () => sql, isDbEnabled: () => true }));
@@ -254,13 +270,17 @@ const track = (id: number, title: string, extra: Record<string, unknown> = {}) =
 
 beforeEach(() => {
   sql.mockClear();
+  sql.query.mockClear();
   sql.state.rows = [];
   sql.state.writes = 0;
+  sql.state.index = [];
+  sql.state.written = [];
   vi.stubEnv("SOUNDCLOUD_CLIENT_ID", "test-client-id");
   vi.stubEnv("SOUNDCLOUD_CLIENT_SECRET", "");
   // Every resolve logs one line per RA field it guessed wrong; that is the
   // feature, and it is noise here. Tests that read the log spy on it again.
   vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.spyOn(console, "info").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -876,5 +896,538 @@ describe("origin-aware account choice (B6)", () => {
       expect(detail).toBe("Colleen Cosmo Murphy");
       expect(detail).not.toContain("@");
     });
+  });
+});
+
+// ─── Acceptance: Penelope, Hugo, and the doors that stay shut ───────────────
+
+const MINUTE = 60_000;
+/** The decoded `q` of a search URL, so a stub can answer by what was asked. */
+const queryOf = (url: string): string => new URL(url).searchParams.get("q") ?? "";
+const bioFrom = (text: string): Record<string, unknown> => ({
+  "biography { blurb content }": { biography: { blurb: null, content: text } },
+});
+const scAccount = (id: number, username: string, permalink: string, extra: Record<string, unknown> = {}) => ({
+  id,
+  username,
+  permalink,
+  permalink_url: `https://soundcloud.com/${permalink}`,
+  ...extra,
+});
+/** The `[sc] resolve` line a cold resolve logs, as production would show it. */
+const scLog = (): Record<string, unknown> | undefined =>
+  vi.mocked(console.info).mock.calls.find((call) => call[0] === "[sc] resolve")?.[1] as
+    | Record<string, unknown>
+    | undefined;
+
+describe("PENELOPE: an accepted account with nothing to play", () => {
+  const BIO =
+    "French-born, lived in Berlin, based in Lisbon since 2018. Founder of the oDYSea parties and a " +
+    "regular on Kiosk Radio. Releases on Tresydos.";
+  const kioskSet = (extra: Record<string, unknown> = {}) =>
+    track(21, "heads up w penelope", {
+      permalink_url: "https://soundcloud.com/kioskradio/heads-up-w-penelope",
+      user: { id: 9, username: "Kiosk Radio", permalink: "kioskradio" },
+      ...extra,
+    });
+
+  const penelope = (options: {
+    evidenceHits?: unknown[];
+    archive?: { identifier: string; title: string }[];
+  }) =>
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/penelope" }, ...bioFrom(BIO) }),
+      [
+        "api-v2.soundcloud.com/search/users",
+        () => ({ collection: [scAccount(1, "Penelope", "penelope_sound")] }),
+      ],
+      [
+        "api-v2.soundcloud.com/users/1/tracks",
+        () => ({ collection: [track(11, "Some single", { duration: 5 * MINUTE })] }),
+      ],
+      [
+        "api-v2.soundcloud.com/search/tracks",
+        (url) => ({
+          collection: /kiosk|odysea/i.test(queryOf(url)) ? (options.evidenceHits ?? []) : [],
+        }),
+      ],
+      ["api.mixcloud.com/search/", () => ({ data: [] })],
+      ["archive.org", () => ({ response: { docs: options.archive ?? [] } })],
+    ]);
+
+  it("lists the radio set found by name plus evidence, and never asks the Archive", async () => {
+    const calls = penelope({ evidenceHits: [kioskSet()] });
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+
+    expect(links.sets.map((s) => s.title)).toEqual(["heads up w penelope"]);
+    expect(links.sets.every((s) => s.provider === "soundcloud")).toBe(true);
+    expect(calls.some((u) => u.includes("archive.org"))).toBe(false);
+    // The query is the name beside a thing the biography named.
+    const asked = calls.filter((u) => u.includes("search/tracks")).map((u) => queryOf(u).toLowerCase());
+    expect(asked).toContain("penelope odysea");
+    expect(asked).toContain("penelope kiosk radio");
+    // The account is still offered, as a link.
+    expect(links.soundcloudUrl).toBe("https://soundcloud.com/penelope_sound");
+  });
+
+  it("rejects the Archive's Penelope Moro and the entrevista when nothing else is found", async () => {
+    penelope({
+      archive: [
+        { identifier: "a", title: "PENELOPE" },
+        { identifier: "b", title: "Penelope Moro" },
+        { identifier: "c", title: "Entrevista a Penélope Moro" },
+        { identifier: "d", title: "CHRONOSDIG GĦAL PENELOPE Robert Young audiobook fantasija" },
+      ],
+    });
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+    expect(links.sets).toEqual([]);
+  });
+
+  it("takes an Archive item only with the name and an evidence term, or the credit form", async () => {
+    penelope({
+      archive: [
+        { identifier: "ok1", title: "Penelope - Live at the oDYSea party" },
+        { identifier: "ok2", title: "Penelope @ Kiosk Radio" },
+        { identifier: "no", title: "Penelope Moro" },
+      ],
+    });
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+    expect(links.sets.map((s) => s.id).sort()).toEqual(["ia-ok1", "ia-ok2"]);
+  });
+
+  it("holds a 20 to 45 minute upload to the set-word rule, and refuses interviews", async () => {
+    penelope({
+      evidenceHits: [
+        kioskSet({ id: 31, title: "penelope @ kiosk radio", duration: 25 * MINUTE }),
+        kioskSet({ id: 32, title: "Penelope - oDYSea", duration: 25 * MINUTE }),
+        kioskSet({ id: 33, title: "Interview with Penelope for Kiosk Radio", duration: 25 * MINUTE }),
+        kioskSet({ id: 34, title: "Entrevista a Penelope, Kiosk Radio", duration: 2 * HOUR_MS }),
+        kioskSet({ id: 35, title: "Penelope live mix, Kiosk Radio", duration: 2 * HOUR_MS }),
+        kioskSet({ id: 36, title: "penelope @ kiosk radio", duration: 15 * MINUTE }),
+      ],
+    });
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+    expect(links.sets.map((s) => s.id).sort()).toEqual(["sc-31", "sc-35"]);
+  });
+
+  it("does not lower the floor for the artist's own account", async () => {
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/penelope" }, ...bioFrom(BIO) }),
+      ["api-v2.soundcloud.com/search/users", () => ({ collection: [scAccount(1, "Penelope", "penelope_sound")] })],
+      ["api-v2.soundcloud.com/users/1/tracks", () => ({ collection: [] })],
+      [
+        "api-v2.soundcloud.com/search/tracks",
+        () => ({
+          collection: [
+            track(41, "penelope @ kiosk radio", { duration: 25 * MINUTE, user: { id: 1, username: "Penelope" } }),
+          ],
+        }),
+      ],
+      ...NOTHING,
+    ]);
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+    expect(links.sets).toEqual([]);
+  });
+
+  it("logs one diagnostic line per cold resolve: account, counts, and why titles were rejected", async () => {
+    penelope({ evidenceHits: [kioskSet({ id: 51, title: "Penelope lifestyle vlog", duration: 90 * MINUTE })] });
+    await getArtistLinks("74814", "Penelope (2)");
+    const infos = vi.mocked(console.info).mock.calls.filter((c) => c[0] === "[sc] resolve");
+    expect(infos).toHaveLength(1);
+    const line = scLog()!;
+    expect(line).toMatchObject({ artist: "Penelope", account: 1, confirmed: false, common: true, own: 1, ownAtFloor: 0 });
+    expect((line.rejected as string[]).length).toBeLessThanOrEqual(10);
+    expect((line.rejected as string[]).join("|")).toMatch(/Some single \(name not in title\)/);
+  });
+});
+
+describe("HUGO: an account named Hugo, and feedbk", () => {
+  const FEEDBK = [
+    { title: "feedbk with Borja S, Hugo", venue_name: "feedbk" },
+    { title: "feedbk x subsurface", venue_name: "feedbk" },
+  ];
+  const hugo = (description: string | null, extra: Record<string, unknown> = {}) =>
+    scAccount(5, "Hugo", "itshugo", { description, ...extra });
+
+  const stubHugo = (account: unknown, ra: Record<string, unknown> = {}) =>
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/hugo-dj-usa" }, ...ra }),
+      ["api-v2.soundcloud.com/search/users", () => ({ collection: [account] })],
+      [
+        "api-v2.soundcloud.com/users/5/tracks",
+        () => ({
+          collection: [
+            track(51, "Hugo - Song", { duration: 4 * MINUTE }),
+            track(52, "Untitled mix", { duration: 2 * HOUR_MS }),
+          ],
+        }),
+      ],
+      [
+        "api-v2.soundcloud.com/search/tracks",
+        (url) => ({
+          collection: /feedbk/i.test(queryOf(url))
+            ? [
+                track(61, "feedbk w/ Hugo", {
+                  duration: 70 * MINUTE,
+                  user: { id: 77, username: "feedbk", permalink: "feedbk" },
+                }),
+              ]
+            : [],
+        }),
+      ],
+      ["api.mixcloud.com/search/", () => ({ data: [] })],
+      ["archive.org", () => ({ response: { docs: [] } })],
+    ]);
+
+  it("passes 'feedbk w/ Hugo' on the strength of the index, and rejects the four-minute song", async () => {
+    sql.state.index = FEEDBK;
+    const calls = stubHugo(hugo("https://www.instagram.com/__hugogb/"));
+    const { links } = await getArtistLinks("106141", "Hugo (US)");
+
+    expect(links.sets.map((s) => s.id)).toEqual(["sc-61"]);
+    expect(calls.some((u) => /search\/tracks/.test(u) && queryOf(u) === "Hugo feedbk")).toBe(true);
+    // Asked of the index once, for this RA id.
+    expect(sql.query).toHaveBeenCalledTimes(1);
+    expect(JSON.parse((sql.query.mock.calls[0] as unknown as [string, unknown[]])[1][1] as string)).toEqual([
+      { id: "106141" },
+    ]);
+  });
+
+  it("does not accept the account on its name alone: no bio from it, its own long upload not trusted", async () => {
+    sql.state.index = FEEDBK;
+    stubHugo(hugo("https://www.instagram.com/__hugogb/"));
+    const { links } = await getArtistLinks("106141", "Hugo (US)");
+
+    expect(links.bio).toBeNull();
+    // "Untitled mix" is two hours long and on his own account, and still out.
+    expect(links.sets.map((s) => s.title)).not.toContain("Untitled mix");
+    // The profile is still offered, as a link.
+    expect(links.soundcloudUrl).toBe("https://soundcloud.com/itshugo");
+    expect(scLog()).toMatchObject({ confirmed: false, common: true });
+  });
+
+  it("accepts the same account once its description names something we know", async () => {
+    sql.state.index = FEEDBK;
+    stubHugo(hugo("East Williamsburg. Resident at feedbk."));
+    const { links } = await getArtistLinks("106141", "Hugo (US)");
+    expect(links.sets.map((s) => s.id).sort()).toEqual(["sc-52", "sc-61"]);
+    expect(links.bio).toMatchObject({ source: "SoundCloud" });
+  });
+
+  it("accepts it when the Instagram in RA's bio is the one in its description", async () => {
+    stubHugo(hugo("ig: __hugogb"), bioFrom("https://www.instagram.com/__hugogb/ and nothing else"));
+    const { links } = await getArtistLinks("106141", "Hugo (US)");
+    expect(links.sets.map((s) => s.id)).toContain("sc-52");
+    // The handle was evidence; it is not shown.
+    expect(links.bio).toBeNull();
+  });
+
+  it("is not blocked by a lineup index that is empty, broken or slow", async () => {
+    sql.state.index = [];
+    stubHugo(hugo(null));
+    expect((await getArtistLinks("106141", "Hugo (US)")).degraded).toBe(false);
+
+    sql.query.mockRejectedValueOnce(new Error("relation does not exist"));
+    stubHugo(hugo(null));
+    expect((await getArtistLinks("106141", "Hugo (US)")).degraded).toBe(false);
+
+    vi.useFakeTimers();
+    try {
+      sql.query.mockImplementationOnce(() => new Promise(() => {}));
+      stubHugo(hugo(null));
+      const pending = getArtistLinks("106141", "Hugo (US)");
+      await vi.advanceTimersByTimeAsync(1_600);
+      expect((await pending).degraded).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("NO SETS: the page is never left empty", () => {
+  it("keeps the profile and adds a SoundCloud search for the bare name", async () => {
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/x" } }),
+      ["api-v2.soundcloud.com/search/users", () => ({ collection: [scAccount(5, "Hugo", "itshugo")] })],
+      ["api-v2.soundcloud.com/users/5/tracks", () => ({ collection: [] })],
+      ...NOTHING,
+    ]);
+    const { links } = await getArtistLinks("106141", "Hugo (US)");
+    expect(links.sets).toEqual([]);
+    const soundcloud = links.links.find((l) => l.label === "SoundCloud");
+    expect(soundcloud).toMatchObject({ resolved: true, url: "https://soundcloud.com/itshugo" });
+    const search = links.links.find((l) => l.label === "SoundCloud search");
+    expect(search).toMatchObject({
+      url: "https://soundcloud.com/search?q=Hugo",
+      detail: "Search SoundCloud for Hugo",
+      resolved: false,
+    });
+  });
+
+  it("stands in for a profile we do not have, once and not twice", async () => {
+    stubUpstream([raRoute({ contentUrl: { contentUrl: "/dj/x" } }), ...NOTHING]);
+    const { links } = await getArtistLinks("1", "Penelope (2)");
+    expect(links.links.length).toBeGreaterThan(0);
+    expect(links.links.filter((l) => /^SoundCloud/.test(l.label))).toEqual([
+      expect.objectContaining({ label: "SoundCloud search", url: "https://soundcloud.com/search?q=Penelope" }),
+    ]);
+  });
+
+  it("does not add the search when there are SoundCloud sets to play", async () => {
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/x" } }),
+      ["api-v2.soundcloud.com/search/users", () => ({ collection: [scAccount(7, "Test DJ", "testdj")] })],
+      ["api-v2.soundcloud.com/users/7/tracks", () => ({ collection: [track(70, "A long set")] })],
+      ...NOTHING,
+    ]);
+    const { links } = await getArtistLinks("1", "Test DJ");
+    expect(links.links.some((l) => l.label === "SoundCloud search")).toBe(false);
+  });
+});
+
+describe("YOUTUBE: three doors shut", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+  it("recognises every YouTube host and none of their lookalikes", () => {
+    for (const url of [
+      "https://www.youtube.com/watch?v=x",
+      "https://youtube.com/watch?v=x",
+      "https://m.youtube.com/x",
+      "https://music.youtube.com/watch?v=x",
+      "https://youtu.be/x",
+      "https://www.youtube-nocookie.com/embed/x",
+    ]) {
+      expect(isBannedUrl(url), url).toBe(true);
+    }
+    for (const url of ["https://soundcloud.com/notyoutube", "https://notyoutube.com/x", "https://archive.org/details/y"]) {
+      expect(isBannedUrl(url), url).toBe(false);
+    }
+  });
+
+  it("cleans a cached row at read: sets, links and the address in the bio", async () => {
+    stubUpstream([raRoute({ contentUrl: { contentUrl: "/dj/x" } }), ...NOTHING]);
+    const goodSet = set({ id: "sc-1", url: "https://soundcloud.com/x/1", embedUrl: "https://w.soundcloud.com/player/?url=x" });
+    sql.state.rows = [
+      {
+        ra_artist_id: "1", name: "Test DJ", mixcloud_user: null, mixcloud_url: null,
+        soundcloud_user: null, soundcloud_url: null, ra_url: null,
+        bio: { text: "Berlin-based selector. Watch https://www.youtube.com/watch?v=abc for more.", source: "SoundCloud", url: null },
+        sets: [
+          goodSet,
+          set({ id: "yt-1", url: "https://www.youtube.com/watch?v=abc", embedUrl: "https://www.youtube-nocookie.com/embed/abc" }),
+          set({ id: "yt-2", url: "https://youtu.be/abc", embedUrl: "https://w.soundcloud.com/player/?url=y" }),
+        ],
+        links: [
+          { label: "YouTube", url: "https://www.youtube.com/@testdj", detail: "x", resolved: true },
+          { label: "SoundCloud", url: "https://soundcloud.com/testdj", detail: "@testdj", resolved: true },
+        ],
+        link_source: "auto",
+        resolved_at: ago(1000),
+      },
+    ];
+    const { links } = await getArtistLinks("1", "Test DJ");
+    expect(links.cached).toBe(true);
+    expect(links.sets.map((s) => s.id)).toEqual(["sc-1"]);
+    expect(links.links.map((l) => l.label)).toEqual(["SoundCloud"]);
+    expect(JSON.stringify(links)).not.toMatch(/youtu/i);
+  });
+
+  it("writes nothing banned, whatever a provider hands back", async () => {
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/x" } }),
+      ["api.mixcloud.com/search/", () => ({ data: [{ username: "testdj", name: "Test DJ", url: "https://www.mixcloud.com/testdj/" }] })],
+      [
+        "api.mixcloud.com/testdj/cloudcasts",
+        () => ({
+          data: [
+            { key: "/testdj/yt/", name: "Test DJ yt", url: "https://youtu.be/abc", audio_length: 3600 },
+            { key: "/testdj/ok/", name: "Test DJ ok", url: "https://www.mixcloud.com/testdj/ok/", audio_length: 3600 },
+          ],
+        }),
+      ],
+      ["api.mixcloud.com/testdj/", () => ({ biog: "Bio that links https://www.youtube.com/@testdj and says something real." })],
+      ...NOTHING,
+    ]);
+    const { links } = await getArtistLinks("1", "Test DJ");
+    expect(links.sets.map((s) => s.id)).toEqual(["mc-/testdj/ok/"]);
+    expect(links.bio?.text).not.toMatch(/youtu|http/i);
+    expect(sql.state.writes).toBe(1);
+    expect(JSON.stringify(sql.state.written)).not.toMatch(/youtu/i);
+  });
+});
+
+describe("BIO: web addresses are removed, handles are kept as evidence", () => {
+  it("omits a bio that is only an address, or an address with a label", () => {
+    expect(cleanBioText("https://www.instagram.com/__hugogb/")).toBeNull();
+    expect(cleanBioText("Instagram: https://instagram.com/hugogb")).toBeNull();
+    expect(cleanBioText("Follow me on www.example.com/mix, mail hi@example.com")).toBeNull();
+    expect(cleanBioText("   ")).toBeNull();
+    expect(cleanBioText(null)).toBeNull();
+  });
+
+  it("removes addresses from a real bio and leaves the prose", () => {
+    const text = cleanBioText(
+      "Berlin-based selector and label owner. Mixes at https://soundcloud.com/x/y, more at www.linktr.ee/x or ra.co/dj/x.",
+    )!;
+    expect(text).toContain("Berlin-based selector and label owner.");
+    expect(text).not.toMatch(/http|www\.|\.co|linktr|@/);
+    expect(cleanBioText("Mari.te and St.Louis are places, not links, in a long enough sentence.")).toContain("Mari.te");
+  });
+
+  it("returns no bio for a URL-only RA biography, and falls through to the next source", async () => {
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/x" }, ...bioFrom("https://www.instagram.com/testdj/") }),
+      ["api.mixcloud.com/search/", () => ({ data: [{ username: "testdj", name: "Test DJ", url: "https://www.mixcloud.com/testdj/" }] })],
+      ["api.mixcloud.com/testdj/cloudcasts", () => ({ data: [] })],
+      ["api.mixcloud.com/testdj/", () => ({ biog: "Brooklyn selector with a monthly residency." })],
+      ...NOTHING,
+    ]);
+    const { links } = await getArtistLinks("1", "Test DJ");
+    expect(links.bio).toMatchObject({ source: "Mixcloud", text: "Brooklyn selector with a monthly residency." });
+  });
+
+  it("strips addresses from a stored bio on the way in", async () => {
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/x" }, ...bioFrom("Berlin selector. Tickets at https://example.com/tix today.") }),
+      ...NOTHING,
+    ]);
+    const { links } = await getArtistLinks("1", "Test DJ");
+    expect(links.bio?.text).toBe("Berlin selector. Tickets at today.");
+    expect(JSON.stringify(sql.state.written)).not.toContain("example.com");
+  });
+});
+
+describe("BUDGET: no upstream is allowed to hold the function past its bounds", () => {
+  it("returns within 3 + 7 + 4 seconds when every upstream hangs, degraded and uncached", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "fetch",
+        (_url: string, init?: { signal?: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () =>
+              reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+            );
+          }),
+      );
+      sql.query.mockImplementation(() => new Promise(() => {}));
+      sql.state.index = [];
+      const started = Date.now();
+      const pending = getArtistLinks("74814", "Penelope (2)", { refresh: true });
+      await vi.advanceTimersByTimeAsync(14_000);
+      const { links, degraded } = await pending;
+
+      expect(Date.now() - started).toBeLessThanOrEqual(14_000);
+      expect(degraded).toBe(true);
+      expect(sql.state.writes).toBe(0);
+      expect(links.links.some((l) => l.label === "SoundCloud search")).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("spends at most eight SoundCloud requests on a cold resolve, all in the one window", async () => {
+    sql.state.index = [
+      { title: "A party", venue_name: "Nowadays" },
+      { title: "Another", venue_name: "Elsewhere" },
+      { title: "Third", venue_name: "Basement" },
+    ];
+    const calls = stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/x" }, ...bioFrom("Founder of the oDYSea parties.") }),
+      ["api-v2.soundcloud.com/search/users", () => ({ collection: [scAccount(7, "H0l0", "h0l0")] })],
+      ["api-v2.soundcloud.com/users/7/tracks", () => ({ collection: [] })],
+      ...NOTHING,
+    ]);
+    await getArtistLinks("1", "h0l0");
+    expect(calls.filter((u) => u.includes("soundcloud.com")).length).toBeLessThanOrEqual(8);
+  });
+});
+
+describe("VARIANTS: our own spellings, before SoundCloud's", () => {
+  it("finds the account named Holo for the RA name h0l0", async () => {
+    const calls = stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/h0l0" } }),
+      [
+        "api-v2.soundcloud.com/search/users",
+        (url) => ({
+          collection: queryOf(url) === "holo" ? [scAccount(3, "Holo", "holo")] : [],
+        }),
+      ],
+      ["api-v2.soundcloud.com/users/3/tracks", () => ({ collection: [track(30, "Holo @ Nowadays")] })],
+      ...NOTHING,
+    ]);
+    const { links } = await getArtistLinks("1", "h0l0");
+    expect(calls.filter((u) => u.includes("search/users")).map(queryOf)).toEqual(["h0l0", "holo"]);
+    expect(links.soundcloudUrl).toBe("https://soundcloud.com/holo");
+    expect(links.sets.map((s) => s.id)).toEqual(["sc-30"]);
+  });
+
+  it("merges two user searches by account id", async () => {
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/h0l0" } }),
+      ["api-v2.soundcloud.com/search/users", () => ({ collection: [scAccount(3, "Holo", "holo")] })],
+      ["api-v2.soundcloud.com/users/3/tracks", () => ({ collection: [track(30, "Holo @ Nowadays")] })],
+      ...NOTHING,
+    ]);
+    // The same account from both queries is one candidate, so there is nothing to refuse.
+    const { degraded } = await getArtistLinks("1", "h0l0");
+    expect(degraded).toBe(false);
+  });
+
+  it("still refuses between two identical Cosmos when evidence searches are running", async () => {
+    const calls = stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/cosmo" }, ...bioFrom("Resident at Nowadays and Public Records.") }),
+      [
+        "api-v2.soundcloud.com/search/users",
+        () => ({ collection: [scAccount(1, "Cosmo", "cosmo1"), scAccount(2, "Cosmo", "cosmo2")] }),
+      ],
+      ...NOTHING,
+    ]);
+    const { links, degraded } = await getArtistLinks("1", "Cosmo");
+    expect(links.soundcloudUser).toBeNull();
+    expect(degraded).toBe(true);
+    // No account tracks and no bare-name scoped search; only the evidence queries ran.
+    expect(calls.filter((u) => u.includes("search/tracks")).every((u) => /Nowadays|Public/i.test(queryOf(u)))).toBe(true);
+  });
+
+  it("builds query variants and evidence queries from what we know", () => {
+    expect(userQueries("Cosmo (NY)")).toEqual(["Cosmo"]);
+    expect(userQueries("h0l0")).toEqual(["h0l0", "holo"]);
+    expect(userQueries("DVS1")).toEqual(["DVS1"]);
+    expect(userQueries("DJ Holo")).toEqual(["DJ Holo", "Holo"]);
+    expect(evidenceQueries("Penelope (2)", ["oDYSea", "Kiosk Radio", "ab", "Tresydos", "Fourth"])).toEqual([
+      "Penelope oDYSea",
+      "Penelope Kiosk Radio",
+      "Penelope Tresydos",
+    ]);
+    expect(evidenceQueries("Hugo", [])).toEqual([]);
+  });
+
+  it("turns the lineup history into venues and party names, most frequent first", () => {
+    expect(
+      indexEvidence("Hugo (US)", [
+        { title: "feedbk with Borja S, Hugo", venue: "feedbk" },
+        { title: "feedbk x subsurface", venue: "feedbk" },
+        { title: "Hugo All Night", venue: "TBA - Secret Location" },
+        { title: "Opening", venue: "Nowadays" },
+      ]),
+    ).toEqual(["feedbk", "Opening", "Nowadays"]);
+  });
+});
+
+describe("name rules the new paths rely on", () => {
+  it("knows a common name from a distinctive one", () => {
+    for (const name of ["Hugo (US)", "Holo", "Cosmo (NY)", "Penelope (2)"]) expect(isCommonName(name), name).toBe(true);
+    for (const name of ["Marcel Dettmann", "Test DJ", "Indira Paganotto", "KlangKuenstler"]) {
+      expect(isCommonName(name), name).toBe(false);
+    }
+  });
+
+  it("reads a credit only at the start of an Archive title", () => {
+    expect(leadingCredit("Penelope (2)", "Penelope @ Kiosk Radio")).toBe(true);
+    expect(leadingCredit("Penelope (2)", "DJ Penelope - Live")).toBe(true);
+    for (const title of ["PENELOPE", "Penelope Moro", "Entrevista a Penélope Moro", "Live with Penelope - 2026"]) {
+      expect(leadingCredit("Penelope (2)", title), title).toBe(false);
+    }
   });
 });
