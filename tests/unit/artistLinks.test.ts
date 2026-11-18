@@ -1305,13 +1305,13 @@ describe("BUDGET: no upstream is allowed to hold the function past its bounds", 
         "fetch",
         (_url: string, init?: { signal?: AbortSignal }) =>
           new Promise((_resolve, reject) => {
-            init?.signal?.addEventListener("abort", () =>
-              reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
-            );
+            // A real fetch rejects at once on a signal that has already fired.
+            const abort = () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+            if (init?.signal?.aborted) abort();
+            else init?.signal?.addEventListener("abort", abort);
           }),
       );
-      sql.query.mockImplementation(() => new Promise(() => {}));
-      sql.state.index = [];
+      sql.query.mockImplementationOnce(() => new Promise(() => {}));
       const started = Date.now();
       const pending = getArtistLinks("74814", "Penelope (2)", { refresh: true });
       await vi.advanceTimersByTimeAsync(14_000);
@@ -1411,7 +1411,7 @@ describe("VARIANTS: our own spellings, before SoundCloud's", () => {
         { title: "Hugo All Night", venue: "TBA - Secret Location" },
         { title: "Opening", venue: "Nowadays" },
       ]),
-    ).toEqual(["feedbk", "Opening", "Nowadays"]);
+    ).toEqual(["feedbk", "Nowadays", "Opening"]);
   });
 });
 

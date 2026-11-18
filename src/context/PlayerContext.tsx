@@ -505,10 +505,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     startedRef.current = true;
     clearFuse();
     skipsRef.current = 0;
-    if (blockedRef.current) {
-      blockedRef.current = false;
-      setNotice((n) => (n?.kind === "blocked" ? null : n));
-    }
+    // Not gated on `blockedRef`: the retry tap clears that before the set plays.
+    setNotice((n) => (n?.kind === "blocked" ? null : n));
   }, [clearFuse]);
 
   // `stop` is declared below, and `removeAt` needs it when the last set is taken

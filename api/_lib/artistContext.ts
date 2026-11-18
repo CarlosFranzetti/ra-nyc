@@ -411,6 +411,8 @@ export function bioEvidence(name: string, biography: string | null | undefined):
     // A capital that opened a sentence is not part of a name: "For Playful
     // Manners" is "Playful Manners" with a preposition in front.
     while (words.length > 0 && SENTENCE_WORDS.has(compact(words[0]!))) words.shift();
+    // The artist's own name inside a run ("Find Cosmo") is not a name of anything else.
+    for (let i = words.length - 1; i >= 0; i -= 1) if (compact(words[i]!) === self) words.splice(i, 1);
     // "French-born" is an adjective with a hyphen in it, not a name.
     const kept = words.filter((w) => !/-[a-z]/.test(w));
     if (kept.length !== words.length || kept.length === 0) continue;
