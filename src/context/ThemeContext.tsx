@@ -7,12 +7,19 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { loadFace } from "@/lib/loadFace";
 import {
   COLOR_THEMES,
+  CORNERS,
   DENSITIES,
+  FACES,
+  GLOWS,
   TEXT_SIZES,
   TYPOGRAPHIES,
   type ColorTheme,
+  type Corners,
+  type Face,
+  type Glow,
   type LayoutDensity,
   type TextSize,
   type ThemeSettings,
@@ -26,6 +33,12 @@ interface ThemeContextType extends ThemeSettings {
   setLayoutDensity: (density: LayoutDensity) => void;
   setTypography: (typography: Typography) => void;
   setTextSize: (size: TextSize) => void;
+  setFace: (face: Face) => void;
+  setGlow: (glow: Glow) => void;
+  setCorners: (corners: Corners) => void;
+  setThemePinned: (pinned: boolean) => void;
+  surprise: () => void;
+  reset: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -89,6 +102,10 @@ function readSettings(): ThemeSettings {
     layoutDensity: "default",
     typography: "base",
     textSize: "0",
+    face: "ladder",
+    glow: "soft",
+    corners: "soft",
+    themePinned: false,
   };
 
   try {
@@ -96,8 +113,25 @@ function readSettings(): ThemeSettings {
     if (!saved) return defaults;
 
     const parsed = JSON.parse(saved) as Partial<ThemeSettings>;
+    // MIGRATION, written down on purpose (nothing is left to defaults by accident):
+    //  - A blob saved before faces/glow/corners/pin existed lacks those fields;
+    //    each missing or unrecognised field falls back on its own (ladder, soft,
+    //    soft, unpinned) and never resets its neighbours.
+    //  - Any other unknown stored value (a renamed face, size or density) falls
+    //    back per axis the same way, via `oneOf`.
+    //  - A pin only holds if the stored theme still exists. A pinned theme that
+    //    has been renamed or removed UNPINS (`themePinned` false, so the choice
+    //    is rewritten on the next save) and the usual no-repeat random roll runs.
+    const pinned =
+      parsed.themePinned === true &&
+      typeof parsed.colorTheme === "string" &&
+      (COLOR_THEMES as readonly string[]).includes(parsed.colorTheme);
     return {
-      colorTheme,
+      colorTheme: pinned ? oneOf(COLOR_THEMES, parsed.colorTheme, colorTheme) : colorTheme,
+      themePinned: pinned,
+      face: oneOf(FACES, parsed.face, "ladder"),
+      glow: oneOf(GLOWS, parsed.glow, "soft"),
+      corners: oneOf(CORNERS, parsed.corners, "soft"),
       layoutDensity: oneOf(DENSITIES, parsed.layoutDensity, "default"),
       typography: oneOf(TYPOGRAPHIES, parsed.typography, "base"),
       // Both of these unions were renamed, so anyone carrying the old values
@@ -144,6 +178,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   ]);
 
   useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove(...FACES.map((f) => `face-${f}`), ...GLOWS.map((g) => `glow-${g}`), ...CORNERS.map((c) => `corners-${c}`));
+    root.classList.add(`face-${settings.face}`, `glow-${settings.glow}`, `corners-${settings.corners}`);
+    loadFace(settings.face);
+  }, [settings.face, settings.glow, settings.corners]);
+
+  useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     } catch {
@@ -168,6 +209,42 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const setFace = useCallback((face: Face) => setSettings((s) => ({ ...s, face })), []);
+  const setGlow = useCallback((glow: Glow) => setSettings((s) => ({ ...s, glow })), []);
+  const setCorners = useCallback((corners: Corners) => setSettings((s) => ({ ...s, corners })), []);
+  const setThemePinned = useCallback(
+    (themePinned: boolean) => setSettings((s) => ({ ...s, themePinned })),
+    [],
+  );
+  const pick = <T,>(xs: readonly T[]) => xs[Math.floor(Math.random() * xs.length)]!;
+  // "Surprise me" re-rolls the look (theme, face, glow, corners) and never the
+  // reading settings: size and density are accessibility, not taste.
+  const surprise = useCallback(
+    () =>
+      setSettings((s) => ({
+        ...s,
+        colorTheme: pick(COLOR_THEMES.filter((t) => t !== s.colorTheme)),
+        face: pick(FACES),
+        glow: pick(GLOWS),
+        corners: pick(CORNERS),
+      })),
+    [],
+  );
+  const reset = useCallback(
+    () =>
+      setSettings((s) => ({
+        colorTheme: s.colorTheme,
+        layoutDensity: "default",
+        typography: "base",
+        textSize: "0",
+        face: "ladder",
+        glow: "soft",
+        corners: "soft",
+        themePinned: false,
+      })),
+    [],
+  );
+
   const value = useMemo<ThemeContextType>(
     () => ({
       ...settings,
@@ -175,8 +252,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setLayoutDensity,
       setTypography,
       setTextSize,
+      setFace,
+      setGlow,
+      setCorners,
+      setThemePinned,
+      surprise,
+      reset,
     }),
-    [settings, setColorTheme, setLayoutDensity, setTypography, setTextSize],
+    [settings, setColorTheme, setLayoutDensity, setTypography, setTextSize, setFace, setGlow, setCorners, setThemePinned, surprise, reset],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

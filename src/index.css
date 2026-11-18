@@ -1110,7 +1110,9 @@ html {
 .player-range {
   -webkit-appearance: none;
   appearance: none;
-  height: 20px;
+  /* 44px hit area, centred on the 3px track; the transport row paints above the
+     lower half (z-20) so it never steals a tap from the buttons. */
+  height: 44px;
   background: transparent;
   cursor: pointer;
 }
@@ -1245,3 +1247,89 @@ html {
 .player-enter {
   animation: player-enter var(--in) var(--ease) both;
 }
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   PROTOTYPE (proto/gia) — additive: every default below reproduces today's look.
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+/* Three more themes. Shared values copied verbatim from the four above; only
+   hue, background step and venue change. Backgrounds sit inside the 3.5–4.5%
+   ladder: Ultra 4.0, Ember 3.6, Acid 3.5. */
+.theme-ultra {
+  --background: 250 18% 4%; --foreground: 250 14% 95%;
+  --card: 250 14% 8.8%; --card-foreground: 250 14% 95%;
+  --popover: 250 14% 8.8%; --popover-foreground: 250 14% 95%;
+  --primary: 252 94% 70%; --primary-foreground: 250 18% 4%;
+  --secondary: 250 14% 12.7%; --secondary-foreground: 250 14% 95%;
+  --muted: 250 14% 14.7%; --muted-foreground: 250 12% 58%;
+  --accent: 252 34% 12.7%; --accent-foreground: 252 94% 80%;
+  --destructive: 0 70% 50%; --destructive-foreground: 0 0% 98%;
+  --border: 250 16% 17.6%; --input: 250 14% 16.7%; --ring: 252 94% 70%;
+  --glow-color: 252 94% 70%; --glow-intensity: 0.3;
+  --venue: 46 92% 64%;
+}
+.theme-ember {
+  --background: 4 16% 3.6%; --foreground: 10 14% 95%;
+  --card: 4 14% 8.8%; --card-foreground: 10 14% 95%;
+  --popover: 4 14% 8.8%; --popover-foreground: 10 14% 95%;
+  --primary: 356 86% 60%; --primary-foreground: 4 16% 3.6%;
+  --secondary: 4 14% 12.7%; --secondary-foreground: 10 14% 95%;
+  --muted: 4 14% 14.7%; --muted-foreground: 6 12% 58%;
+  --accent: 356 34% 12.7%; --accent-foreground: 356 86% 74%;
+  --destructive: 0 70% 50%; --destructive-foreground: 0 0% 98%;
+  --border: 6 16% 17.6%; --input: 4 14% 16.7%; --ring: 356 86% 60%;
+  --glow-color: 356 86% 60%; --glow-intensity: 0.3;
+  --venue: 172 62% 56%;
+}
+.theme-acid {
+  --background: 62 14% 3.5%; --foreground: 62 14% 94%;
+  --card: 62 12% 8.8%; --card-foreground: 62 14% 94%;
+  --popover: 62 12% 8.8%; --popover-foreground: 62 14% 94%;
+  --primary: 62 96% 56%; --primary-foreground: 62 14% 3.5%;
+  --secondary: 62 12% 12.7%; --secondary-foreground: 62 14% 94%;
+  --muted: 62 12% 14.7%; --muted-foreground: 62 10% 58%;
+  --accent: 62 34% 12.7%; --accent-foreground: 62 96% 70%;
+  --destructive: 0 70% 50%; --destructive-foreground: 0 0% 98%;
+  --border: 62 14% 17.6%; --input: 62 12% 16.7%; --ring: 62 96% 56%;
+  --glow-color: 62 96% 56%; --glow-intensity: 0.3;
+  --venue: 332 80% 70%;
+}
+
+/* Glow intensity: soft is today's 0.3 (left to the theme). */
+.glow-off { --glow-intensity: 0; }
+.glow-full { --glow-intensity: 0.6; }
+/* Corner radius: soft is today's 0.5rem. */
+.corners-sharp { --radius: 0.125rem; }
+.corners-round { --radius: 0.875rem; }
+
+/* Second typeface axis. Sets family only; the ladder keeps owning size/scale.
+   Headline weight stays 600 so titles keep the hierarchy they have today. */
+.face-grotesk { font-family: 'Bricolage Grotesque', system-ui, sans-serif; }
+.face-mono { font-family: 'Space Mono', ui-monospace, 'JetBrains Mono', monospace; letter-spacing: -0.015em; }
+.face-programme { font-family: 'Fraunces', Georgia, serif; }
+/* Poster is wide, so it takes it out of the body: Unbounded for titles and
+   venue lines only, body stays on the ladder face. */
+.face-poster h1, .face-poster h2, .face-poster h3, .face-poster .type-headline { font-family: 'Unbounded', system-ui, sans-serif; font-weight: 600; letter-spacing: -0.02em; }
+.face-poster .type-headline, .face-poster h3 { font-size: 0.8125rem; line-height: 1.2; }
+.face-mono h3, .face-mono .type-headline { font-weight: 700; }
+
+/* ── Transport notices ── */
+
+/* Transport notices (driven by player context `notice`).
+   skipped: quiet. The live edge goes grey and drains over the grace period, the
+   scrubber steps aside, the skipped set's title stays readable.
+   blocked: queue stopped; no animation, the play button is the obvious thing. */
+.player-live[data-notice] { border-top-color: hsl(var(--muted-foreground) / .35); box-shadow: none; }
+.player-live[data-notice="skipped"]::before {
+  content: ""; position: absolute; left: 0; right: 0; top: -2px; height: 2px;
+  background: hsl(var(--muted-foreground) / .85); transform-origin: right center;
+  animation: skip-drain 4s linear forwards;
+}
+.player-live[data-notice="skipped"] .player-range { opacity: 0; pointer-events: none; }
+.player-live[data-notice] .player-title { color: hsl(var(--muted-foreground)); }
+.player-live[data-notice] .player-sub { color: hsl(var(--foreground) / .8); }
+.player-live[data-notice="blocked"] button[aria-label="Play"] {
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--primary) / .7), 0 0 14px hsl(var(--glow-color) / var(--glow-intensity));
+}
+@keyframes skip-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .player-live[data-notice="skipped"]::before { animation: none; transform: scaleX(.5); } }

@@ -1,4 +1,4 @@
-export const COLOR_THEMES = ["neon", "vapor", "matrix", "sunset"] as const;
+export const COLOR_THEMES = ["neon", "vapor", "matrix", "sunset", "ultra", "ember", "acid"] as const;
 export const DENSITIES = ["tight", "default", "airy"] as const;
 export const TYPOGRAPHIES = ["base", "midnight", "late"] as const;
 
@@ -15,6 +15,14 @@ export const TYPOGRAPHIES = ["base", "midnight", "late"] as const;
  */
 export const TEXT_SIZES = ["0", "1", "2", "3", "4", "5"] as const;
 
+/** Second typography axis. "ladder" = today: the how-late-is-it slider alone decides the face. */
+export const FACES = ["ladder", "grotesk", "mono", "programme", "poster"] as const;
+export const GLOWS = ["off", "soft", "full"] as const;
+export const CORNERS = ["sharp", "soft", "round"] as const;
+export type Face = (typeof FACES)[number];
+export type Glow = (typeof GLOWS)[number];
+export type Corners = (typeof CORNERS)[number];
+
 export type ColorTheme = (typeof COLOR_THEMES)[number];
 export type LayoutDensity = (typeof DENSITIES)[number];
 export type Typography = (typeof TYPOGRAPHIES)[number];
@@ -25,6 +33,11 @@ export interface ThemeSettings {
   layoutDensity: LayoutDensity;
   typography: Typography;
   textSize: TextSize;
+  face: Face;
+  glow: Glow;
+  corners: Corners;
+  /** Keep this theme next time instead of rolling a random one. */
+  themePinned: boolean;
 }
 
 /**
@@ -41,6 +54,18 @@ export const THEME_OPTIONS: { value: ColorTheme; label: string; color: string }[
   { value: "neon", label: "Neon", color: "hsl(186 92% 52%)" },
   { value: "matrix", label: "Matrix", color: "hsl(142 69% 46%)" },
   { value: "sunset", label: "Sunset", color: "hsl(26 94% 58%)" },
+  { value: "ultra", label: "Ultra", color: "hsl(252 94% 70%)" },
+  { value: "ember", label: "Ember", color: "hsl(356 86% 60%)" },
+  { value: "acid", label: "Acid", color: "hsl(62 96% 56%)" },
+];
+
+/** Each is previewed in its own face; `family` + `href` drive the on-demand loader. */
+export const FACE_OPTIONS: { value: Face; label: string; family?: string; href?: string }[] = [
+  { value: "ladder", label: "Ladder" },
+  { value: "grotesk", label: "Grotesk", family: "Bricolage Grotesque", href: "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600&display=swap" },
+  { value: "mono", label: "Mono", family: "Space Mono", href: "https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" },
+  { value: "programme", label: "Programme", family: "Fraunces", href: "https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&display=swap" },
+  { value: "poster", label: "Poster", family: "Unbounded", href: "https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600&display=swap" },
 ];
 
 export const DENSITY_OPTIONS: { value: LayoutDensity; label: string; desc: string }[] = [

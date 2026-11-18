@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Heart, Settings } from "lucide-react";
+import { Heart, RotateCcw, Settings, Shuffle } from "lucide-react";
 import {
   Drawer,
   DrawerContent,
@@ -11,7 +11,10 @@ import { hostOf, outbound } from "@/lib/analytics";
 import { DONATE } from "@/lib/donate";
 import { cn } from "@/lib/utils";
 import {
+  CORNERS,
   DENSITY_OPTIONS,
+  FACE_OPTIONS,
+  GLOWS,
   TEXT_SIZES,
   THEME_OPTIONS,
   TYPOGRAPHY_OPTIONS,
@@ -119,6 +122,54 @@ function StepSlider({
   );
 }
 
+
+function SectionHead({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 pt-1">
+      <span className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-foreground">{children}</span>
+      <span className="h-px flex-1 bg-border/60" />
+    </div>
+  );
+}
+
+/** One 44px segment. Labels stay in the UI face, so the row never changes size with the setting. */
+function Seg({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      className={cn(
+        "h-[44px] rounded-lg border text-[0.75rem] font-medium transition-all active:scale-95",
+        on ? "border-primary bg-primary/10 text-primary" : "border-border/50 bg-card text-muted-foreground hover:bg-accent",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** A real event row, built from the same classes as EventCard, living inside the sheet — so it wears every choice made below it. */
+function PreviewCard() {
+  return (
+    <div className="sticky top-0 z-10 -mx-1 bg-background/95 px-1 pb-2 pt-1 backdrop-blur">
+      <div className="flex items-center gap-3 rounded-lg border border-border/50 bg-card p-2 glow-primary-sm">
+        <div className="relative h-[64px] w-[64px] flex-shrink-0 overflow-hidden rounded-md" style={{ background: "linear-gradient(135deg, hsl(var(--primary)/.85), hsl(var(--venue)/.7))" }}>
+          <div className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[0.5625rem] font-semibold text-primary-foreground">PICK</div>
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-[0.25rem]">
+          <h3 className="type-headline text-sm font-semibold leading-tight text-foreground">Warehouse Session</h3>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-semibold text-venue">Nowadays</span>
+            <span>10:00 PM</span>
+          </div>
+          <p className="text-[0.6875rem] text-muted-foreground">Objekt · Nina Kraviz</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * `onOpenChange` exists for one caller and one reason: the header watches this
  * panel closing, because that is the first half of the logo's unlock sequence.
@@ -143,6 +194,16 @@ export function SettingsSheet({
     setTypography,
     textSize,
     setTextSize,
+    face,
+    setFace,
+    glow,
+    setGlow,
+    corners,
+    setCorners,
+    themePinned,
+    setThemePinned,
+    surprise,
+    reset,
   } = useTheme();
 
   // Position on the ladder, which is what the slider moves — the stored value
@@ -210,13 +271,10 @@ export function SettingsSheet({
           {/* data-controls marks the whole block as interactive, so a tap that
               lands in the gaps around a slider adjusts nothing rather than
               dismissing the panel. See closeUnlessOption. */}
-          <div data-controls className="mt-4 space-y-5">
-            {/* One row. The drawer is 320px, so four cells with a 4px gutter
-                land at ~70px each — comfortable for a 20px swatch and "Matrix"
-                at 10px. It was five cells at ~52px while Mono existed, which is
-                why the group still drops a step in gap and type; with four it
-                no longer has to, but the smaller label reads fine and changing
-                it back would be churn. */}
+          <div data-controls className="mt-3 space-y-5">
+            <PreviewCard />
+
+            <SectionHead>Look</SectionHead>
             <OptionGroup title="Theme" columns={4}>
               {THEME_OPTIONS.map((opt) => (
                 <button
@@ -243,68 +301,31 @@ export function SettingsSheet({
               ))}
             </OptionGroup>
 
-            {/* A slider, like the two below it — the last of the three axes to
-                stop being a row of buttons.
+            <button
+              type="button"
+              role="switch"
+              aria-checked={themePinned}
+              onClick={() => setThemePinned(!themePinned)}
+              className="flex h-[44px] w-full items-center justify-between rounded-lg border border-border/50 bg-card px-3 text-left text-[0.8125rem] transition-all active:scale-[0.99]"
+            >
+              <span>Keep this theme next time</span>
+              <span className={cn("relative h-[22px] w-[38px] rounded-full transition-colors", themePinned ? "bg-primary" : "bg-secondary")}>
+                <span className={cn("absolute top-[3px] h-4 w-4 rounded-full bg-foreground transition-all", themePinned ? "left-[19px] bg-primary-foreground" : "left-[3px]")} />
+              </span>
+            </button>
 
-                Density is the same shape of choice as the other two: an
-                ordered ladder from tightest to loosest where "one step looser"
-                is as real a thought as "that one". Three buttons only ever
-                served the second, and made a ladder look like three unrelated
-                modes.
-
-                The names sit under the ticks rather than inside the control,
-                which is what the other two do, so the three settings now read
-                as one instrument with three strings instead of a stepper, a
-                slider and a grid. */}
-            <OptionGroup title="Density" columns={1}>
-              <StepSlider
-                label="Density"
-                count={DENSITY_OPTIONS.length}
-                index={densityIndex}
-                onChange={(next) => setLayoutDensity(DENSITY_OPTIONS[next]!.value)}
-                valueText={DENSITY_OPTIONS[densityIndex]!.label}
-              />
-              <div className="flex items-start justify-between gap-1 px-0.5">
-                {DENSITY_OPTIONS.map((opt, i) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setLayoutDensity(opt.value)}
-                    aria-pressed={layoutDensity === opt.value}
-                    className={cn(
-                      // Ends anchor to their own tick rather than centring,
-                      // which would push "Tight" left of where the track starts.
-                      "min-w-0 flex-1 text-[0.6875rem] leading-tight transition-colors",
-                      i === 0 && "text-left",
-                      i === DENSITY_OPTIONS.length - 1 && "text-right",
-                      i > 0 && i < DENSITY_OPTIONS.length - 1 && "text-center",
-                      layoutDensity === opt.value
-                        ? "font-semibold text-primary"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+            <OptionGroup title="Glow" columns={3}>
+              {GLOWS.map((g) => (
+                <Seg key={g} on={glow === g} onClick={() => setGlow(g)}>{g === "soft" ? "Soft" : g === "off" ? "Off" : "Full"}</Seg>
+              ))}
+            </OptionGroup>
+            <OptionGroup title="Corners" columns={3}>
+              {CORNERS.map((c) => (
+                <Seg key={c} on={corners === c} onClick={() => setCorners(c)}>{c === "soft" ? "Soft" : c === "sharp" ? "Sharp" : "Round"}</Seg>
+              ))}
             </OptionGroup>
 
-            {/* A slider, like Text size, because it is the same shape of
-                choice: three faces ordered by how far they depart from the
-                system default, so "one further" and "that one" are both real
-                thoughts. Three buttons could only ever serve the second.
-
-                The names stay under the ticks and each is still set in the face
-                it selects — a font picker that names three fonts in a fourth
-                font is asking you to take its word for it, and that is as true
-                of a slider as it was of the buttons. The selected name takes
-                the primary colour so the track and the labels read as one
-                control rather than two.
-
-                No sample sentence above it: the entire app behind this panel is
-                already rendering in the face, at the size and density you
-                actually read it at, which nothing inside a 320px drawer can
-                improve on. */}
+            <SectionHead>Type</SectionHead>
             <OptionGroup title="Typography" columns={1}>
               <StepSlider
                 label="Typography"
@@ -339,22 +360,11 @@ export function SettingsSheet({
               </div>
             </OptionGroup>
 
-            {/* A slider, not a stepper and not six buttons.
-
-                The stepper this replaces was two taps away from either end of
-                a six-rung ladder and gave no way to say "that one" — you had
-                to walk there. A range input drags, and a tap anywhere on the
-                track jumps to the nearest rung, so both readings of "pick a
-                size" work with one control.
-
-                The +/- buttons went with it rather than sitting alongside.
-                They were 80px of a 320px drawer doing what an arrow key and a
-                drag already do, and the room they gave back is what makes the
-                track long enough that six rungs are far enough apart to hit.
-
-                The two A's are the scale, not decoration — they are set at the
-                sizes the ends of the ladder actually produce, in px, so they
-                stay put while everything between them moves. */}
+            <OptionGroup title="Typeface" columns={3}>
+              {FACE_OPTIONS.map((o) => (
+                <Seg key={o.value} on={face === o.value} onClick={() => setFace(o.value)}>{o.label}</Seg>
+              ))}
+            </OptionGroup>
             <OptionGroup title="Text size" columns={1}>
               <div className="flex items-center gap-3">
                 <span
@@ -383,9 +393,52 @@ export function SettingsSheet({
               </div>
             </OptionGroup>
 
+            <SectionHead>Space</SectionHead>
+            <OptionGroup title="Density" columns={1}>
+              <StepSlider
+                label="Density"
+                count={DENSITY_OPTIONS.length}
+                index={densityIndex}
+                onChange={(next) => setLayoutDensity(DENSITY_OPTIONS[next]!.value)}
+                valueText={DENSITY_OPTIONS[densityIndex]!.label}
+              />
+              <div className="flex items-start justify-between gap-1 px-0.5">
+                {DENSITY_OPTIONS.map((opt, i) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setLayoutDensity(opt.value)}
+                    aria-pressed={layoutDensity === opt.value}
+                    className={cn(
+                      // Ends anchor to their own tick rather than centring,
+                      // which would push "Tight" left of where the track starts.
+                      "min-w-0 flex-1 text-[0.6875rem] leading-tight transition-colors",
+                      i === 0 && "text-left",
+                      i === DENSITY_OPTIONS.length - 1 && "text-right",
+                      i > 0 && i < DENSITY_OPTIONS.length - 1 && "text-center",
+                      layoutDensity === opt.value
+                        ? "font-semibold text-primary"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </OptionGroup>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button type="button" onClick={surprise} className="flex h-[44px] items-center justify-center gap-2 rounded-lg border border-primary/60 bg-primary/10 text-[0.8125rem] font-semibold text-primary transition-all active:scale-95">
+                <Shuffle className="h-4 w-4" /> Surprise me
+              </button>
+              <button type="button" onClick={reset} className="flex h-[44px] items-center justify-center gap-2 rounded-lg border border-border/50 bg-card text-[0.8125rem] text-muted-foreground transition-all active:scale-95">
+                <RotateCcw className="h-4 w-4" /> Reset
+              </button>
+            </div>
+
             <p className="px-1 text-[0.6875rem] leading-snug text-muted-foreground">
               Swipe the list left or right to change day. The colour theme is
-              random each time you open the app.
+              random each time you open the app unless you keep one.
             </p>
 
             {/* Bottom of the last panel, one line, no illustration and no

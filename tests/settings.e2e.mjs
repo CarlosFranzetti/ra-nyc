@@ -403,6 +403,130 @@ check("tapping seventeen more times does not reopen it",
 // A separate context with a fine pointer and no touch. The unlock is a
 // seventeen-tap run driven by swiping up and down; with a mouse it is neither
 // discoverable nor usable, so the trigger is gated on `pointer: coarse`.
+
+// ── Seven themes, the Typeface / Glow / Corners axes, Reset, Surprise me, the pin
+async function fresh(stored, { viewport = { width: 390, height: 844 }, init } = {}) {
+  const ctx = await browser.newContext({ viewport, hasTouch: true, isMobile: true });
+  const p = await ctx.newPage();
+  await p.route("**/api/events*", (route) =>
+    route.fulfill({ contentType: "application/json", body: PAYLOAD }),
+  );
+  await p.route("**/images.ra.co/**", (route) => route.abort());
+  // Optional faces come from Google Fonts: answer with an empty sheet, count the asks.
+  await p.route("https://fonts.googleapis.com/**", (route) =>
+    route.fulfill({ contentType: "text/css", body: "" }),
+  );
+  if (stored !== undefined) {
+    await p.addInitScript((s) => {
+      if (!sessionStorage.getItem("seeded")) {
+        localStorage.setItem("ra-theme-settings", JSON.stringify(s));
+        sessionStorage.setItem("seeded", "1");
+      }
+    }, stored);
+  }
+  if (init) await p.addInitScript(init);
+  await p.goto(BASE, { waitUntil: "domcontentloaded" });
+  await p.waitForSelector("text=Event number 0", { timeout: 20000 });
+  return { ctx, p };
+}
+const openSheet = async (p) => {
+  await p.tap('button[aria-label="Customize"]');
+  await p.waitForTimeout(700);
+};
+const htmlClass = (p) => p.evaluate(() => document.documentElement.className);
+const press = (p, text) =>
+  p.locator("button[aria-pressed]").filter({ hasText: new RegExp(`^${text}$`) }).click();
+
+{
+  const { ctx, p } = await fresh({ colorTheme: "neon", themePinned: true });
+  await openSheet(p);
+  check("the theme row offers seven themes",
+    (await p.locator('button[aria-pressed]:has(div.rounded-full)').count()) === 7);
+
+  await press(p, "Mono");
+  await press(p, "Grotesk");
+  await press(p, "Mono");
+  await p.waitForTimeout(200);
+  const cls = await htmlClass(p);
+  const monoLinks = await p.evaluate(() => document.querySelectorAll('link[href*="Space+Mono"]').length);
+  const groteskLinks = await p.evaluate(() => document.querySelectorAll('link[href*="Bricolage"]').length);
+  const otherLinks = await p.evaluate(() => document.querySelectorAll('link[href*="Fraunces"], link[href*="Unbounded"]').length);
+  check("choosing a typeface applies its class and loads only that face, once",
+    cls.includes("face-mono") && !cls.includes("face-grotesk") && monoLinks === 1 && groteskLinks === 1 && otherLinks === 0,
+    `${cls} mono=${monoLinks} grotesk=${groteskLinks} others=${otherLinks}`);
+
+  await press(p, "Off");
+  check("Glow off zeroes the glow intensity",
+    (await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--glow-intensity").trim())) === "0");
+  await press(p, "Full");
+  check("Glow full doubles it",
+    (await p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--glow-intensity").trim())) === "0.6");
+
+  const radius = () => p.evaluate(() => getComputedStyle(document.querySelector("article")).borderTopLeftRadius);
+  const soft = await radius();
+  await press(p, "Sharp");
+  const sharp = await radius();
+  check("Sharp corners tighten the cards and soft is today's 8px",
+    soft === "8px" && parseFloat(sharp) < 4, `${soft} -> ${sharp}`);
+
+  await p.locator('button[aria-label="Text size"], input[aria-label="Text size"]').first().focus();
+  await p.keyboard.press("End");
+  await p.locator('input[aria-label="Density"]').focus();
+  await p.keyboard.press("End");
+  const before = await htmlClass(p);
+  const keep = (c) => c.split(" ").filter((x) => x.startsWith("text-size-") || x.startsWith("density-")).sort().join(" ");
+  for (let i = 0; i < 6; i++) await p.getByRole("button", { name: "Surprise me" }).click();
+  check("Surprise me re-rolls taste but never text size or density",
+    keep(before) === keep(await htmlClass(p)) && keep(before).includes("text-size-5"), keep(before));
+
+  await p.getByRole("button", { name: "Reset" }).click();
+  await p.waitForTimeout(200);
+  const after = await htmlClass(p);
+  const stored = await p.evaluate(() => JSON.parse(localStorage.getItem("ra-theme-settings")));
+  check("Reset returns every axis to today's defaults",
+    ["face-ladder", "glow-soft", "corners-soft", "density-default", "type-base", "text-size-0"].every((c) => after.includes(c)) &&
+      stored.face === "ladder" && stored.glow === "soft" && stored.corners === "soft" && stored.themePinned === false,
+    after);
+  await ctx.close();
+}
+
+{
+  const { ctx, p } = await fresh({ colorTheme: "neon", themePinned: false });
+  await openSheet(p);
+  await press(p, "Ember");
+  await p.locator('button[role="switch"]').click();
+  await p.waitForTimeout(200);
+  await p.reload({ waitUntil: "domcontentloaded" });
+  await p.waitForSelector("text=Event number 0");
+  check("a pinned theme survives a reload", (await htmlClass(p)).includes("theme-ember"));
+  await ctx.close();
+}
+
+{
+  // A stored pin on a theme that no longer exists unpins and rolls.
+  const { ctx, p } = await fresh({ colorTheme: "retired-theme", themePinned: true, face: "no-such-face", glow: "soft" });
+  const stored = await p.evaluate(() => JSON.parse(localStorage.getItem("ra-theme-settings")));
+  const cls = await htmlClass(p);
+  check("a pin on a theme that no longer exists unpins and rolls; unknown values fall back per axis",
+    stored.themePinned === false && /theme-(neon|vapor|matrix|sunset|ultra|ember|acid)/.test(cls) &&
+      cls.includes("face-ladder") && cls.includes("glow-soft"), `${cls} ${JSON.stringify(stored)}`);
+  await ctx.close();
+}
+
+{
+  // The roll can land on every one of the seven. Math.random is swept across [0,1).
+  const seen = new Set();
+  for (let i = 0; i < 7; i++) {
+    const { ctx, p } = await fresh({ themePinned: false }, {
+      init: `Math.random = () => ${(i + 0.5) / 7}; try { localStorage.removeItem("ra-theme-last"); } catch {}`,
+    });
+    const m = (await htmlClass(p)).match(/theme-(\w+)/);
+    if (m) seen.add(m[1]);
+    await ctx.close();
+  }
+  check("the random roll reaches all seven themes", seen.size === 7, [...seen].join(","));
+}
+
 const desktop = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 const deskPage = await desktop.newPage();
 await deskPage.route("**/api/events*", (route) =>
