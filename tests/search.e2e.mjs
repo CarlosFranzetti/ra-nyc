@@ -117,6 +117,14 @@ await page.addInitScript(() => {
     window.__events.push({ kind, payload });
   };
 });
+// And keep the real one out. "Which is not loaded here" was true only while
+// the sandbox could not reach Vercel's script host. The day it could, the real
+// script loaded, replaced `window.va` with its own, and the four checks that
+// count outbound taps went red with nothing wrong in the app: the taps were
+// being counted, just not by the stand-in. A suite must not depend on what
+// the network happens to allow.
+await page.route("**/va.vercel-scripts.com/**", (route) => route.abort());
+await page.route("**/_vercel/insights/**", (route) => route.abort());
 
 let searchCalls = 0;
 await page.route("**/api/events*", (route) =>
