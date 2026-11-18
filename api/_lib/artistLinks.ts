@@ -745,6 +745,34 @@ const MUSIC_WORD = /\b(?:mix|set|live|b2b|b3b)\b|@/i;
 /** What a 20 to 45 minute upload must say to be a set and not a single. */
 const SET_WORD = /(?:^|[^\p{L}\p{N}])(?:mix|set|live|show|radio|b2b|b3b|w|with|presents)(?:$|[^\p{L}\p{N}])|@|\bw\//iu;
 
+/**
+ * Channels whose whole business is publishing other people's DJ sets: stations,
+ * radio series and the labels and magazines with a mix series. A set on one of
+ * these whose title carries the artist's name is a set, with no further
+ * evidence needed.
+ *
+ * **Curated, and incomplete by nature.** It only ever adds confidence: a
+ * channel that is not here is not distrusted, it just has to bring an evidence
+ * term with it. Matched on the uploader's folded display name or permalink, so
+ * `HÖR`, `hor` and `H0R` are one. Add to it when a real set is missed.
+ */
+const TRUSTED_CHANNELS: ReadonlySet<string> = new Set(
+  [
+    "Kiosk Radio", "Refuge Worldwide", "NTS", "NTS Radio", "Rinse FM", "Rinse France",
+    "Rinse", "The Lot Radio", "Lot Radio", "HÖR", "HÖR Berlin", "Boiler Room",
+    "Dublab", "Noods Radio", "Balamii", "Radio Raheem", "Operator", "LYL Radio",
+    "LYL", "Hotel Radio Paris", "Dekmantel", "Dekmantel Podcast", "Resident Advisor",
+    "Mixmag", "XLR8R", "Crack Magazine", "Truants", "Ilian Tape", "Feel My Bicep",
+    "Honey Soundsystem", "Slothboogie",
+  ].map(fold),
+);
+
+function isTrustedChannel(track: ScTrack): boolean {
+  return [track.user?.username, track.user?.permalink].some(
+    (field) => Boolean(field) && TRUSTED_CHANNELS.has(fold(field as string)),
+  );
+}
+
 /** Digits and letters of a name, as one word: a name is "common" when this is short. */
 const COMMON_NAME_LENGTH = 8;
 
@@ -765,6 +793,8 @@ interface SoundcloudResult {
   url: string | null;
   description: string | null;
   sets: ArtistSet[];
+  /** Ids of sets accepted only because a trusted channel carried a common name; ranked last. */
+  weakIds: string[];
   /**
    * Whether the account is believed to be the artist's. A common name matched
    * on its display name alone is not: the profile is still offered as a link,
@@ -808,7 +838,7 @@ async function resolveSoundcloud(
   let auth: Record<string, string> | undefined;
   let userSearch: (query: string) => string;
   let resolveHandle: (handle: string) => string;
-  let trackSearch: (query: string, limit: number) => string;
+  let trackSearch: (query: string, limit: number, longForm?: boolean) => string;
   let userTracks: (userId: number) => string;
 
   if (mode === "official") {
@@ -820,7 +850,10 @@ async function resolveSoundcloud(
     auth = { Authorization: `OAuth ${token}` };
     userSearch = (query) => `${base}/users?q=${enc(query)}&limit=${USER_LIMIT}`;
     resolveHandle = (handle) => `${base}/resolve?url=${enc(`https://soundcloud.com/${handle}`)}`;
-    trackSearch = (query, limit) => `${base}/tracks?q=${enc(query)}&limit=${limit}`;
+    // `duration[from]` is the public API's lower bound, in milliseconds.
+    trackSearch = (query, limit, longForm) =>
+      `${base}/tracks?q=${enc(query)}&limit=${limit}` +
+      (longForm ? `&duration%5Bfrom%5D=${MIN_RADIO_SECONDS * 1000}` : "");
     userTracks = (userId) => `${base}/users/${userId}/tracks?limit=${CATALOGUE_LIMIT}`;
   } else {
     const base = "https://api-v2.soundcloud.com";
@@ -828,7 +861,12 @@ async function resolveSoundcloud(
     userSearch = (query) => `${base}/search/users?q=${enc(query)}&limit=${USER_LIMIT}${credential}`;
     resolveHandle = (handle) =>
       `${base}/resolve?url=${enc(`https://soundcloud.com/${handle}`)}&client_id=${enc(clientId)}`;
-    trackSearch = (query, limit) => `${base}/search/tracks?q=${enc(query)}&limit=${limit}${credential}`;
+    // `filter.duration=epic` is api-v2's "over thirty minutes". Recalled from
+    // their own web player, not confirmed from here, which is why it is sent
+    // beside the unfiltered search and never instead of it; the client-side
+    // length check is the real guard.
+    trackSearch = (query, limit, longForm) =>
+      `${base}/search/tracks?q=${enc(query)}&limit=${limit}${longForm ? "&filter.duration=epic" : ""}${credential}`;
     userTracks = (userId) => `${base}/users/${userId}/tracks?limit=${CATALOGUE_LIMIT}${credential}`;
   }
 
@@ -987,7 +1025,7 @@ async function resolveSoundcloud(
    * length unless the title also says mix, set, live, b2b or "@". No list of
    * radio stations is needed: the evidence term is what ties it to the artist.
    */
-  const judge = (t: ScTrack, mode: "own" | "search"): boolean => {
+  const judge = (t: ScTrack, mode: "own" | "search"): "strong" | "weak" | false => {
     const title = t.title ?? "Untitled";
     const no = (why: string): false => {
       if (rejected.length < 10) rejected.push(`${title.slice(0, 60)} (${why})`);
@@ -995,7 +1033,7 @@ async function resolveSoundcloud(
     };
     if (!t.permalink_url) return no("no url");
     const ms = t.duration ?? 0;
-    if (mode === "own") return ms >= floor ? true : no("short");
+    if (mode === "own") return ms >= floor ? "strong" : no("short");
 
     // A conversation about the artist is not a set by them, however long and
     // however well the name is credited.
@@ -1003,22 +1041,37 @@ async function resolveSoundcloud(
 
     const named = nameInTitle(title);
     const evidenced = named && carriesEvidence(t);
+    // A channel that exists to publish guest sets, with the name in the title.
+    const onChannel = named && isTrustedChannel(t);
     const credited =
       titleMentions(name, title) ||
       (trustUploader && isPlausibleMatch(name, t.user?.username ?? ""));
-    if (!credited && !evidenced) return no(named ? "no evidence term" : "name not in title");
+    if (!credited && !evidenced && !onChannel) return no(named ? "no evidence term" : "name not in title");
 
-    if (ms >= floor) return true;
+    // A common name on a channel is accepted, but it is the weakest kind of
+    // yes: the channel is telling us a "Hugo" played, not which one.
+    const tier = common && onChannel && !evidenced && !credited ? "weak" : "strong";
+    if (ms >= floor) return tier;
     const theirs = user?.id !== undefined && t.user?.id === user.id;
-    if (evidenced && !theirs && ms >= MIN_RADIO_SECONDS * 1000 && SET_WORD.test(title)) return true;
+    if (!theirs && ms >= MIN_RADIO_SECONDS * 1000) {
+      if (onChannel) return tier;
+      if (evidenced && SET_WORD.test(title)) return tier;
+    }
     return no("short");
   };
 
   const kept = new Map<string, ArtistSet>();
+  const weakIds = new Set<string>();
   const keep = (t: ScTrack, mode: "own" | "search"): void => {
-    if (!judge(t, mode)) return;
+    const verdict = judge(t, mode);
+    if (!verdict) return;
     const id = `sc-${t.id ?? t.permalink_url}`;
-    if (kept.has(id)) return;
+    if (kept.has(id)) {
+      // Found twice, once by a stronger route: the stronger one stands.
+      if (verdict === "strong") weakIds.delete(id);
+      return;
+    }
+    if (verdict === "weak") weakIds.add(id);
     kept.set(id, {
       provider: "soundcloud" as const,
       id,
@@ -1047,15 +1100,23 @@ async function resolveSoundcloud(
   // track count, so a profile of fifty four-minute singles - which yields
   // nothing playable - never fell back, and the Lot Radio and NTS sets that
   // were the only ones that DJ had stayed unfound.
+  //
+  // Two searches, side by side: the plain one, and one asking only for long
+  // tracks. A bare first name returns fifty songs called that, and the radio
+  // show is not among them; asked for long tracks only, the fifty are sets.
   let scoped: ScTrack[] = [];
+  let scopedLong: ScTrack[] = [];
   if (!skipScoped && ownKept === 0) {
-    scoped = await readTracks(trackSearch(bare, CATALOGUE_LIMIT));
+    [scoped, scopedLong] = await Promise.all([
+      readTracks(trackSearch(bare, CATALOGUE_LIMIT)),
+      readTracks(trackSearch(bare, CATALOGUE_LIMIT, true)),
+    ]);
   }
 
-  const evidenceTracks = (await evidenceSearches).flatMap((response) =>
+  const evidenceResults = (await evidenceSearches).map((response) =>
     listOf(take(response) as unknown as ScTrack[] | null),
   );
-  for (const t of [...evidenceTracks, ...scoped]) keep(t, "search");
+  for (const t of [...evidenceResults.flat(), ...scopedLong, ...scoped]) keep(t, "search");
 
   console.info("[sc] resolve", {
     artist: bare,
@@ -1066,10 +1127,16 @@ async function resolveSoundcloud(
     handle: givenHandle,
     own: own.length,
     ownAtFloor: own.filter((t) => (t.duration ?? 0) >= floor).length,
+    // How many results each search returned, so production says whether the
+    // long-form filter is honoured: `scopedLong` far below `scoped` and full
+    // of long tracks means it is.
     scoped: scoped.length,
+    scopedLong: scopedLong.length,
+    scopedLongAtFloor: scopedLong.filter((t) => (t.duration ?? 0) >= floor).length,
     evidenceTerms: evidence.length,
-    evidenceHits: evidenceTracks.length,
+    evidenceHits: evidenceResults.map((list) => list.length),
     kept: kept.size,
+    weak: weakIds.size,
     rejected,
   });
 
@@ -1082,6 +1149,7 @@ async function resolveSoundcloud(
       url: user?.permalink_url ?? null,
       description: confirmed ? user?.description?.trim() || null : null,
       sets: [...kept.values()],
+      weakIds: [...weakIds],
       confirmed,
     },
     degraded,
@@ -1688,6 +1756,21 @@ const EMPTY_ROW_TTL_MS = 24 * 60 * 60 * 1000;
 /** How long a resolved row is believed. Identities drift: handles change, accounts are deleted. */
 const AUTO_ROW_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
+/**
+ * When the resolver's judgement last changed materially.
+ *
+ * Every stored row carries the answer of whatever resolver wrote it, and the
+ * schema has nowhere to say which (`link_source` is a CHECK-constrained
+ * `auto | manual | none`, and a migration is a hand-run step). So the version
+ * is a date: any non-manual row resolved before this instant is stale and is
+ * looked up again, once, on its next view, which spreads the cost by traffic.
+ *
+ * **Bump this by hand** whenever a change to the resolver should reach artists
+ * who already have an answer: new account rules, a new source, a removed one.
+ * Without it a better resolver does nothing for anyone for up to ninety days.
+ */
+export const RESOLVER_EPOCH = "2026-11-19T00:00:00Z";
+
 interface ArtistRow {
   ra_artist_id: string;
   name: string;
@@ -1719,6 +1802,9 @@ export function isStaleRow(
   if (row.link_source === "manual") return false;
   const at = row.resolved_at ? new Date(row.resolved_at).getTime() : Number.NaN;
   if (Number.isNaN(at)) return false;
+  // Whatever the resolver decided before its judgement last changed is not
+  // believed, however recent: see RESOLVER_EPOCH.
+  if (at < Date.parse(RESOLVER_EPOCH)) return true;
   const empty = row.link_source === "none" || !row.sets || row.sets.length === 0;
   return now - at > (empty ? EMPTY_ROW_TTL_MS : AUTO_ROW_TTL_MS);
 }
@@ -1982,11 +2068,13 @@ export async function getArtistLinks(
 
     const fallback = buildFallbackLinks(name);
 
+    const weak = new Set(soundcloud?.weakIds ?? []);
+    // Stable: the date order `orderSets` made is kept inside each group.
     const sets = orderSets([
       ...(soundcloud?.sets ?? []),
       ...(mixcloud?.sets ?? []),
       ...(archiveResult.value ?? []),
-    ]);
+    ]).sort((a, b) => Number(weak.has(a.id)) - Number(weak.has(b.id)));
 
     // Bio priority: RA is the scene-native source, then the artist's own
     // Mixcloud blurb, then their SoundCloud description. Web addresses come out
