@@ -81,7 +81,14 @@ createRoot(document.getElementById("root")!).render(
       },
       // Bumping this string invalidates every persisted cache — do it whenever
       // an API response shape changes, or restored data will be the wrong shape.
-      buster: "v2-artists",
+      //
+      // v3: not a shape change, a judgement change. The artist resolver was
+      // rebuilt (sets found on station and club channels, the Archive no longer
+      // accepting a bare name), and the server re-resolves every old answer
+      // once. A phone holding yesterday's answer for Penelope in this cache
+      // would go on showing it for a day regardless, which is the day the
+      // owner opens the app to see whether it worked.
+      buster: "v3-resolver",
     }}
   >
     <ThemeProvider>

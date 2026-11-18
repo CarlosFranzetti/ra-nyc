@@ -43,17 +43,6 @@ const controlClass =
  * owned by PlayerProvider, which is what lets a set keep playing while sheets
  * open and close over the top of it.
  */
-/**
- * Shape of the notice Pax is adding to the player context. Declared locally and
- * read defensively so this branch and his merge cleanly in either order; the
- * orchestrator swaps in the exported type after the merge.
- */
-type PlayerNotice = {
-  kind: "skipped" | "blocked";
-  title: string;
-  reason: "timeout" | "error" | "stalled";
-};
-
 export function PlayerBar() {
   const player = usePlayer();
   const {
@@ -80,17 +69,11 @@ export function PlayerBar() {
     jumpTo,
     removeAt,
   } = player;
-  // Orchestrator: replace this cast with `player.notice` once the context exports it.
-  const contextNotice = (player as { notice?: PlayerNotice | null }).notice ?? null;
-  // TEST HOOK, remove after the merge: lets a suite drive the notice before the
-  // watchdog exists, by dispatching `ra-test-notice` with a PlayerNotice or null.
-  const [testNotice, setTestNotice] = useState<PlayerNotice | null>(null);
-  useEffect(() => {
-    const on = (event: Event) => setTestNotice((event as CustomEvent<PlayerNotice | null>).detail);
-    window.addEventListener("ra-test-notice", on);
-    return () => window.removeEventListener("ra-test-notice", on);
-  }, []);
-  const notice = contextNotice ?? testNotice;
+  // What the watchdog has to say, if anything: a set it skipped (shown for a
+  // few seconds with that set's name, so the queue moving on does not read as
+  // the app losing its place), or the queue stopped after two skips in a row
+  // and waiting for a tap. Both come from PlayerContext; the bar only draws.
+  const { notice } = player;
 
   const ticketsVisible = shouldOfferTickets(source, listened);
 
