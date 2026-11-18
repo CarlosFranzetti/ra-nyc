@@ -63,6 +63,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // PROTOTYPE: vendored Leaflet 1.9.4. Real change is `npm i leaflet`.
+      "leaflet/dist/leaflet.css": path.resolve(__dirname, "./vendor/leaflet/leaflet.css"),
+      leaflet: path.resolve(__dirname, "./vendor/leaflet/index.js"),
     },
   },
 });

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
-import { CalendarDays, Search } from "lucide-react";
+import { CalendarDays, Map as MapIcon, Search } from "lucide-react";
 import { DividedBoxes } from "@/components/DividedBoxes";
 import { NO_TAPS, tap, type TapState } from "@/lib/secretTaps";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ interface HeaderProps {
   selectedDate: Date;
   onDateChange: (date: Date) => void;
   onSearchClick: () => void;
+  onMapClick?: () => void;
   /** How many events the current filters leave, for the caption to alternate to. */
   eventCount: number;
   /** Double-tap on the logo: back to tonight, freshly loaded. */
@@ -58,6 +59,7 @@ export function Header({
   selectedDate,
   onDateChange,
   onSearchClick,
+  onMapClick,
   eventCount,
   onToday,
 }: HeaderProps) {
@@ -232,6 +234,15 @@ export function Header({
           >
             <Search className="h-[20px] w-[20px]" />
           </button>
+          {onMapClick && (
+            <button
+              onClick={onMapClick}
+              aria-label="Map of venues and record shops"
+              className="tap rounded-md text-muted-foreground hover:text-foreground active:text-foreground active:scale-95 transition-all"
+            >
+              <MapIcon className="h-[20px] w-[20px]" />
+            </button>
+          )}
           <Suspense
             fallback={
               <span className="tap text-muted-foreground">

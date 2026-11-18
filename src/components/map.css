@@ -1,0 +1,24 @@
+/* Map chrome. Colours are the app's own tokens so all four themes carry over. */
+.leaflet-container { background: hsl(var(--secondary)); font: inherit; outline: none; }
+.leaflet-container .leaflet-control-attribution {
+  background: hsl(var(--background) / 0.78); color: hsl(var(--muted-foreground));
+  font-size: 10px; padding: 1px 5px; border-top-left-radius: 6px;
+}
+.leaflet-container .leaflet-control-attribution a { color: hsl(var(--foreground)); }
+.map-hit { display: grid; place-items: center; background: none; border: 0; }
+.map-pin {
+  display: block; box-sizing: border-box;
+  /* Background-coloured outline so a pin reads on the pale basemap and on a
+     busy block alike; the hue carries meaning, the shape carries it too. */
+  border: 2px solid hsl(var(--background));
+  box-shadow: 0 0 0 1px hsl(var(--background) / 0.55), 0 2px 5px rgb(0 0 0 / 0.45);
+  transition: transform 120ms ease-out;
+}
+.map-pin--tonight { width: 22px; height: 22px; border-radius: 9999px; background: hsl(var(--venue));
+  box-shadow: 0 0 0 4px hsl(var(--venue) / 0.35), 0 2px 6px rgb(0 0 0 / 0.5); }
+.map-pin--venue { width: 14px; height: 14px; border-radius: 9999px; background: hsl(var(--venue) / 0.55); }
+.map-pin--shop { width: 15px; height: 15px; border-radius: 3px; background: hsl(var(--primary)); transform: rotate(45deg); }
+.map-pin--selected { transform: scale(1.45); }
+.map-pin--shop.map-pin--selected { transform: rotate(45deg) scale(1.45); }
+.map-me { width: 14px; height: 14px; border-radius: 9999px; background: hsl(var(--foreground));
+  border: 3px solid hsl(var(--background)); box-shadow: 0 0 0 2px hsl(var(--foreground) / 0.5); }
