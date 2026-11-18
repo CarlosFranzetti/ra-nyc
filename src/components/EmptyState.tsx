@@ -10,6 +10,14 @@ export function EmptyState() {
       <p className="text-sm text-muted-foreground mt-1 max-w-xs">
         There are no events listed for this date. Try checking another day.
       </p>
+      {/* Proposal: three ways out, instead of a dead end. Needs an onPick(date) prop. */}
+      <div className="polish-only mt-5 gap-2">
+        {["Tonight", "Fri 20", "Sat 21"].map((d) => (
+          <button key={d} className="h-[44px] rounded-lg border border-primary/50 bg-primary/10 px-4 text-[0.8125rem] font-medium text-primary glow-primary-sm">
+            {d}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

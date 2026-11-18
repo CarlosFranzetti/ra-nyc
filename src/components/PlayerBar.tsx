@@ -427,12 +427,12 @@ export function PlayerBar() {
         </button>
 
         <div className="mx-1 min-w-0 flex-1">
-          <p className="truncate text-[0.8125rem] font-medium leading-tight text-foreground">
+          <p className="player-title truncate text-[0.8125rem] font-medium leading-tight text-foreground">
             {current.title}
           </p>
           <p
             className={cn(
-              "truncate text-[0.6875rem] leading-tight",
+              "player-sub truncate text-[0.6875rem] leading-tight",
               error ? "text-destructive" : "text-muted-foreground",
             )}
           >
