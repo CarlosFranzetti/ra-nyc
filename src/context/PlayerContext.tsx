@@ -45,6 +45,21 @@ export interface QueueEntry {
   source: PlaybackSource | null;
 }
 
+/**
+ * Something the bar should say about what the player just did on its own.
+ *
+ * `skipped`: a set that could not be played was passed over, and `title` names
+ * it; it clears itself after `NOTICE_MS`, or the moment the listener acts.
+ * `blocked`: two sets in a row failed and the third did too, so the queue has
+ * stopped on `title`, paused, rather than run through the rest. Clears when
+ * playback starts.
+ */
+export interface PlayerNotice {
+  kind: "skipped" | "blocked";
+  title: string;
+  reason: "timeout" | "error" | "stalled";
+}
+
 /** What a caller hands in; the player mints the uid. */
 export interface QueueItem {
   set: ArtistSet;
@@ -69,6 +84,8 @@ interface PlayerContextValue {
   duration: number | null;
   seekable: boolean;
   error: string | null;
+  /** What the player did by itself: skipped a dead set, or stopped asking. */
+  notice: PlayerNotice | null;
   hasNext: boolean;
   hasPrevious: boolean;
   /** Loads a queue and starts at `startIndex`. Re-tapping the live set resumes. */
@@ -321,6 +338,41 @@ function reduce(state: QueueState, action: QueueAction): QueueState {
 }
 
 const BUILD_FAILED = "Couldn't load the player. Tap play to try again.";
+
+// ── The watchdog ─────────────────────────────────────────────────────────────
+//
+// A set that never makes a sound used to hold the queue for ever: a Mixcloud
+// `ready` that never settles, a SoundCloud `load()` that never calls back, a
+// widget that errors. Two fuses, because the two silences mean different things.
+
+/**
+ * Load to ready. Long, because a bad connection really can take this long to
+ * bring a widget up, and skipping a set that was merely slow is worse than
+ * waiting for it.
+ */
+const LOAD_FUSE_MS = 20_000;
+/**
+ * Ready, and meant to be playing, to the first play or progress event. Short:
+ * once the widget says it is ready, silence this long is a dead set rather than
+ * a slow one.
+ */
+const START_FUSE_MS = 8_000;
+/**
+ * Automatic skips in a row, with nothing played between. An iPhone that refuses
+ * to start anything without a tap looks exactly like a dead set, and a watchdog
+ * that skipped it would run through the whole queue; so the third failure stops
+ * on that set and asks for a tap instead.
+ */
+const SKIP_LIMIT = 2;
+/** How long "skipped X" stays readable. */
+const NOTICE_MS = 4_000;
+/** Position within this of the end, with no FINISH for `END_STALL_MS`, means the widget forgot to say so. */
+const END_NEAR_S = 1;
+const END_STALL_MS = 4_000;
+/** A seek never lands closer to the end than this: the widget would play out and FINISH, ending the set. */
+const SEEK_TAIL_S = 3;
+/** Previous restarts the set once it is further in than this, as every player does. */
+const RESTART_AFTER_S = 3;
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
