@@ -586,37 +586,6 @@ await page.waitForTimeout(500);
     bubble && Math.abs(bubble.cx - bubble.thumb) < 4 && bubble.left >= 0 && bubble.right <= bubble.vw, JSON.stringify(bubble));
 }
 
-// Notice states, driven through the test hook until the watchdog's context field lands.
-const notice = (detail) => page.evaluate((d) => window.dispatchEvent(new CustomEvent("ra-test-notice", { detail: d })), detail);
-const barState = () =>
-  page.evaluate(() => {
-    const bar = document.querySelector("div.fixed[data-notice], div.fixed.player-live");
-    const rng = document.querySelector('input[aria-label="Seek"]');
-    return {
-      kind: bar?.getAttribute("data-notice") ?? null,
-      title: bar?.querySelector(".player-title")?.textContent,
-      sub: bar?.querySelector(".player-sub")?.textContent,
-      rangeOpacity: rng ? getComputedStyle(rng).opacity : null,
-      anim: getComputedStyle(bar, "::before").animationName,
-    };
-  });
-const heightBefore = await barHeight();
-await notice({ kind: "skipped", title: "Skipped Set Name", reason: "timeout" });
-await page.waitForTimeout(200);
-const skipped = await barState();
-check("a skipped set shows its own name, a quiet reason, and hides the scrubber",
-  skipped.kind === "skipped" && skipped.title === "Skipped Set Name" && /skipping/.test(skipped.sub) &&
-    skipped.rangeOpacity === "0" && skipped.anim === "skip-drain", JSON.stringify(skipped));
-await notice({ kind: "blocked", title: "Stopped", reason: "stalled" });
-await page.waitForTimeout(200);
-const blocked = await barState();
-check("a blocked queue says tap play, with no drain animation",
-  blocked.kind === "blocked" && blocked.sub === "Tap play to continue" && blocked.anim === "none", JSON.stringify(blocked));
-await notice(null);
-await page.waitForTimeout(200);
-check("and clearing the notice restores the bar at the same height",
-  (await barState()).kind === null && (await barHeight()) === heightBefore, `${heightBefore}px`);
-
 // Settings sheet over the docked bar at 375x667: the last row must be reachable.
 await page.locator('button[aria-label="Customize"]').click();
 await page.waitForTimeout(800);
@@ -640,6 +609,20 @@ check("settings: Reset and the last row clear the docked bar at 375x667",
 await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
 await page.setViewportSize({ width: 390, height: 844 });
+
+// The scrubber at the phone's own size: a 44px target, and the thumb's centre at
+// both ends of the track clear of the screen edges. The centre is computed from
+// the input's box as the bubble check does: x + 6 + (width - 12) * fraction.
+{
+  const box = await seek.boundingBox();
+  const vw = await page.evaluate(() => window.innerWidth);
+  const centreAt = (frac) => box.x + 6 + (box.width - 12) * frac;
+  check("at 390x844 the scrubber's box is at least 44px tall", box.height >= 44, `${box.height}px`);
+  check("the thumb's centre at zero is at least 20px from the left edge",
+    centreAt(0) - 0 >= 20, `centre ${centreAt(0).toFixed(1)}px`);
+  check("the thumb's centre at the end is at least 20px from the right edge",
+    vw - centreAt(1) >= 20, `centre ${centreAt(1).toFixed(1)}px of ${vw}`);
+}
 
 // ── teardown
 await page.locator('button[aria-label="Close player"]').click();

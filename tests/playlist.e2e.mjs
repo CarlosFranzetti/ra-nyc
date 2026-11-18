@@ -1184,6 +1184,155 @@ async function panel(page) {
   }
 }
 
+// ═══ The watchdog, seen from the bar ═══════════════════════════════════════
+// Pax's section above reads the host's data attribute. These read the bar a
+// listener sees: the notice's name, its line of copy, the scrubber, the drain.
+
+{
+  const scSet = (title, slug) => ({
+    provider: "soundcloud",
+    id: `sc-${slug}`,
+    title,
+    url: `https://soundcloud.com/dj1/${slug}`,
+    embedUrl: `https://w.soundcloud.com/player/?url=https%3A%2F%2Fsoundcloud.com%2Fdj1%2F${slug}`,
+    duration: 2400,
+    plays: 1,
+    createdAt: null,
+    artwork: null,
+  });
+  const mcSet = (title, slug) => ({
+    provider: "mixcloud",
+    id: `mc-${slug}`,
+    title,
+    url: `https://www.mixcloud.com/a/${slug}/`,
+    embedUrl: `https://www.mixcloud.com/widget/iframe/?feed=%2Fa%2F${slug}%2F`,
+    duration: 2400,
+    plays: 1,
+    createdAt: null,
+    artwork: null,
+  });
+  const advance = async (page, ms, step = 500) => {
+    for (let t = 0; t < ms; t += step) {
+      await page.clock.runFor(step);
+      await sleep(25);
+    }
+  };
+  const playing = (b) => b.playBtn === "Pause" && !b.spinner;
+  /** The bar's own copy, notice state and scrubber, read off the DOM. */
+  const barNow = (page) =>
+    page.evaluate(() => {
+      const seek = document.querySelector('input[aria-label="Seek"]');
+      const root = seek?.closest("div.fixed");
+      const main = document.querySelector('button[aria-label="Play"], button[aria-label="Pause"]');
+      return {
+        notice: root?.getAttribute("data-notice") ?? null,
+        title: root?.querySelector(".player-title")?.textContent ?? null,
+        sub: root?.querySelector(".player-sub")?.textContent ?? null,
+        seekOpacity: seek ? getComputedStyle(seek).opacity : null,
+        drain: root ? getComputedStyle(root, "::before").animationName : null,
+        main: main?.getAttribute("aria-label") ?? null,
+        height: root ? root.getBoundingClientRect().height : null,
+        value: seek?.value ?? null,
+        max: seek?.max ?? null,
+      };
+    });
+
+  {
+    // A Mixcloud set that never becomes ready: the bar names it while it is skipped.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      clock: true,
+      artists: { 1: { sets: [mcSet("Dead Mix", "never"), scSet("Live Mix", "live")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await advance(page, 1000);
+    const quiet = await barNow(page);
+    await advance(page, 20000);
+    const skipped = await barNow(page);
+    check("a skipped set: the bar says skipping, under the skipped set's own name",
+      skipped.notice === "skipped" && skipped.title === "Dead Mix" && /skipping/.test(skipped.sub ?? ""),
+      JSON.stringify({ notice: skipped.notice, title: skipped.title, sub: skipped.sub }));
+    check("and the scrubber is hidden while the notice is up", skipped.seekOpacity === "0", `opacity ${skipped.seekOpacity}`);
+    check("and the drain animation runs on the bar's top edge", skipped.drain === "skip-drain", `animationName ${skipped.drain}`);
+    await advance(page, 4500);
+    const after = await barNow(page);
+    check("after the notice clears the bar has no notice", after.notice === null, `notice ${after.notice}`);
+    check("the bar is the same height once the notice clears", after.height === quiet.height, `${quiet.height} -> ${after.height}`);
+    check("and the title is the set now playing", after.title === "Live Mix", after.title);
+    await context.close();
+  }
+  {
+    // Three dead sets in a row: the bar stops and says so, and the Play button is honest.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      cfg: { errorOnLoad: "dead" },
+      artists: {
+        1: {
+          sets: [scSet("First", "one"), scSet("Dead A", "dead-a"), scSet("Dead B", "dead-b"), scSet("Dead C", "dead-c"), scSet("After", "after")],
+        },
+      },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await until(page, playing);
+    await page.locator('button[aria-label="Next mix"]').click();
+    await until(page, (s) => s.title === "Dead C" && s.playBtn === "Play" && !s.spinner, 8000);
+    await sleep(800);
+    const blocked = await barNow(page);
+    check("three dead sets stop the bar in the blocked state", blocked.notice === "blocked", String(blocked.notice));
+    check("the blocked line is exactly 'Tap play to continue'", blocked.sub === "Tap play to continue", JSON.stringify(blocked.sub));
+    check("the blocked state has no drain animation", blocked.drain === "none", `animationName ${blocked.drain}`);
+    check("the main transport button says Play, not Pause", blocked.main === "Play", `aria-label ${blocked.main}`);
+    await sleep(4600);
+    check("and the blocked state does not clear on its own", (await barNow(page)).notice === "blocked");
+    await context.close();
+  }
+  {
+    // Seek to the far right on a set that is not last: the queue stays put.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Second", "two")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await until(page, (s) => playing(s) && s.max === "3600", 8000);
+    await page.locator(SEEK).focus();
+    await page.keyboard.press("End");
+    await sleep(900);
+    const endKey = await barNow(page);
+    check("End on the scrubber does not advance the queue", endKey.title === "First", endKey.title);
+    check("and leaves the position within 5 s of the end",
+      Number(endKey.max) - Number(endKey.value) <= 5, `value ${endKey.value} of ${endKey.max}`);
+    await context.close();
+  }
+  {
+    // The same, by dragging the thumb past the right edge with the pointer.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Second", "two")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await until(page, (s) => playing(s) && s.max === "3600", 8000);
+    const box = await page.locator(SEEK).boundingBox();
+    const midY = box.y + box.height / 2;
+    const v = Number((await barNow(page)).value);
+    const thumbX = box.x + 6 + (box.width - 12) * (v / 3600);
+    await page.mouse.move(thumbX, midY);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width + 30, midY, { steps: 8 });
+    await sleep(150);
+    await page.mouse.up();
+    await sleep(900);
+    const dragged = await barNow(page);
+    check("dragging to the far right does not advance the queue", dragged.title === "First", dragged.title);
+    check("and leaves the position within 5 s of the end",
+      Number(dragged.max) - Number(dragged.value) <= 5, `value ${dragged.value} of ${dragged.max}`);
+    await context.close();
+  }
+}
+
 await browser.close();
 shutdown();
 
