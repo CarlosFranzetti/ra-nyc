@@ -6,6 +6,8 @@ import "./map.css";
 export interface MapPlace {
   id: string;
   kind: "tonight" | "venue" | "shop";
+  /** Tonight events at this venue; drawn inside the marker. */
+  count?: number;
   lat: number;
   lng: number;
   label: string;
@@ -17,6 +19,8 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   me: { lat: number; lng: number } | null;
+  /** Place to centre on when the sheet opens from a venue. */
+  focusId?: string | null;
 }
 
 /** NYC, roughly the five boroughs, so the map can never be dragged to the Atlantic. */
@@ -30,12 +34,31 @@ const BOUNDS: [[number, number], [number, number]] = [[40.40, -74.35], [41.00, -
  * follow the theme tokens). Each kind lives in its own layer group so the
  * legend toggles are one `addTo` / `remove` call.
  */
-export default function MapCanvas({ places, visible, selectedId, onSelect, me }: Props) {
+/** The three marker glyphs, as drawn: see the legend chips for the same shapes. */
+function pinSvg(p: MapPlace): string {
+  if (p.kind === "tonight") {
+    const n = p.count ?? 1;
+    return `<svg class="map-pin map-pin--tonight" width="28" height="28" viewBox="-14 -14 28 28" aria-hidden="true" data-testid="pin-tonight" data-place="${p.id}"><circle r="12" fill="hsl(var(--background))"/><circle r="10" fill="hsl(var(--primary))"/><text y="3.8" text-anchor="middle" font-size="11" font-weight="700" fill="hsl(var(--primary-foreground))" style="font-variant-numeric:tabular-nums">${n > 9 ? "9+" : n}</text></svg>`;
+  }
+  if (p.kind === "venue") {
+    return `<svg class="map-pin map-pin--venue" width="20" height="20" viewBox="-10 -10 20 20" aria-hidden="true" data-testid="pin-venue" data-place="${p.id}"><circle r="7" fill="hsl(var(--background))" stroke="hsl(var(--venue))" stroke-width="2.5"/></svg>`;
+  }
+  return `<svg class="map-pin map-pin--shop" width="24" height="24" viewBox="-12 -12 24 24" aria-hidden="true" data-testid="pin-shop" data-place="${p.id}"><rect x="-6" y="-6" width="12" height="12" rx="2" transform="rotate(45)" fill="hsl(var(--card))" stroke="hsl(var(--foreground))" stroke-opacity="0.8" stroke-width="2"/><circle r="1.8" fill="hsl(var(--foreground))"/></svg>`;
+}
+
+function accessibleName(p: MapPlace): string {
+  if (p.kind === "tonight") return `${p.label}, ${p.count ?? 1} ${(p.count ?? 1) === 1 ? "event" : "events"} tonight`;
+  return p.kind === "shop" ? `${p.label}, record shop` : `${p.label}, venue`;
+}
+
+export default function MapCanvas({ places, visible, selectedId, onSelect, me, focusId }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const map = useRef<any>(null);
   const layers = useRef<Record<string, any>>({});
   const markers = useRef(new Map<string, any>());
   const meMarker = useRef<any>(null);
+  const focusRef = useRef<any>(null);
+  const mountedAt = useRef(Date.now());
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
@@ -45,15 +68,22 @@ export default function MapCanvas({ places, visible, selectedId, onSelect, me }:
       center: [40.7217, -73.9626], zoom: 12, preferCanvas: false,
     });
     m.attributionControl.setPrefix(false);
-    const retina = window.devicePixelRatio > 1;
-    // Same CARTO Voyager set the venue sheet already uses (lib/tiles.ts).
-    L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}${retina ? "@2x" : ""}.png`, {
-      subdomains: "abcd", maxZoom: 19, attribution: "© OpenStreetMap contributors, © CARTO",
+    // CARTO's raster tiles now answer every keyless request with an "API KEY
+    // REQUIRED" watermark, and a key in the client is against house rules, so
+    // this is OpenStreetMap's own tile server, darkened in CSS (see map.css).
+    // One line to change if a keyless dark set turns up.
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, className: "map-tiles", attribution: "© OpenStreetMap contributors",
     }).addTo(m);
     layers.current = { tonight: L.layerGroup(), venue: L.layerGroup(), shop: L.layerGroup() };
     map.current = m;
     // The sheet animates in, so the container is the wrong size at first.
-    const ro = new ResizeObserver(() => m.invalidateSize());
+    const ro = new ResizeObserver(() => {
+      m.invalidateSize();
+      // While the sheet is still sliding in the box keeps changing size; keep a
+      // venue we were asked to show in the middle of it.
+      if (focusRef.current && Date.now() - mountedAt.current < 2500) m.setView(focusRef.current, 16, { animate: false });
+    });
     ro.observe(host.current!);
     return () => { ro.disconnect(); m.remove(); map.current = null; markers.current.clear(); };
   }, []);
@@ -64,16 +94,22 @@ export default function MapCanvas({ places, visible, selectedId, onSelect, me }:
     markers.current.clear();
     for (const p of places) {
       const size = 44; // finger-sized hit area; the drawn pin is smaller
-      const icon = L.divIcon({
-        className: "map-hit", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
-        html: `<span class="map-pin map-pin--${p.kind}" data-testid="pin-${p.kind}" data-place="${p.id}" role="img" aria-label="${p.label.replace(/"/g, "")}"></span>`,
-      });
-      const mk = L.marker([p.lat, p.lng], { icon, keyboard: true, title: p.label, zIndexOffset: p.kind === "tonight" ? 1000 : 0 });
+      const icon = L.divIcon({ className: "map-hit", iconSize: [size, size], iconAnchor: [size / 2, size / 2], html: pinSvg(p) });
+      const mk = L.marker([p.lat, p.lng], { icon, keyboard: true, zIndexOffset: p.kind === "tonight" ? 1000 : p.kind === "venue" ? 500 : 0 });
+      const name = accessibleName(p);
+      // Leaflet gives the marker element role="button"; it needs a name.
+      mk.on("add", () => mk.getElement()?.setAttribute("aria-label", name));
       mk.on("click", () => onSelectRef.current(p.id));
       layers.current[p.kind].addLayer(mk);
       markers.current.set(p.id, mk);
     }
   }, [places]);
+
+  // Centre on the venue the sheet was opened from.
+  useEffect(() => {
+    const mk = focusId ? markers.current.get(focusId) : null;
+    if (mk && map.current) { focusRef.current = mk.getLatLng(); map.current.setView(focusRef.current, 16, { animate: false }); }
+  }, [focusId, places]);
 
   // The legend.
   useEffect(() => {

@@ -27,6 +27,8 @@ interface VenueSheetProps {
   ticketsUrl?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Opens the full map centred on this venue. Offered only once it is located. */
+  onSeeOnMap?: (venue: { id: string | null; name: string; lat: number; lng: number; address: string | null }) => void;
 }
 
 /**
@@ -101,6 +103,7 @@ export function VenueSheet({
   ticketsUrl,
   open,
   onOpenChange,
+  onSeeOnMap,
 }: VenueSheetProps) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["venue", venue, venueId ?? null],
@@ -289,6 +292,18 @@ export function VenueSheet({
               </div>
             )}
           </div>
+
+          {located && onSeeOnMap && (
+            <button
+              type="button"
+              data-testid="see-on-map"
+              onClick={() => onSeeOnMap({ id: venueId ?? null, name: data!.name, lat: data!.lat!, lng: data!.lon!, address: data!.address })}
+              className="press flex min-h-[44px] w-full items-center justify-center gap-1.5 text-xs text-muted-foreground"
+            >
+              <MapPin className="h-3.5 w-3.5" />
+              See on the map
+            </button>
+          )}
 
           {/* Below the rides now rather than above them. Someone who has got
               this far has decided they want to go; the ticket link is the

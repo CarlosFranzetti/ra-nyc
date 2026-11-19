@@ -14,6 +14,7 @@ import { FilterChips } from "@/components/FilterChips";
 import { Header } from "@/components/Header";
 // Drawer chrome only; Leaflet itself loads a level further down, on first open.
 const MapSheet = lazy(() => import("@/components/MapSheet").then((m) => ({ default: m.MapSheet })));
+import type { MapFocus } from "@/components/MapSheet";
 import { PlayerBar } from "@/components/PlayerBar";
 import { SearchSheet } from "@/components/SearchSheet";
 import { VenueSheet } from "@/components/VenueSheet";
@@ -46,12 +47,13 @@ export default function HomePage() {
   const [venueOpen, setVenueOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [mapEverOpened, setMapEverOpened] = useState(false);
+  const [mapFocus, setMapFocus] = useState<MapFocus | null>(null);
+  const openMap = (focus: MapFocus | null) => { setMapFocus(focus); setMapEverOpened(true); setMapOpen(true); };
   const [filters, setFilters] = useState<FilterKey[]>([]);
 
   const { layoutDensity } = useTheme();
   const dateString = format(selectedDate, "yyyy-MM-dd");
   const { data, isLoading, isFetching, error, refetch } = useEvents(dateString);
-  const { data: tonightData } = useEvents(format(currentNight(), "yyyy-MM-dd"));
 
   /**
    * Back to tonight, reloaded — the logo's double-tap.
@@ -208,7 +210,6 @@ export default function HomePage() {
           onDateChange={setSelectedDate}
           onToday={goToTonight}
           onSearchClick={() => setSearchOpen(true)}
-          onMapClick={() => { setMapEverOpened(true); setMapOpen(true); }}
           // The count the caption alternates to. Filtered, because it answers
           // "how many am I looking at" rather than "how many exist".
           eventCount={visibleEvents.length}
@@ -226,13 +227,17 @@ export default function HomePage() {
           </div>
         </div>
 
-        {(hasEvents || data?.stale) && (
+        {/* Always drawn: the Map chip is the door to the map and must not
+            depend on the night having events. */}
+        {(
           <div className={cn("shell flex items-center justify-between gap-2 py-1.5", padX)}>
-            {hasEvents ? (
-              <FilterChips active={filters} counts={counts} onToggle={toggleFilter} />
-            ) : (
-              <span />
-            )}
+            <FilterChips
+              active={filters}
+              counts={counts}
+              onToggle={toggleFilter}
+              showFilters={hasEvents}
+              onMap={() => openMap(null)}
+            />
 
             {/* Saying so matters more than it looks: without it, listings that
                 are hours old are indistinguishable from listings that are
@@ -311,7 +316,8 @@ export default function HomePage() {
             <MapSheet
               open={mapOpen}
               onOpenChange={setMapOpen}
-              tonight={tonightData?.events ?? []}
+              tonight={data?.events ?? []}
+              focus={mapFocus}
               onShowEvent={(e) => { setSelectedEvent(e); setSheetOpen(true); }}
             />
           </Suspense>
@@ -326,6 +332,7 @@ export default function HomePage() {
           ticketsUrl={selectedEvent?.url ?? null}
           open={venueOpen}
           onOpenChange={setVenueOpen}
+          onSeeOnMap={(v) => { setVenueOpen(false); openMap(v); }}
         />
 
         {/* Stacked above the event sheet, which stays open underneath so
