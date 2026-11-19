@@ -7,6 +7,7 @@ import {
   isBannedUrl,
   isCommonName,
   isPlausibleMatch,
+  standsAlone,
   leadingCredit,
   userQueries,
   isStaleRow,
@@ -951,7 +952,7 @@ const scAccount = (id: number, username: string, permalink: string, extra: Recor
 });
 /** The `[sc] resolve` line a cold resolve logs, as production would show it. */
 const scLog = (): Record<string, unknown> | undefined =>
-  vi.mocked(console.info).mock.calls.find((call) => call[0] === "[sc] resolve")?.[1] as
+  vi.mocked(console.info).mock.calls.filter((call) => call[0] === "[sc] resolve").at(-1)?.[1] as
     | Record<string, unknown>
     | undefined;
 
@@ -1023,7 +1024,7 @@ describe("PENELOPE: an accepted account with nothing to play", () => {
     });
     const { links } = await getArtistLinks("74814", "Penelope (2)");
     expect(links.sets).toEqual([]);
-    expect(scLog()!.rejected as string[]).toContain("heads up w penelope (short)");
+    expect(scLog()!.rejected as string[]).toContain("heads up w penelope (no evidence or channel)");
   });
 
   it("asks for evidence-term searches too, from the oDYSea and Tresydos of the biography", async () => {
@@ -1205,7 +1206,7 @@ describe("HUGO: an account named Hugo, and feedbk", () => {
     const { links } = await getArtistLinks("106141", "Hugo (US)");
     // The newer Lot Radio set is listed after the older one that carries feedbk.
     expect(links.sets.map((s) => s.id)).toEqual(["sc-61", "sc-71"]);
-    expect(scLog()).toMatchObject({ confirmed: false, weak: 1 });
+    expect(scLog()).toMatchObject({ confirmed: false, tiers: { 3: 1, 4: 1 } });
   });
 
   it("never lets a trusted channel confirm an account", async () => {
@@ -1477,7 +1478,7 @@ describe("BUDGET: no upstream is allowed to hold the function past its bounds", 
     }
   });
 
-  it("spends at most nine SoundCloud requests on a cold resolve, all in the one window", async () => {
+  it("spends at most ten SoundCloud requests on a cold resolve, all in the one window", async () => {
     sql.state.index = [
       { title: "A party", venue_name: "Nowadays" },
       { title: "Another", venue_name: "Elsewhere" },
@@ -1490,7 +1491,7 @@ describe("BUDGET: no upstream is allowed to hold the function past its bounds", 
       ...NOTHING,
     ]);
     await getArtistLinks("1", "h0l0");
-    expect(calls.filter((u) => u.includes("soundcloud.com")).length).toBeLessThanOrEqual(9);
+    expect(calls.filter((u) => u.includes("soundcloud.com")).length).toBeLessThanOrEqual(10);
   });
 });
 
@@ -1579,6 +1580,258 @@ describe("name rules the new paths rely on", () => {
     expect(leadingCredit("Penelope (2)", "DJ Penelope - Live")).toBe(true);
     for (const title of ["PENELOPE", "Penelope Moro", "Entrevista a Penélope Moro", "Live with Penelope - 2026"]) {
       expect(leadingCredit("Penelope (2)", title), title).toBe(false);
+    }
+  });
+});
+
+// ─── Real data: what production accepted that it should not have ────────────
+
+describe("REAL DATA: Penelope and Hugo as production returned them", () => {
+  const PROFILE =
+    "Bookings:  stijn@headsup.brussels\n@odysea-lisboa\nReleases:\noDYSea 02: \n" +
+    "https://odysearecords.bandcamp.com/album/unexpected-dreams\n" +
+    "Tresydos VA: https://tresydosrecords.bandcamp.com/track/gathering\n" +
+    "For Playful Manners 02 : https://basicmovesbrussels.bandcamp.com/album/for-playful-manners-02";
+  const BIO =
+    "Having already released on Mari.te\u2019s Tresydos imprint and Basic Moves' sub label For Playful Manners, " +
+    "French-born artist Penelope has slowly grown her presence in the underground music panorama. " +
+    "Based in Lisbon since 2018, she is the founder of the oDYSea parties and platform.";
+
+  const uploader = (name: string) => ({ id: 1000 + name.length, username: name, permalink: name.toLowerCase().replace(/\W+/g, "") });
+  const hit = (id: number, title: string, by: string, minutes = 60) =>
+    track(id, title, { duration: minutes * MINUTE, user: uploader(by) });
+
+  const WRONG_PENELOPE: [string, string][] = [
+    ["Penelope Warmup Alvaro Riaza a Cristian Varela", "alvaro-lorenzo"],
+    ["@rubensvibes LIVE / WARM UP AARON SEVILLA / V\u00c9RTIGO X PEN\u00c9LOPE / AUDITORIO JULIO IGLESIAS (BENIDORM)", "rubensvibes"],
+    ["Penelope \u2013 Hardtechno DJ Set | The Room 2026", "theroomtv"],
+    ["Pen\u00e9lope Martini - Residence 10-04-26", "user-521726540"],
+    ["Hard Techno B2B Mix - Penelope x JAYDIOS", "jaydios"],
+    ["penelope club debut set", "ensamusic1"],
+    ["412042 - PENELOPE VIDEOPODCAST SESSION", "412records"],
+    ["Penelope Groove Sesh - live from Ocean Club x weareone | 11.09.2026", "penelope_nox"],
+    ["Welcome Drink - MIX 006 - Penelope", "just-relax-records"],
+    ["Mutabor Series 067 - PENELOPE", "mutabor-records"],
+    ["PODCAST 40 - PENELOPE (Live at We Are One Festival 28.05.2025)", "weareonekollektiv"],
+  ];
+  const RIGHT_PENELOPE: [string, string][] = [
+    ["Heads Up w/ Penelope @ Kiosk Radio 20.12.2025", "Kiosk Radio"],
+    ["Penelope @ The Lot Radio 10-23-2025", "The Lot Radio"],
+  ];
+
+  /** The account RA named, as api-v2 describes it: no uploads, a following, a profile text. */
+  const penelopeAccount = scAccount(2138160, "Penelope", "penelope_sound", {
+    kind: "user",
+    description: PROFILE,
+    city: "Lisbon",
+    followers_count: 1863,
+    track_count: 0,
+  });
+
+  const stubPenelope = (options: {
+    searchHits?: unknown[];
+    playlists?: unknown;
+    reposts?: unknown;
+    ra?: Record<string, unknown>;
+  }) =>
+    stubUpstream([
+      raRoute({
+        contentUrl: { contentUrl: "/dj/penelope-2" },
+        soundcloud: { soundcloud: "https://soundcloud.com/penelope_sound" },
+        ...bioFrom(BIO),
+        ...options.ra,
+      }),
+      ["api-v2.soundcloud.com/resolve", () => penelopeAccount],
+      ["users/2138160/tracks", () => ({ collection: [] })],
+      ["users/2138160/playlists", () => options.playlists ?? { collection: [] }],
+      ["stream/users/2138160/reposts", () => options.reposts ?? { collection: [] }],
+      ["api-v2.soundcloud.com/search/tracks", () => ({ collection: options.searchHits ?? [] })],
+      ["api.mixcloud.com/search/", () => ({ data: [] })],
+      ["archive.org", () => ({ response: { docs: [] } })],
+    ]);
+
+  it("accepts the two real sets and rejects the eleven wrong ones, for Penelope (2)", async () => {
+    stubPenelope({
+      searchHits: [
+        ...WRONG_PENELOPE.map(([title, by], i) => hit(100 + i, title, by)),
+        ...RIGHT_PENELOPE.map(([title, by], i) => hit(200 + i, title, by)),
+      ],
+    });
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+
+    expect(links.sets.map((s) => s.title).sort()).toEqual(RIGHT_PENELOPE.map(([title]) => title).sort());
+    // The Kiosk show carries evidence as well as a channel: it ranks above the Lot Radio's.
+    expect(links.sets[0]!.title).toBe("Heads Up w/ Penelope @ Kiosk Radio 20.12.2025");
+    const line = scLog()!;
+    expect(line).toMatchObject({ confirmed: true, common: true, handle: true, own: 0 });
+    // The terms the titles were held against are in the log, and none of them is a country or a genre.
+    const terms = (line.evidence as string[]).map((t) => t.toLowerCase());
+    expect(terms).toEqual(expect.arrayContaining(["odysea", "headsup", "tresydos"]));
+    expect(terms.filter((t) => /^(us|uk|ny|house|techno|club|music)$/.test(t))).toEqual([]);
+  });
+
+  it("rejects all five of Hugo's wrong sets and still gives the page a profile and a search", async () => {
+    sql.state.index = [
+      { title: "feedbk with Borja S, Hugo", venue_name: "feedbk" },
+      { title: "Hugo @ Apollo Studio", venue_name: "Apollo Studio" },
+    ];
+    stubUpstream([
+      raRoute({
+        contentUrl: { contentUrl: "/dj/hugo-dj-usa" },
+        soundcloud: { soundcloud: "https://soundcloud.com/itshugo" },
+      }),
+      [
+        "api-v2.soundcloud.com/resolve",
+        () => scAccount(30251474, "Hugo", "itshugo", {
+          kind: "user", description: "https://www.instagram.com/__hugogb/", city: "Venice / NY", followers_count: 247, track_count: 0,
+        }),
+      ],
+      ["users/30251474/tracks", () => ({ collection: [] })],
+      ["users/30251474/playlists", () => ({ collection: [] })],
+      ["stream/users/30251474/reposts", () => ({ collection: [] })],
+      [
+        "api-v2.soundcloud.com/search/tracks",
+        () => ({
+          collection: [
+            hit(1, "Hugo - Guest Mix 002", "syncrecords1"),
+            // The uploader is called Hugo; the title does not say so.
+            hit(2, "NST Full Nh\u1ea1c C\u1ed5 US UK [VOL 1] - TOP Nh\u1eefng B\u00e0i Nh\u1ea1c Ngo\u1ea1i B\u1ea5t H\u1eefu Hay Nh\u1ea5t - Quang Anh", "Hugo"),
+            hit(3, "October Anniversary By HuGo Mixx", "ph-m-quang"),
+            hit(4, "Ella Knight with Hugo C - 18 September 2026", "Rinse FM", 120),
+            hit(5, "We Slowly Rot w/ Hugo Sanchez (Front de Cadeaux) @ Kiosk Radio 16.10.2026", "Kiosk Radio"),
+            hit(6, "Victor Hugo - Les Mis\u00e9rables (audiobook) part 3", "Classic Books", 55),
+          ],
+        }),
+      ],
+      ["api.mixcloud.com/search/", () => ({ data: [] })],
+      ["archive.org", () => ({ response: { docs: [] } })],
+    ]);
+    const { links } = await getArtistLinks("106141", "Hugo (US)");
+    expect(links.sets).toEqual([]);
+    expect(links.links.find((l) => l.label === "SoundCloud")).toMatchObject({
+      resolved: true,
+      url: "https://soundcloud.com/itshugo",
+    });
+    expect(links.links.find((l) => l.label === "SoundCloud search")).toMatchObject({
+      url: "https://soundcloud.com/search?q=Hugo",
+    });
+    expect(links.bio).toBeNull();
+  });
+
+  it("reads the artist's own playlist, skipping an id-only entry without complaint", async () => {
+    stubPenelope({
+      playlists: {
+        collection: [
+          {
+            id: 1,
+            title: "sets",
+            tracks: [
+              hit(301, "Penelope at oDYSea, Lux Fr\u00e1gil", "Some Blog", 90),
+              { id: 999, kind: "track" },
+              hit(302, "A mix by somebody else", "Some Blog", 90),
+            ],
+          },
+        ],
+      },
+    });
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+    expect(links.sets.map((s) => s.id)).toEqual(["sc-301"]);
+    expect(scLog()).toMatchObject({ playlists: { ok: true, count: 1, full: 2, stubs: 1 }, tiers: { 1: 1 } });
+  });
+
+  it("reads the artist's reposts, and counts what the endpoint returned", async () => {
+    stubPenelope({
+      reposts: {
+        collection: [
+          { type: "track-repost", track: hit(401, "Heads Up w/ Penelope @ Kiosk Radio 20.12.2025", "Kiosk Radio") },
+          { type: "track-repost", track: hit(402, "Something unrelated at length", "Some Blog") },
+          { type: "playlist-repost", playlist: { id: 5 } },
+        ],
+      },
+    });
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+    expect(links.sets.map((s) => s.id)).toEqual(["sc-401"]);
+    expect(scLog()).toMatchObject({ reposts: { ok: true, seen: 2 } });
+  });
+
+  it("survives both collection endpoints failing, and says so in the log without calling it an outage", async () => {
+    stubUpstream([
+      raRoute({
+        contentUrl: { contentUrl: "/dj/penelope-2" },
+        soundcloud: { soundcloud: "https://soundcloud.com/penelope_sound" },
+      }),
+      ["api-v2.soundcloud.com/resolve", () => penelopeAccount],
+      ["users/2138160/tracks", () => ({ collection: [] })],
+      ["users/2138160/playlists", () => jsonResponse({}, 500)],
+      ["stream/users/2138160/reposts", () => "not even an object"],
+      ["api-v2.soundcloud.com/search/tracks", () => ({ collection: [] })],
+      ...NOTHING.filter(([needle]) => !needle.includes("soundcloud")),
+    ]);
+    const { degraded } = await getArtistLinks("74814", "Penelope (2)");
+    expect(degraded).toBe(false);
+    expect(scLog()).toMatchObject({ playlists: { ok: false, status: 500 }, reposts: { ok: true, seen: 0 } });
+  });
+
+  it("holds a common name to twelve found sets, best first", async () => {
+    stubPenelope({
+      searchHits: Array.from({ length: 20 }, (_, i) =>
+        hit(500 + i, `Penelope @ Kiosk Radio ${i + 1}.01.2025`, "Kiosk Radio"),
+      ),
+    });
+    const { links } = await getArtistLinks("74814", "Penelope (2)");
+    expect(links.sets).toHaveLength(12);
+  });
+
+  it("takes the evidence from a confirmed account's own description, and from no other", async () => {
+    // Same title, unknown uploader: it carries "heads up" only through the account's own profile.
+    stubPenelope({ searchHits: [hit(601, "Heads Up w/ Penelope - live set", "Some Blog", 60)] });
+    expect((await getArtistLinks("74814", "Penelope (2)")).links.sets.map((s) => s.id)).toEqual(["sc-601"]);
+
+    // An account that is not confirmed lends nothing: its words may be someone else's.
+    stubUpstream([
+      raRoute({ contentUrl: { contentUrl: "/dj/penelope-2" } }),
+      ["api-v2.soundcloud.com/search/users", () => ({ collection: [penelopeAccount] })],
+      ["users/2138160/tracks", () => ({ collection: [] })],
+      ["users/2138160/playlists", () => ({ collection: [] })],
+      ["stream/users/2138160/reposts", () => ({ collection: [] })],
+      ["api-v2.soundcloud.com/search/tracks", () => ({ collection: [hit(601, "Heads Up w/ Penelope - live set", "Some Blog", 60)] })],
+      ...NOTHING.filter(([needle]) => !needle.includes("soundcloud")),
+    ]);
+    const unconfirmed = await getArtistLinks("74814", "Penelope (2)");
+    expect(scLog()).toMatchObject({ confirmed: false });
+    expect(unconfirmed.links.sets).toEqual([]);
+  });
+});
+
+describe("standsAlone: one name, one person", () => {
+  it("passes a name with a separator, a set word, a date or a known term beside it", () => {
+    for (const title of [
+      "Penelope",
+      "Heads Up w/ Penelope @ Kiosk Radio 20.12.2025",
+      "Penelope - Guest Mix 002",
+      "Penelope x Refuge Worldwide",
+      "Penelope warmup set",
+      "Penelope 2026",
+      "MASS | 15 - Penelope",
+      "The Anjunadeep Edition 294 with Penelope",
+      "Penelope oDYSea night",
+    ]) {
+      expect(standsAlone("Penelope (2)", title, ["oDYSea"]), title).toBe(true);
+    }
+  });
+
+  it("refuses a name that is part of another person's or thing's", () => {
+    for (const [name, title] of [
+      ["Hugo (US)", "Ella Knight with Hugo C - 18 September 2026"],
+      ["Hugo (US)", "We Slowly Rot w/ Hugo Sanchez (Front de Cadeaux)"],
+      ["Hugo (US)", "Victor Hugo - Les Mis\u00e9rables"],
+      ["Hugo (US)", "Maybe Hugo - Dress & Impress (Apollo Remix)"],
+      ["Hugo (US)", "October Anniversary By HuGo Mixx"],
+      ["Penelope (2)", "Pen\u00e9lope Martini - Residence 10-04-26"],
+      ["Penelope (2)", "Penelope Moro"],
+      ["Penelope (2)", "Penelope Trappes - 27.04.2022"],
+    ] as const) {
+      expect(standsAlone(name, title), title).toBe(false);
     }
   });
 });
