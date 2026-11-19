@@ -254,7 +254,7 @@ export default function HomePage() {
                 retrying={isFetching}
               />
             ) : isEmpty ? (
-              <EmptyState />
+              <EmptyState selectedDate={selectedDate} tonight={currentNight()} onPick={setSelectedDate} />
             ) : filteredOut ? (
               <div className="py-10 text-center">
                 <p className="text-sm text-muted-foreground">

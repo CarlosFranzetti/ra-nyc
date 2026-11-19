@@ -44,9 +44,15 @@ zoom, so `visualViewport.scale` was 1 with or without the fix) and a guessed
 theme-ladder / card-rhythm change, found three real defects too; so far every
 review has paid for itself.
 
-**Recount before deciding.** This note once recorded a review as "landing 60"
-when the command read **52**. The command is the truth, the note is not. Next
-review falls on the next multiple of seven the command reports, which is 63.
+**Recount before deciding, in a full clone.** The command is the truth and
+the note is not — but the command only tells the truth when it can see the
+whole history. Cloud sessions start from a shallow clone (depth 50), where
+`rev-list --count` counts only what was fetched: that is how this note came
+to record a review at "landing 56" and before that "60" against a command
+reading "52". Run `git fetch --unshallow origin` first (it is a no-op in a
+full clone). In a full clone `main` stood at **100** on 2026-11-18, so the
+reviews recorded above were really in the high nineties. Next review falls
+on the next multiple of seven the full count reports, which is 105.
 
 ## Tests
 
@@ -55,7 +61,7 @@ through `tail`; a full untruncated dump of all eight suites is thousands of
 tokens of PASS lines nobody reads.
 
 ```
-npm run test          # 306 Vitest units
+npm run test          # 402 Vitest units
 npm run test:all      # typecheck, then units + player, search, layout, preview,
                       # donate, settings, offline and playlist e2e (~4 minutes;
                       # on the cloud container it can exceed a 10-minute command
@@ -76,6 +82,12 @@ checks; 12 of the first 49 pass against the pre-repair source, so they bite)
 and the artist-resolution units, and deleted the rest. The hunt itself is in
 `docs/agent-transcript-2026-10-26.md`. If a future hunt leaves probes, keep
 them out of `test:all` until they are promoted.
+
+A suite must not depend on what the network happens to allow. The sandbox's
+reach changes: in November 2026 it could suddenly load Vercel's analytics
+script, which replaced the stand-in `window.va` the search suite listens
+through, and four checks went red with nothing wrong in the app. Stub or
+block every outside host a suite could touch.
 
 The e2e suites each spawn their own Vite server on a fixed port. If one fails
 with `EADDRINUSE`, a previous run left a server behind — pass `E2E_PORT=<free

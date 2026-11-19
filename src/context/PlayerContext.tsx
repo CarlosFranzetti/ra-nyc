@@ -45,6 +45,21 @@ export interface QueueEntry {
   source: PlaybackSource | null;
 }
 
+/**
+ * Something the bar should say about what the player just did on its own.
+ *
+ * `skipped`: a set that could not be played was passed over, and `title` names
+ * it; it clears itself after `NOTICE_MS`, or the moment the listener acts.
+ * `blocked`: two sets in a row failed and the third did too, so the queue has
+ * stopped on `title`, paused, rather than run through the rest. Clears when
+ * playback starts.
+ */
+export interface PlayerNotice {
+  kind: "skipped" | "blocked";
+  title: string;
+  reason: "timeout" | "error" | "stalled";
+}
+
 /** What a caller hands in; the player mints the uid. */
 export interface QueueItem {
   set: ArtistSet;
@@ -69,6 +84,8 @@ interface PlayerContextValue {
   duration: number | null;
   seekable: boolean;
   error: string | null;
+  /** What the player did by itself: skipped a dead set, or stopped asking. */
+  notice: PlayerNotice | null;
   hasNext: boolean;
   hasPrevious: boolean;
   /** Loads a queue and starts at `startIndex`. Re-tapping the live set resumes. */
@@ -322,6 +339,41 @@ function reduce(state: QueueState, action: QueueAction): QueueState {
 
 const BUILD_FAILED = "Couldn't load the player. Tap play to try again.";
 
+// ── The watchdog ─────────────────────────────────────────────────────────────
+//
+// A set that never makes a sound used to hold the queue for ever: a Mixcloud
+// `ready` that never settles, a SoundCloud `load()` that never calls back, a
+// widget that errors. Two fuses, because the two silences mean different things.
+
+/**
+ * Load to ready. Long, because a bad connection really can take this long to
+ * bring a widget up, and skipping a set that was merely slow is worse than
+ * waiting for it.
+ */
+const LOAD_FUSE_MS = 20_000;
+/**
+ * Ready, and meant to be playing, to the first play or progress event. Short:
+ * once the widget says it is ready, silence this long is a dead set rather than
+ * a slow one.
+ */
+const START_FUSE_MS = 8_000;
+/**
+ * Automatic skips in a row, with nothing played between. An iPhone that refuses
+ * to start anything without a tap looks exactly like a dead set, and a watchdog
+ * that skipped it would run through the whole queue; so the third failure stops
+ * on that set and asks for a tap instead.
+ */
+const SKIP_LIMIT = 2;
+/** How long "skipped X" stays readable. */
+const NOTICE_MS = 4_000;
+/** Position within this of the end, with no FINISH for `END_STALL_MS`, means the widget forgot to say so. */
+const END_NEAR_S = 1;
+const END_STALL_MS = 4_000;
+/** A seek never lands closer to the end than this: the widget would play out and FINISH, ending the set. */
+const SEEK_TAIL_S = 3;
+/** Previous restarts the set once it is further in than this, as every player does. */
+const RESTART_AFTER_S = 3;
+
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
 /**
@@ -352,6 +404,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [duration, setDuration] = useState<number | null>(null);
   const [seekable, setSeekable] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<PlayerNotice | null>(null);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<PlayerHandle | null>(null);
@@ -360,6 +413,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const killRef = useRef<() => void>(() => undefined);
   const buildFailedRef = useRef(false);
   const epochRef = useRef(0);
+
+  // The watchdog's bookkeeping. Refs, because its timers and the adapters'
+  // event callbacks outlive the render that created them.
+  const fuseRef = useRef<number | undefined>(undefined);
+  const endRef = useRef<number | undefined>(undefined);
+  const noticeTimerRef = useRef<number | undefined>(undefined);
+  /** The adapter said it is ready: from here the short fuse applies. */
+  const readyRef = useRef(false);
+  /** Sound, or at least progress, has been seen for this load. */
+  const startedRef = useRef(false);
+  /** Deliberately not playing (paused, or the browser wants a tap): not a stall. */
+  const idleRef = useRef(false);
+  /** The queue stopped on a dead set and is waiting for a tap. */
+  const blockedRef = useRef(false);
+  const skipsRef = useRef(0);
+  const giveUpRef = useRef<(reason: PlayerNotice["reason"]) => void>(() => undefined);
 
   // The queue as it is *now*, not as of the last render. Every dispatch also
   // runs the (pure) reducer on this copy, so a second call in the same tick —
@@ -377,12 +446,68 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const source = entry?.source ?? null;
   const queue = useMemo(() => entries.map((e) => e.set), [entries]);
   const hasNext = index < entries.length - 1;
-  const hasPrevious = index > 0;
+  // Previous restarts a set that is more than a few seconds in, so on the first
+  // set it is available once there is something to restart.
+  const hasPrevious = index > 0 || position > RESTART_AFTER_S;
 
   const loadingRef = useRef(false);
   loadingRef.current = loading;
   const durationRef = useRef<number | null>(null);
   durationRef.current = duration;
+  const positionRef = useRef(0);
+  positionRef.current = position;
+  const playingRef = useRef(false);
+  playingRef.current = playing;
+
+  const clearFuse = useCallback(() => {
+    window.clearTimeout(fuseRef.current);
+    fuseRef.current = undefined;
+  }, []);
+  const clearEnd = useCallback(() => {
+    window.clearTimeout(endRef.current);
+    endRef.current = undefined;
+  }, []);
+
+  /** Starts whichever fuse applies right now; a no-op once sound is heard or the listener has paused. */
+  const arm = useCallback(() => {
+    clearFuse();
+    if (startedRef.current || idleRef.current) return;
+    const live = stateRef.current;
+    const uid = live.entries[live.index]?.uid;
+    const ready = readyRef.current;
+    fuseRef.current = window.setTimeout(() => {
+      fuseRef.current = undefined;
+      const now = stateRef.current;
+      if (now.entries[now.index]?.uid !== uid) return;
+      giveUpRef.current(ready ? "stalled" : "timeout");
+    }, ready ? START_FUSE_MS : LOAD_FUSE_MS);
+  }, [clearFuse]);
+
+  const showNotice = useCallback((next: PlayerNotice | null) => {
+    window.clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = undefined;
+    setNotice(next);
+    if (next?.kind === "skipped") {
+      noticeTimerRef.current = window.setTimeout(() => setNotice(null), NOTICE_MS);
+    }
+  }, []);
+
+  /** A tap: the count of automatic skips starts again and any notice is stale. */
+  const listenerActed = useCallback(() => {
+    skipsRef.current = 0;
+    blockedRef.current = false;
+    showNotice(null);
+  }, [showNotice]);
+
+  /** The first sound: nothing is wrong with this set, and the run of failures is over. */
+  const markStarted = useCallback(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    clearFuse();
+    skipsRef.current = 0;
+    // Not gated on `blockedRef`: the retry tap clears that before the set plays.
+    setNotice((n) => (n?.kind === "blocked" ? null : n));
+  }, [clearFuse]);
 
   // `stop` is declared below, and `removeAt` needs it when the last set is taken
   // out of the playlist. A ref keeps the two from having to be declared in
@@ -393,8 +518,42 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // would otherwise capture the queue as it was when that track started.
   const advanceRef = useRef<() => void>(() => undefined);
   advanceRef.current = () => {
+    clearEnd();
     dispatch({ type: "ADVANCE" });
     if (stateRef.current.ended) setPlaying(false);
+  };
+
+  // A set that cannot be played: skip it, say so, and after `SKIP_LIMIT` in a
+  // row stop and wait for a tap — see the constant for why.
+  giveUpRef.current = (reason) => {
+    clearFuse();
+    const live = stateRef.current;
+    const failed = live.entries[live.index];
+    if (!failed) return;
+    if (skipsRef.current >= SKIP_LIMIT) {
+      idleRef.current = true;
+      blockedRef.current = true;
+      try {
+        handleRef.current?.pause();
+      } catch {
+        /* a widget that never came up has nothing to pause */
+      }
+      setLoading(false);
+      setPlaying(false);
+      setError(null);
+      showNotice({ kind: "blocked", title: failed.set.title, reason });
+      return;
+    }
+    if (live.index >= live.entries.length - 1) {
+      // Nothing to skip to. Say so where the bar already says things.
+      setError((previous) => previous ?? "Couldn't play this set.");
+      setLoading(false);
+      setPlaying(false);
+      return;
+    }
+    skipsRef.current += 1;
+    showNotice({ kind: "skipped", title: failed.set.title, reason });
+    dispatch({ type: "ADVANCE" });
   };
 
   if (hostRef.current === null && typeof document !== "undefined") {
@@ -407,6 +566,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     document.body.appendChild(host);
     return () => host.remove();
   }, []);
+
+  // What the player did on its own, readable from outside React: the bar renders
+  // `notice`, and this is the same fact on the element this provider owns.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    if (notice) host.setAttribute("data-player-notice", notice.kind);
+    else host.removeAttribute("data-player-notice");
+  }, [notice]);
 
   /** Deafen, then destroy. Archive emits a `pause` as it is torn down. */
   const destroyHandle = useCallback(() => {
@@ -423,6 +591,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!current) return;
     currentIdRef.current = current.id;
     buildFailedRef.current = false;
+    readyRef.current = false;
+    startedRef.current = false;
+    idleRef.current = false;
+    clearEnd();
+    arm();
     setLoading(true);
     setError(null);
     setPosition(0);
@@ -464,6 +637,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     // freezes the flag and only `killRef` can set it afterwards.
     let adopted = false;
     let dead = false;
+    // Lets an adapter drop what it half-built when this attempt is superseded.
+    const controller = new AbortController();
     const live =
       <A extends unknown[]>(fn: (...args: A) => void) =>
       (...args: A) => {
@@ -479,10 +654,33 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           onReady: live((reported) => {
             setLoading(false);
             if (reported) setDuration(reported);
+            readyRef.current = true;
+            arm();
+          }),
+          onBlocked: live(() => {
+            // The browser refused to start without a tap. Not a dead set.
+            idleRef.current = true;
+            clearFuse();
           }),
           onProgress: live((at, length) => {
             setPosition(at);
             if (length) setDuration(length);
+            // The synthetic zero an adapter sends at a swap is not sound.
+            if (at > 0) markStarted();
+            // Sitting at the end with no FINISH: the widget forgot to say so.
+            if (length && length > 0 && at >= length - END_NEAR_S) {
+              if (endRef.current === undefined) {
+                const live = stateRef.current;
+                const uid = live.entries[live.index]?.uid;
+                endRef.current = window.setTimeout(() => {
+                  endRef.current = undefined;
+                  const now = stateRef.current;
+                  if (now.entries[now.index]?.uid === uid && playingRef.current) advanceRef.current();
+                }, END_STALL_MS);
+              }
+            } else {
+              clearEnd();
+            }
             // Progress means audio is moving. `onPlay` is not always the last
             // word — the error text used to outlive the failure that caused it.
             setError(null);
@@ -491,16 +689,26 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             setLoading(false);
             setError(null);
             setPlaying(true);
+            markStarted();
             if (stateRef.current.ended) dispatch({ type: "RESUMED" });
           }),
-          onPause: live(() => setPlaying(false)),
+          onPause: live(() => {
+            setPlaying(false);
+            // After ready a pause is a statement; before it, it may be the
+            // outgoing track's.
+            if (readyRef.current) {
+              idleRef.current = true;
+              clearFuse();
+            }
+          }),
           onEnded: live(() => advanceRef.current()),
           onError: live((message) => {
             setError(message);
             setLoading(false);
             setPlaying(false);
+            giveUpRef.current("error");
           }),
-        });
+        }, controller.signal);
 
         // The track changed while the SDK was loading; this player is already
         // obsolete and must not be left running in the host.
@@ -524,18 +732,27 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setError(BUILD_FAILED);
         setLoading(false);
         setPlaying(false);
+        // Not skipped: a provider script that would not load says nothing about
+        // this set, and the next one would fail the same way. The bar offers a
+        // retry instead.
       }
     })();
 
     return () => {
       cancelled = true;
-      if (!adopted) dead = true;
+      if (!adopted) {
+        dead = true;
+        controller.abort();
+      }
     };
   }, [current?.id, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The only unconditional teardown: leaving the app entirely.
   useEffect(
     () => () => {
+      window.clearTimeout(fuseRef.current);
+      window.clearTimeout(endRef.current);
+      window.clearTimeout(noticeTimerRef.current);
       killRef.current();
       handleRef.current?.destroy();
       handleRef.current = null;
@@ -587,6 +804,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       from: PlaybackSource | null = null,
     ) => {
       if (sets.length === 0) return;
+      listenerActed();
       const target = Math.min(Math.max(startIndex, 0), sets.length - 1);
       dispatch({
         type: "PLAY_SETS",
@@ -599,7 +817,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         handleRef.current.play();
       }
     },
-    [dispatch],
+    [dispatch, listenerActed],
   );
 
   const appendSets = useCallback(
@@ -624,6 +842,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       name: string | null = null,
       from: PlaybackSource | null = null,
     ): number | null => {
+      listenerActed();
       const live = stateRef.current;
       const playingEntry = live.entries[live.index];
       // Already the live set — resume rather than splicing a second copy of it
@@ -636,7 +855,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "PLAY_NEXT", item });
       return item.uid;
     },
-    [dispatch],
+    [dispatch, listenerActed],
   );
 
   const insertAfter = useCallback(
@@ -655,8 +874,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   );
 
   const jumpTo = useCallback(
-    (position: number) => dispatch({ type: "JUMP", position }),
-    [dispatch],
+    (position: number) => {
+      listenerActed();
+      dispatch({ type: "JUMP", position });
+    },
+    [dispatch, listenerActed],
   );
 
   const removeAt = useCallback(
@@ -673,6 +895,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   );
 
   const toggle = useCallback(() => {
+    if (blockedRef.current) {
+      // The queue stopped on a dead set and asked for a tap. Try that set again;
+      // the notice stays until it actually plays.
+      skipsRef.current = 0;
+      blockedRef.current = false;
+      idleRef.current = false;
+      dispatch({ type: "RETRY" });
+      return;
+    }
     const handle = handleRef.current;
     if (!handle) {
       // A build that failed has no handle and nothing that would re-run it, so
@@ -680,11 +911,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       // normal first build must not tear that build down.
       if (buildFailedRef.current) {
         buildFailedRef.current = false;
+        skipsRef.current = 0;
         dispatch({ type: "RETRY" });
       }
       return;
     }
     if (playing) {
+      // A listener's pause is not a stall.
+      idleRef.current = true;
+      clearFuse();
+      showNotice(null);
       handle.pause();
       // The adapter confirms a pause with an event, but while a swap is in
       // flight the last `playing` is the *outgoing* track's — show Pause as
@@ -692,12 +928,30 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       // player.
       if (loadingRef.current) setPlaying(false);
     } else {
+      skipsRef.current = 0;
+      idleRef.current = false;
       handle.play();
+      arm();
     }
-  }, [playing, dispatch]);
+  }, [playing, dispatch, arm, clearFuse, showNotice]);
 
-  const next = useCallback(() => dispatch({ type: "NEXT" }), [dispatch]);
-  const previous = useCallback(() => dispatch({ type: "PREV" }), [dispatch]);
+  const next = useCallback(() => {
+    listenerActed();
+    dispatch({ type: "NEXT" });
+  }, [dispatch, listenerActed]);
+  const previous = useCallback(() => {
+    listenerActed();
+    // Further than a few seconds in, Previous means "from the top", on the first
+    // set as much as any other. The lock screen's button comes through here too.
+    const handle = handleRef.current;
+    if (handle && !loadingRef.current && positionRef.current > RESTART_AFTER_S) {
+      handle.seek(0);
+      setPosition(0);
+      clearEnd();
+      return;
+    }
+    dispatch({ type: "PREV" });
+  }, [dispatch, listenerActed, clearEnd]);
 
   const seek = useCallback((seconds: number) => {
     // Guarded like `toggle`. Between a track change and the adapter resolving,
@@ -709,7 +963,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const handle = handleRef.current;
     if (!handle || loadingRef.current || !Number.isFinite(seconds)) return;
     const length = durationRef.current;
-    const clamped = Math.max(0, length && length > 0 ? Math.min(seconds, length) : seconds);
+    // Never to the very end: the widget would play out and FINISH, which ends the
+    // set and advances the queue. A listener who drags to the far right wants the
+    // last moments, not the next set. Here rather than in the bar so the lock
+    // screen's seekto gets it too.
+    const cap = length && length > 0 ? Math.max(0, length - SEEK_TAIL_S) : seconds;
+    const clamped = Math.max(0, Math.min(seconds, cap));
     handle.seek(clamped);
     setPosition(clamped);
   }, []);
@@ -718,6 +977,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     // Synchronously, before anything re-renders: a lookup's `.then` can run
     // before the next render, and it must already see that Close happened.
     epochRef.current += 1;
+    clearFuse();
+    clearEnd();
+    skipsRef.current = 0;
+    blockedRef.current = false;
+    showNotice(null);
     destroyHandle();
     currentIdRef.current = null;
     buildFailedRef.current = false;
@@ -728,7 +992,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setPosition(0);
     setDuration(null);
     setError(null);
-  }, [dispatch, destroyHandle]);
+  }, [dispatch, destroyHandle, clearFuse, clearEnd, showNotice]);
   stopRef.current = stop;
 
   const getEpoch = useCallback(() => epochRef.current, []);
@@ -768,6 +1032,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       duration,
       seekable,
       error,
+      notice,
       hasNext,
       hasPrevious,
       playSets,
@@ -799,6 +1064,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       duration,
       seekable,
       error,
+      notice,
       hasNext,
       hasPrevious,
       playSets,

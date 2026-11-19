@@ -39,8 +39,9 @@ declare global {
  * that must settle before any control call is accepted — so binding and the
  * initial play both wait on it.
  */
-export const createMixcloudPlayer: CreatePlayer = async (mount, set, events) => {
+export const createMixcloudPlayer: CreatePlayer = async (mount, set, events, signal) => {
   await loadScript(API);
+  if (signal?.aborted) throw new DOMException("Superseded", "AbortError");
   const Mixcloud = window.Mixcloud;
   if (!Mixcloud) throw new Error("Mixcloud player unavailable");
 
@@ -48,11 +49,20 @@ export const createMixcloudPlayer: CreatePlayer = async (mount, set, events) => 
   mount.appendChild(iframe);
 
   const widget = Mixcloud.PlayerWidget(iframe);
+  // A `ready` that never settles would otherwise strand the iframe for good:
+  // the build is abandoned, but nothing is left running to take it out.
+  const superseded = new Promise<never>((_, reject) => {
+    signal?.addEventListener(
+      "abort",
+      () => reject(new DOMException("Superseded", "AbortError")),
+      { once: true },
+    );
+  });
   try {
-    await widget.ready;
+    await Promise.race([widget.ready, superseded]);
   } catch (cause) {
     // The iframe is already in the host; without this a `ready` that rejects
-    // leaves an orphan behind on every retry.
+    // or hangs leaves an orphan behind on every retry.
     iframe.remove();
     throw cause;
   }

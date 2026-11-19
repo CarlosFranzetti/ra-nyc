@@ -127,6 +127,16 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
    */
   let swapping = false;
 
+  /**
+   * Where the listener just seeked to, and until when ticks from before it may
+   * still be in flight. postMessage means a progress tick sent from the old
+   * position can land after `seekTo`, and it would drag the playhead back for a
+   * moment — the same race as the one `swapping` closes for `load()`.
+   */
+  let seekedTo: { seconds: number; until: number } | null = null;
+  const SEEK_SETTLE_MS = 500;
+  const SEEK_NEAR_S = 2;
+
   widget.bind(SC.Widget.Events.READY, () => {
     widget.getDuration((ms) => {
       useDuration(ms / 1000);
@@ -167,6 +177,13 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
   );
   widget.bind(SC.Widget.Events.PLAY_PROGRESS, (payload) => {
     if (swapping || !payload || payload.currentPosition == null) return;
+    if (seekedTo) {
+      if (performance.now() > seekedTo.until) {
+        seekedTo = null;
+      } else if (Math.abs(payload.currentPosition / 1000 - seekedTo.seconds) > SEEK_NEAR_S) {
+        return;
+      }
+    }
 
     // Keep correcting rather than trusting the first answer: `getDuration` can
     // report 0 at READY and a real length a second later, and `confirmed` only
@@ -210,6 +227,7 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
     seekable: true,
     provider: "soundcloud",
     load: (next) => {
+      seekedTo = null;
       duration = next.duration;
       confirmed = false;
       swapping = true;
@@ -235,7 +253,10 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
       if (retry !== undefined) window.clearTimeout(retry);
       widget.pause();
     },
-    seek: (seconds) => widget.seekTo(seconds * 1000),
+    seek: (seconds) => {
+      seekedTo = { seconds, until: performance.now() + SEEK_SETTLE_MS };
+      widget.seekTo(seconds * 1000);
+    },
     destroy: () => {
       if (retry !== undefined) window.clearTimeout(retry);
       // The iframe may already be detached; pausing a dead widget throws.

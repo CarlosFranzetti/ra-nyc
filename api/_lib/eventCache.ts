@@ -667,3 +667,46 @@ async function coverage(options: {
     return 0;
   }
 }
+
+/** One past or future date an artist is on in the index: enough to name where. */
+export interface ArtistAppearance {
+  title: string;
+  venue: string;
+}
+
+/**
+ * Where, and under what party name, an RA artist has played according to the
+ * index. Evidence for the artist resolver: a set titled "feedbk w/ Hugo" is
+ * Hugo's because the index says Hugo plays feedbk.
+ *
+ * There is no index on `artists`, so this is a scan of the area's rows with a
+ * jsonb containment test. That is fine at this table's size and is bounded by
+ * the caller's own timeout; it selects three narrow columns and the newest
+ * thirty rows only. Fails soft like everything here: no database, no table or
+ * no match is an empty list, because "no evidence" is a normal answer.
+ */
+export async function artistAppearances(options: {
+  artistId: string;
+  areaId: number;
+  limit?: number;
+}): Promise<ArtistAppearance[]> {
+  const sql = getSql();
+  if (!sql) return [];
+
+  try {
+    const rows = (await sql.query(
+      `select title, venue_name
+         from event_cache
+        where area_id = $1 and artists @> $2::jsonb
+        order by event_date desc
+        limit $3`,
+      [options.areaId, JSON.stringify([{ id: options.artistId }]), options.limit ?? 30],
+    )) as unknown as { title?: unknown; venue_name?: unknown }[];
+    return (Array.isArray(rows) ? rows : [])
+      .filter((row) => typeof row?.title === "string" && typeof row?.venue_name === "string")
+      .map((row) => ({ title: row.title as string, venue: row.venue_name as string }));
+  } catch (error) {
+    console.warn("[eventCache] artist appearances read failed", error);
+    return [];
+  }
+}

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  bioEvidence,
   buildArtistContext,
+  isCorroborated,
   contextScore,
   contradictsOrigin,
   isContradicted,
@@ -355,5 +357,60 @@ describe("isContradicted (B6)", () => {
   it("is overruled by a matching country", () => {
     const ctx = buildArtistContext("Cosmo (NY)", null, { origin: { iso2: "US", countryName: "United States" } });
     expect(isContradicted(ctx, { description: "Miami", countryCode: "US" })).toBe(false);
+  });
+});
+
+describe("bioEvidence", () => {
+  const PENELOPE =
+    "French-born, lived in Berlin, based in Lisbon since 2018. Founder of the oDYSea parties and a " +
+    "regular on Kiosk Radio. Releases on Tresydos and For Playful Manners.";
+
+  it("takes the named things a bio ties the artist to, best first", () => {
+    expect(bioEvidence("Penelope (2)", PENELOPE)).toEqual([
+      "oDYSea",
+      "Kiosk Radio",
+      "Playful Manners",
+      "Tresydos",
+    ]);
+  });
+
+  it("leaves out places, brands, the artist's own name and sentence openers", () => {
+    const evidence = bioEvidence(
+      "Cosmo (NY)",
+      "Cosmo is based in Brooklyn. Find Cosmo on SoundCloud and Instagram. Since October he runs Nowadays nights.",
+    );
+    expect(evidence).toEqual(["Nowadays"]);
+  });
+
+  it("is empty without a bio", () => {
+    expect(bioEvidence("Hugo", null)).toEqual([]);
+    expect(bioEvidence("Hugo", "")).toEqual([]);
+  });
+
+  it("is carried on the context beside the handles it was read with", () => {
+    const ctx = buildArtistContext("Hugo (US)", "Resident at Nowadays. ig: instagram.com/__hugogb");
+    expect(ctx.evidence).toContain("Nowadays");
+    expect(ctx.handles.instagram).toBe("__hugogb");
+  });
+});
+
+describe("isCorroborated", () => {
+  const ctx = buildArtistContext("Hugo (US)", "Based in Brooklyn. instagram.com/__hugogb", {
+    origin: { iso2: "US", countryName: "United States" },
+  });
+
+  it("says no to a profile that carries nothing", () => {
+    expect(isCorroborated(ctx, { description: null, city: null, countryCode: null })).toBe(false);
+    expect(isCorroborated(ctx, { description: "https://www.instagram.com/someone-else/" })).toBe(false);
+  });
+
+  it("says yes to a country, a city, or the same Instagram", () => {
+    expect(isCorroborated(ctx, { countryCode: "US" })).toBe(true);
+    expect(isCorroborated(ctx, { city: "Brooklyn" })).toBe(true);
+    expect(isCorroborated(ctx, { description: "ig: __hugogb" })).toBe(true);
+  });
+
+  it("does not count a different country as agreement", () => {
+    expect(isCorroborated(ctx, { countryCode: "DE" })).toBe(false);
   });
 });

@@ -44,14 +44,24 @@ export interface PlayerEvents {
   onPause(): void;
   onEnded(): void;
   onError(message: string): void;
+  /**
+   * The browser refused to start playback without a tap. Optional: only an
+   * adapter that can tell a refusal from a failure sends it, and it lets the
+   * player's watchdog leave a set that is merely waiting alone.
+   */
+  onBlocked?(): void;
 }
 
 /**
- * Builds a player inside `mount` — a hidden, body-level host owned by the
+ * Builds a player inside `mount`. `signal` aborts when the build is superseded
+ * before it finishes, so an adapter that is waiting on a provider can clean up
+ * what it already put in the page.
+ * — a hidden, body-level host owned by the
  * player provider, deliberately *not* anything React renders in a sheet.
  */
 export type CreatePlayer = (
   mount: HTMLElement,
   set: ArtistSet,
   events: PlayerEvents,
+  signal?: AbortSignal,
 ) => Promise<PlayerHandle>;

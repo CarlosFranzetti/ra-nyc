@@ -31,11 +31,11 @@ function rankFormat(format: string | undefined): number {
  * The metadata endpoint is keyless and CORS-open, and is only hit when an
  * Archive set is actually played.
  */
-export const createArchivePlayer: CreatePlayer = async (mount, set, events) => {
+export const createArchivePlayer: CreatePlayer = async (mount, set, events, signal) => {
   const identifier = new URL(set.url).pathname.split("/").filter(Boolean).pop();
   if (!identifier) throw new Error("Unrecognised Archive item");
 
-  const response = await fetch(`https://archive.org/metadata/${identifier}`);
+  const response = await fetch(`https://archive.org/metadata/${identifier}`, { signal });
   if (!response.ok) throw new Error("Archive metadata unavailable");
   const metadata = (await response.json()) as { files?: ArchiveFile[] };
 
@@ -70,6 +70,7 @@ export const createArchivePlayer: CreatePlayer = async (mount, set, events) => {
 
   void audio.play().catch(() => {
     // Autoplay refused: leave it cued so the bar's play button still works.
+    events.onBlocked?.();
     events.onPause();
   });
 

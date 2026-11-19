@@ -40,6 +40,9 @@ function findChromium() {
   ].filter(Boolean);
   const binaries = [
     ["chrome-linux", "chrome"],
+    // Newer Playwright builds unpack to `chrome-linux64`; the cloud container
+    // moved to one and every suite stopped finding its browser.
+    ["chrome-linux64", "chrome"],
     ["chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"],
     ["chrome-win", "chrome.exe"],
   ];
@@ -536,6 +539,90 @@ await seek.evaluate((el) => {
 await page.waitForTimeout(500);
 const seeked = await at();
 check("seek jumps the playhead", seeked >= 1795 && seeked < 1830, `${seeked}s`);
+
+// ── Transport fixes (scrubber hit area, inset track, bubble over the thumb) and
+//    the settings sheet clearing the docked bar on a small phone.
+await page.setViewportSize({ width: 375, height: 667 });
+for (let i = 0; i < 3; i++) { await page.keyboard.press("Escape"); await page.waitForTimeout(250); }
+await page.waitForTimeout(500);
+{
+  const geo = await page.evaluate(() => {
+    const input = document.querySelector('input[aria-label="Seek"]');
+    const r = input.getBoundingClientRect();
+    const bar = input.closest("div.fixed").getBoundingClientRect();
+    return { x: r.x, right: r.right, height: r.height, vw: window.innerWidth, barTop: bar.top };
+  });
+  check("the scrubber's touch target is 44px tall", Math.round(geo.height) === 44, `${geo.height}px`);
+  check("the thumb's centre never comes within 20px of a screen edge",
+    geo.x + 6 >= 19.5 && geo.vw - (geo.right - 6) >= 19.5, `centre runs ${geo.x + 6}..${geo.right - 6} of ${geo.vw}`);
+
+  const hit = await page.evaluate(() => {
+    const play = document.querySelector('button[aria-label="Play"], button[aria-label="Pause"]').getBoundingClientRect();
+    const el = document.elementFromPoint(play.x + play.width / 2, play.top + 2);
+    return el?.closest("button")?.getAttribute("aria-label") ?? el?.tagName;
+  });
+  check("the taller scrubber does not steal the top edge of the play button", hit === "Pause" || hit === "Play", String(hit));
+
+  const input = await seek.boundingBox();
+  const value = await at();
+  const max = Number(await seek.getAttribute("max"));
+  const thumbX = input.x + 6 + (input.width - 12) * (value / max);
+  const midY = input.y + input.height / 2;
+  await page.mouse.move(thumbX, midY);
+  await page.mouse.down();
+  await page.mouse.move(input.x + input.width * 0.6, midY, { steps: 6 });
+  await page.waitForTimeout(150);
+  const bubble = await page.evaluate(() => {
+    const b = document.querySelector("[data-scrub-bubble]");
+    const input = document.querySelector('input[aria-label="Seek"]');
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    const i = input.getBoundingClientRect();
+    const frac = Number(input.value) / Number(input.max);
+    return { cx: r.x + r.width / 2, thumb: i.x + 6 + (i.width - 12) * frac, left: r.x, right: r.right, vw: window.innerWidth };
+  });
+  await page.mouse.up();
+  check("the drag bubble sits over the thumb and stays inside the bar",
+    bubble && Math.abs(bubble.cx - bubble.thumb) < 4 && bubble.left >= 0 && bubble.right <= bubble.vw, JSON.stringify(bubble));
+}
+
+// Settings sheet over the docked bar at 375x667: the last row must be reachable.
+await page.locator('button[aria-label="Customize"]').click();
+await page.waitForTimeout(800);
+await page.evaluate(() => {
+  const c = document.querySelector("[data-controls]");
+  let el = c;
+  while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
+  el?.scrollTo(0, 99999);
+});
+await page.waitForTimeout(400);
+const clear = await page.evaluate(() => {
+  const barTop = document.querySelector('input[aria-label="Seek"]').closest("div.fixed").getBoundingClientRect().top;
+  const reset = [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Reset");
+  const last = [...document.querySelectorAll("[data-controls] a, [data-controls] button")].pop();
+  const r = reset.getBoundingClientRect();
+  const l = last.getBoundingClientRect();
+  return { resetBottom: r.bottom, lastBottom: l.bottom, barTop, resetH: r.height };
+});
+check("settings: Reset and the last row clear the docked bar at 375x667",
+  clear.resetBottom <= clear.barTop && clear.lastBottom <= clear.barTop + 1 && clear.resetH >= 44, JSON.stringify(clear));
+await page.keyboard.press("Escape");
+await page.waitForTimeout(400);
+await page.setViewportSize({ width: 390, height: 844 });
+
+// The scrubber at the phone's own size: a 44px target, and the thumb's centre at
+// both ends of the track clear of the screen edges. The centre is computed from
+// the input's box as the bubble check does: x + 6 + (width - 12) * fraction.
+{
+  const box = await seek.boundingBox();
+  const vw = await page.evaluate(() => window.innerWidth);
+  const centreAt = (frac) => box.x + 6 + (box.width - 12) * frac;
+  check("at 390x844 the scrubber's box is at least 44px tall", box.height >= 44, `${box.height}px`);
+  check("the thumb's centre at zero is at least 20px from the left edge",
+    centreAt(0) - 0 >= 20, `centre ${centreAt(0).toFixed(1)}px`);
+  check("the thumb's centre at the end is at least 20px from the right edge",
+    vw - centreAt(1) >= 20, `centre ${centreAt(1).toFixed(1)}px of ${vw}`);
+}
 
 // ── teardown
 await page.locator('button[aria-label="Close player"]').click();
