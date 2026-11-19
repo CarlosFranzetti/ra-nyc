@@ -513,6 +513,17 @@ self.addEventListener("fetch", (event) => {
   // way to break their own cache policy.
   if (url.origin !== self.location.origin) return;
 
+  // `/links` is a real page, not a route of the app, and it is the one
+  // navigation that must not be treated as the shell. `handleNavigation` saves
+  // whatever a navigation returns as `/index.html`, on the stated assumption
+  // that "every route rewrites to index.html". The day a second real page
+  // existed, a visit to it from someone with the app installed would have
+  // replaced their offline shell with a list of links. Left to the network,
+  // it is simply a page.
+  if (request.mode === "navigate" && (url.pathname === "/links" || url.pathname.startsWith("/links/"))) {
+    return;
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(handleNavigation(request));
     return;

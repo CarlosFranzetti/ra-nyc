@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountEvidence,
   bioEvidence,
+  isDistinctiveTerm,
   buildArtistContext,
   isCorroborated,
   contextScore,
@@ -412,5 +414,42 @@ describe("isCorroborated", () => {
 
   it("does not count a different country as agreement", () => {
     expect(isCorroborated(ctx, { countryCode: "DE" })).toBe(false);
+  });
+});
+
+describe("isDistinctiveTerm", () => {
+  it("accepts a party, a label, a venue and an agency", () => {
+    for (const term of ["feedbk", "oDYSea", "Tresydos", "Heads Up", "Playful Manners", "Apollo Studio", "Kiosk Radio"]) {
+      expect(isDistinctiveTerm(term), term).toBe(true);
+    }
+  });
+
+  it("refuses country codes, genres, generic words and places on their own", () => {
+    for (const term of ["US", "UK", "NY", "DE", "house", "Techno", "Club", "Music", "Records", "The Room", "Basement", "Lisbon", "Berlin", "Festival"]) {
+      expect(isDistinctiveTerm(term), term).toBe(false);
+    }
+  });
+
+  it("refuses the artist's own name", () => {
+    expect(isDistinctiveTerm("Penelope", "penelope")).toBe(false);
+    expect(isDistinctiveTerm("Penelope Records", "penelope")).toBe(false);
+  });
+});
+
+describe("accountEvidence", () => {
+  const PROFILE =
+    "Bookings:  stijn@headsup.brussels\n@odysea-lisboa\nReleases:\noDYSea 02: \n" +
+    "https://odysearecords.bandcamp.com/album/unexpected-dreams\n" +
+    "Tresydos VA: https://tresydosrecords.bandcamp.com/track/gathering";
+
+  it("reads the collective from the handle, the agency from the email and the labels from the links", () => {
+    const terms = accountEvidence("Penelope (2)", PROFILE).map((t) => t.toLowerCase());
+    expect(terms).toEqual(expect.arrayContaining(["odysea", "headsup", "tresydos"]));
+  });
+
+  it("ignores mail providers, a bare URL profile and an empty one", () => {
+    expect(accountEvidence("Hugo (US)", "reach me at hugo@gmail.com")).toEqual([]);
+    expect(accountEvidence("Hugo (US)", "https://www.instagram.com/__hugogb/")).toEqual([]);
+    expect(accountEvidence("Hugo (US)", null)).toEqual([]);
   });
 });

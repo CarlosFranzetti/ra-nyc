@@ -1,7 +1,9 @@
 import {
+  accountEvidence,
   buildArtistContext,
   isContradicted,
   isCorroborated,
+  isDistinctiveTerm,
   scoreCandidate,
   type ArtistContext,
   type CandidateProfile,
@@ -684,7 +686,8 @@ export function indexEvidence(name: string, appearances: ArtistAppearance[]): st
     const text = raw?.replace(/\s+/g, " ").trim();
     if (!text || /^tba\b/i.test(text)) return;
     const key = fold(text);
-    if (key.length < 4 || (self && key.includes(self))) return;
+    // A venue called "Basement" or "The Room" says nothing about whose set it is.
+    if (key.length < 4 || (self && key.includes(self)) || !isDistinctiveTerm(text)) return;
     const seen = tally.get(key);
     if (seen) seen.count += 1;
     else tally.set(key, { text, count: 1 });
@@ -736,6 +739,149 @@ export function evidenceQueries(name: string, evidence: string[]): string[] {
     .filter((term) => fold(term).length >= 4)
     .slice(0, EVIDENCE_QUERIES)
     .map((term) => `${bare} ${term}`);
+}
+
+/** How many playlists, and reposts, to read from an account. */
+const COLLECTION_LIMIT = 30;
+
+/** The most sets a common name may collect by search; its own uploads are not counted. */
+const MAX_FOUND_COMMON = 12;
+
+/** What a repost fetch answers when there is no such endpoint to ask. */
+const NO_REPOSTS: FetchResult<unknown> = { ok: false, reason: "http", status: 501 };
+
+/** A track object with enough in it to judge and play; anything less is a stub. */
+function isFullTrack(value: unknown): value is ScTrack {
+  const t = value as ScTrack | null;
+  return Boolean(t) && typeof t === "object" && typeof t!.title === "string" && typeof t!.permalink_url === "string";
+}
+
+/**
+ * Tracks inside an account's playlists. A playlist entry is either a whole
+ * track object or, past the first few, only an id (`{ id, kind }`): those have
+ * no title to judge and are skipped, and counted so the log says how many.
+ * Anything of an unexpected shape yields nothing rather than an error.
+ */
+function readPlaylists(result: FetchResult<unknown> | undefined): {
+  count: number;
+  tracks: ScTrack[];
+  stubs: number;
+} {
+  const out = { count: 0, tracks: [] as ScTrack[], stubs: 0 };
+  if (!result?.ok) return out;
+  try {
+    const raw = result.data as unknown[] | { collection?: unknown[] } | null;
+    const playlists = (Array.isArray(raw) ? raw : (raw?.collection ?? [])).filter(
+      (p): p is { tracks?: unknown } => Boolean(p) && typeof p === "object",
+    );
+    out.count = playlists.length;
+    for (const playlist of playlists) {
+      if (!Array.isArray(playlist.tracks)) continue;
+      for (const entry of playlist.tracks) {
+        if (isFullTrack(entry)) out.tracks.push(entry);
+        else out.stubs += 1;
+      }
+    }
+  } catch {
+    // An unexpected shape is an empty answer.
+  }
+  return out;
+}
+
+/** Tracks an account has reposted: `{ type: "track-repost", track: {...} }` items. */
+function readReposts(result: FetchResult<unknown> | undefined): { tracks: ScTrack[] } {
+  const out = { tracks: [] as ScTrack[] };
+  if (!result?.ok) return out;
+  try {
+    const raw = result.data as unknown[] | { collection?: unknown[] } | null;
+    for (const item of Array.isArray(raw) ? raw : (raw?.collection ?? [])) {
+      const track = (item as { track?: unknown } | null)?.track;
+      if (isFullTrack(track)) out.tracks.push(track);
+    }
+  } catch {
+    // As above.
+  }
+  return out;
+}
+
+/**
+ * Words that may follow a single-word name without making it a longer one:
+ * the things a set title says next to a name. "Penelope Warmup" is a set;
+ * "Penelope Moro" and "Hugo C" are people. Folded, one word each.
+ */
+const NAME_FOLLOWERS = new Set([
+  "x", "b2b", "b3b", "w", "with", "at", "live", "mix", "set", "sets", "dj", "radio",
+  "podcast", "session", "sessions", "show", "club", "in", "from", "presents", "feat",
+  "ft", "featuring", "vs", "and", "on", "for", "by", "warmup", "opening", "closing",
+  "guest", "takeover", "sunrise", "sunset", "afterhours", "all", "night", "mixtape",
+  "is", "returns", "back", "special",
+]);
+
+/** Words that may precede it: lowercase words always may, capitalised ones only from here. */
+const NAME_PRECEDERS = new Set([
+  "w", "with", "ft", "feat", "featuring", "and", "x", "b2b", "b3b", "vs", "dj",
+  "presents", "by", "at", "live", "mix", "set", "podcast", "radio", "guest",
+  "for", "from", "in", "on", "special", "welcome", "meet",
+]);
+
+const MONTHS =
+  /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)$/i;
+
+/**
+ * Whether a single-word artist name, found in a title, stands as the name of
+ * one performer rather than part of a longer name or phrase.
+ *
+ * The test is on the words either side. Anything between them and the name
+ * that is punctuation ("-", "@", "|", "/", "(", ",") separates and passes. A
+ * bare space does not: the next word then has to be a set word, a number or
+ * date, or something we know about the artist, and the one before it must not
+ * be a capitalised word of its own. That is the difference between
+ * "Heads Up w/ Penelope" and "Victor Hugo", "Hugo C", "Hugo Sanchez",
+ * "Penélope Martini" and "HuGo Mixx".
+ *
+ * Judged on the occurrences of the name: one standing alone is enough.
+ */
+export function standsAlone(artistName: string, title: string, evidence: string[] = []): boolean {
+  const target = fold(bareName(artistName));
+  if (!target) return false;
+  const tokens = [...title.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => ({
+    raw: m[0],
+    folded: fold(m[0]),
+    start: m.index ?? 0,
+    end: (m.index ?? 0) + m[0].length,
+  }));
+  const evidenceStarts = new Set(
+    evidence.map((term) => fold(term.split(/\s+/)[0] ?? "")).filter(Boolean),
+  );
+  const separated = (gap: string): boolean => /[^\p{L}\p{N}\s]/u.test(gap);
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    let joined = "";
+    let j = i;
+    while (j < tokens.length && joined.length < target.length) {
+      joined += tokens[j]!.folded;
+      j += 1;
+    }
+    if (joined !== target) continue;
+    const last = tokens[j - 1]!;
+    const next = tokens[j];
+    const before = tokens[i - 1];
+
+    const afterOk =
+      !next ||
+      separated(title.slice(last.end, next.start)) ||
+      NAME_FOLLOWERS.has(next.folded) ||
+      /^\d/.test(next.raw) ||
+      MONTHS.test(next.raw) ||
+      evidenceStarts.has(next.folded);
+    const beforeOk =
+      !before ||
+      separated(title.slice(before.end, tokens[i]!.start)) ||
+      NAME_PRECEDERS.has(before.folded) ||
+      !/^\p{Lu}/u.test(before.raw);
+    if (afterOk && beforeOk) return true;
+  }
+  return false;
 }
 
 /** A title that is a conversation about the artist rather than a set by them. */
@@ -793,8 +939,8 @@ interface SoundcloudResult {
   url: string | null;
   description: string | null;
   sets: ArtistSet[];
-  /** Ids of sets accepted only because a trusted channel carried a common name; ranked last. */
-  weakIds: string[];
+  /** Rank of each set by id, lower first: see `judge`. Own uploads are 0. */
+  tiers: Record<string, number>;
   /**
    * Whether the account is believed to be the artist's. A common name matched
    * on its display name alone is not: the profile is still offered as a link,
@@ -840,6 +986,9 @@ async function resolveSoundcloud(
   let resolveHandle: (handle: string) => string;
   let trackSearch: (query: string, limit: number, longForm?: boolean) => string;
   let userTracks: (userId: number) => string;
+  let userPlaylists: (userId: number) => string;
+  /** Reposts exist only on api-v2; the public API has no such endpoint. */
+  let userReposts: ((userId: number) => string) | null;
 
   if (mode === "official") {
     const token = await soundcloudAccessToken(signal);
@@ -855,6 +1004,8 @@ async function resolveSoundcloud(
       `${base}/tracks?q=${enc(query)}&limit=${limit}` +
       (longForm ? `&duration%5Bfrom%5D=${MIN_RADIO_SECONDS * 1000}` : "");
     userTracks = (userId) => `${base}/users/${userId}/tracks?limit=${CATALOGUE_LIMIT}`;
+    userPlaylists = (userId) => `${base}/users/${userId}/playlists`;
+    userReposts = null;
   } else {
     const base = "https://api-v2.soundcloud.com";
     const credential = `&client_id=${enc(clientId)}`;
@@ -868,6 +1019,8 @@ async function resolveSoundcloud(
     trackSearch = (query, limit, longForm) =>
       `${base}/search/tracks?q=${enc(query)}&limit=${limit}${longForm ? "&filter.duration=epic" : ""}${credential}`;
     userTracks = (userId) => `${base}/users/${userId}/tracks?limit=${CATALOGUE_LIMIT}${credential}`;
+    userPlaylists = (userId) => `${base}/users/${userId}/playlists?limit=${COLLECTION_LIMIT}${credential}`;
+    userReposts = (userId) => `${base}/stream/users/${userId}/reposts?limit=${COLLECTION_LIMIT}${credential}`;
   }
 
   type TrackList = ScTrack[] | { collection?: ScTrack[] };
@@ -976,16 +1129,32 @@ async function resolveSoundcloud(
   const readTracks = async (url: string): Promise<ScTrack[]> =>
     listOf(take(await fetchJson<TrackList>(url, signal, auth)));
 
-  const own = user?.id ? await readTracks(userTracks(user.id)) : [];
+  // A DJ who uploads nothing keeps their sets in playlists and reposts, so for
+  // any account with an id those are read beside its uploads. Both endpoints
+  // are recalled rather than confirmed, so a failure here is never an outage:
+  // it is not `degraded`, it is logged, and the page simply has less.
+  const collectionFetches: Promise<FetchResult<unknown>>[] = user?.id
+    ? [
+        fetchJson<unknown>(userPlaylists(user.id), signal, auth),
+        userReposts ? fetchJson<unknown>(userReposts(user.id), signal, auth) : Promise.resolve(NO_REPOSTS),
+      ]
+    : [];
+  const [own, playlistResult, repostResult] = user?.id
+    ? await Promise.all([readTracks(userTracks(user.id)), ...collectionFetches] as const)
+    : ([[], undefined, undefined] as const);
 
   const common = isCommonName(name);
+  const single = !/\s/.test(bare);
   const self = fold(bare);
   const nameInTitle = (title: string): boolean => matchName(name, title, "title").kind !== "none";
+  // What we know about the artist, searched for in a track. Grows below once
+  // the account is believed, because its own description is then evidence.
+  let evidenceNow = evidence;
   const haystack = (t: ScTrack): string =>
     [t.title, t.user?.username, t.user?.permalink, t.description, t.tag_list].filter(Boolean).join(" ");
   const carriesEvidence = (t: ScTrack): boolean => {
     const text = haystack(t);
-    return evidence.some((term) => termIn(term, text));
+    return evidenceNow.some((term) => termIn(term, text));
   };
 
   // A common name matched on its display name alone is not yet the artist. It
@@ -1003,29 +1172,49 @@ async function resolveSoundcloud(
           corroborated(user))) ||
       own.some((t) => nameInTitle(t.title ?? "") && carriesEvidence(t)));
 
+  // An account we believe describes the artist's world in its own words: the
+  // collective in its @handle, the booking agency in its email address, the
+  // labels it links. A radio show titled "Heads Up w/ Penelope" then carries
+  // evidence as well as a name.
+  if (confirmed && user) {
+    evidenceNow = [
+      ...new Map(
+        [...evidence, ...accountEvidence(name, user.description)].map((term) => [fold(term), term]),
+      ).values(),
+    ];
+  }
+
   const rejected: string[] = [];
   const floor = MIN_SOUNDCLOUD_SECONDS * 1000;
+  const radioFloor = MIN_RADIO_SECONDS * 1000;
   const trustUploader = !common || confirmed;
 
   /**
-   * Whether a track is one of this artist's sets.
+   * How a track ranks as one of this artist's sets, or `false` if it is not one.
+   * Lower is better, and the order is the ranking: 0 the account's own uploads,
+   * 1 its playlists and reposts, 2 a trusted channel *and* evidence, 3 evidence
+   * alone, 4 a trusted channel alone.
    *
-   * `own` tracks come from an account we believe is the artist's, so they pass
-   * on length alone. Anything else — search hits, or the uploads of an account
-   * we only half believe — has to carry the name. Two routes qualify: the
-   * credit form (`Name @ Somewhere`, as before) or the name written in the
-   * title beside an evidence term anywhere in the title, uploader or tags, so a
-   * radio station's "heads up w penelope" counts when the station is one the
-   * biography or the index names.
+   * Three rules apply to anything that is not the artist's own, and they are
+   * the whole defence against someone else with the same name:
    *
-   * Only that second route may go below 45 minutes, to 20, and only on someone
-   * else's account. A single is 3 to 8 minutes and a 20-minute upload without a
-   * word that says it is music ("mix", "set", "live", "radio", "@", "w/") is
-   * still not admitted; an interview, talk or audiobook is refused at any
-   * length unless the title also says mix, set, live, b2b or "@". No list of
-   * radio stations is needed: the evidence term is what ties it to the artist.
+   * 1. **The name is in the title.** The uploader, the tags and the description
+   *    can supply evidence, never the name: "Hugo" the uploader is not "Hugo"
+   *    the title, and that is how a Vietnamese compilation was adopted.
+   * 2. **The name stands alone.** A single-word name followed or preceded by
+   *    another name-like word is another person: "Hugo C", "Victor Hugo",
+   *    "Penélope Martini". See `standsAlone`.
+   * 3. **A common name needs a channel or a term.** An eight-letter first name
+   *    in a long title is a coincidence until a trusted channel or something we
+   *    know about the artist sits beside it.
+   *
+   * Only a track with evidence or a channel may go below 45 minutes, to 20, and
+   * only on someone else's account; the evidence route also needs a word that
+   * says it is music ("mix", "set", "live", "radio", "@", "w/"). An interview,
+   * talk or audiobook is refused at any length unless the title also says mix,
+   * set, live, b2b or "@".
    */
-  const judge = (t: ScTrack, mode: "own" | "search"): "strong" | "weak" | false => {
+  const judge = (t: ScTrack, mode: "own" | "collection" | "search"): number | false => {
     const title = t.title ?? "Untitled";
     const no = (why: string): false => {
       if (rejected.length < 10) rejected.push(`${title.slice(0, 60)} (${why})`);
@@ -1033,61 +1222,74 @@ async function resolveSoundcloud(
     };
     if (!t.permalink_url) return no("no url");
     const ms = t.duration ?? 0;
-    if (mode === "own") return ms >= floor ? "strong" : no("short");
+    if (mode === "own") return ms >= floor ? 0 : no("short");
 
-    // A conversation about the artist is not a set by them, however long and
-    // however well the name is credited.
     if (INTERVIEW.test(title) && !MUSIC_WORD.test(title)) return no("interview");
-
     const named = nameInTitle(title);
-    const evidenced = named && carriesEvidence(t);
-    // A channel that exists to publish guest sets, with the name in the title.
-    const onChannel = named && isTrustedChannel(t);
-    const credited =
-      titleMentions(name, title) ||
-      (trustUploader && isPlausibleMatch(name, t.user?.username ?? ""));
-    if (!credited && !evidenced && !onChannel) return no(named ? "no evidence term" : "name not in title");
+    const onChannel = isTrustedChannel(t);
 
-    // A common name on a channel is accepted, but it is the weakest kind of
-    // yes: the channel is telling us a "Hugo" played, not which one.
-    const tier = common && onChannel && !evidenced && !credited ? "weak" : "strong";
+    // The artist's own playlists and reposts: curated by them, so the name in
+    // the title, or a trusted channel, is enough.
+    if (mode === "collection") {
+      if (!named && !onChannel) return no("name not in title");
+      if (named && single && !standsAlone(name, title, evidenceNow)) return no("part of a longer name");
+      return ms >= radioFloor ? 1 : no("short");
+    }
+
+    if (!named) return no("name not in title");
+    if (single && !standsAlone(name, title, evidenceNow)) return no("part of a longer name");
+
+    const evidenced = carriesEvidence(t);
+    const credited =
+      !common &&
+      (titleMentions(name, title) ||
+        (trustUploader && isPlausibleMatch(name, t.user?.username ?? "")));
+    if (!evidenced && !onChannel && !credited) {
+      return no(common ? "no evidence or channel" : "no evidence term");
+    }
+
+    const tier = onChannel && evidenced ? 2 : evidenced || credited ? 3 : 4;
     if (ms >= floor) return tier;
     const theirs = user?.id !== undefined && t.user?.id === user.id;
-    if (!theirs && ms >= MIN_RADIO_SECONDS * 1000) {
-      if (onChannel) return tier;
-      if (evidenced && SET_WORD.test(title)) return tier;
-    }
+    if (!theirs && ms >= radioFloor && (onChannel || (evidenced && SET_WORD.test(title)))) return tier;
     return no("short");
   };
 
-  const kept = new Map<string, ArtistSet>();
-  const weakIds = new Set<string>();
-  const keep = (t: ScTrack, mode: "own" | "search"): void => {
-    const verdict = judge(t, mode);
-    if (!verdict) return;
+  const kept = new Map<string, { set: ArtistSet; tier: number }>();
+  const keep = (t: ScTrack, mode: "own" | "collection" | "search"): void => {
+    const tier = judge(t, mode);
+    if (tier === false) return;
     const id = `sc-${t.id ?? t.permalink_url}`;
-    if (kept.has(id)) {
-      // Found twice, once by a stronger route: the stronger one stands.
-      if (verdict === "strong") weakIds.delete(id);
+    const seen = kept.get(id);
+    // Found twice: the better route stands.
+    if (seen) {
+      seen.tier = Math.min(seen.tier, tier);
       return;
     }
-    if (verdict === "weak") weakIds.add(id);
     kept.set(id, {
-      provider: "soundcloud" as const,
-      id,
-      title: t.title ?? "Untitled",
-      url: t.permalink_url as string,
-      embedUrl: soundcloudEmbed(t.permalink_url as string),
-      duration: t.duration ? Math.round(t.duration / 1000) : null,
-      plays: t.playback_count ?? null,
-      createdAt: t.created_at ?? null,
-      artwork: soundcloudArtwork(t),
+      tier,
+      set: {
+        provider: "soundcloud" as const,
+        id,
+        title: t.title ?? "Untitled",
+        url: t.permalink_url as string,
+        embedUrl: soundcloudEmbed(t.permalink_url as string),
+        duration: t.duration ? Math.round(t.duration / 1000) : null,
+        plays: t.playback_count ?? null,
+        createdAt: t.created_at ?? null,
+        artwork: soundcloudArtwork(t),
+      },
     });
   };
 
   // The matched account's own uploads first. Only trusted when the account is.
   for (const t of own) keep(t, confirmed ? "own" : "search");
   const ownKept = kept.size;
+
+  // Then its playlists and reposts, which only a confirmed account's are.
+  const playlists = readPlaylists(playlistResult);
+  const reposts = readReposts(repostResult);
+  if (confirmed) for (const t of [...playlists.tracks, ...reposts.tracks]) keep(t, "collection");
 
   // A matched profile with no *sets* is common, and used to end the search
   // here, which is how a DJ with an obvious SoundCloud page ended up showing
@@ -1118,6 +1320,23 @@ async function resolveSoundcloud(
   );
   for (const t of [...evidenceResults.flat(), ...scopedLong, ...scoped]) keep(t, "search");
 
+  // A common name has too many namesakes for a long list to be honest: the
+  // artist's own uploads stay, everything found by search is cut to the best.
+  const entries = [...kept.values()];
+  if (common) {
+    const found = entries
+      .filter((e) => e.tier > 0)
+      .sort(
+        (a, b) =>
+          a.tier - b.tier || (Date.parse(b.set.createdAt ?? "") || 0) - (Date.parse(a.set.createdAt ?? "") || 0),
+      );
+    for (const dropped of found.slice(MAX_FOUND_COMMON)) kept.delete(dropped.set.id);
+  }
+  const tiers: Record<string, number> = {};
+  for (const e of kept.values()) tiers[e.set.id] = e.tier;
+  const tally: Record<number, number> = {};
+  for (const tier of Object.values(tiers)) tally[tier] = (tally[tier] ?? 0) + 1;
+
   console.info("[sc] resolve", {
     artist: bare,
     mode,
@@ -1133,10 +1352,16 @@ async function resolveSoundcloud(
     scoped: scoped.length,
     scopedLong: scopedLong.length,
     scopedLongAtFloor: scopedLong.filter((t) => (t.duration ?? 0) >= floor).length,
-    evidenceTerms: evidence.length,
+    // Terms are words from a public biography, an account's own description and
+    // venue names; logged so production shows what a title was held against.
+    evidence: evidenceNow,
     evidenceHits: evidenceResults.map((list) => list.length),
+    // What the two recalled endpoints answered, so production says whether
+    // they exist: `ok` false with a status means not, and nothing else broke.
+    playlists: { ok: playlistResult?.ok ?? null, ...(playlistResult && !playlistResult.ok ? { status: playlistResult.status ?? playlistResult.reason } : {}), count: playlists.count, full: playlists.tracks.length, stubs: playlists.stubs },
+    reposts: { ok: repostResult?.ok ?? null, ...(repostResult && !repostResult.ok ? { status: repostResult.status ?? repostResult.reason } : {}), seen: reposts.tracks.length },
     kept: kept.size,
-    weak: weakIds.size,
+    tiers: tally,
     rejected,
   });
 
@@ -1148,8 +1373,8 @@ async function resolveSoundcloud(
       handle: soundcloudHandle(user),
       url: user?.permalink_url ?? null,
       description: confirmed ? user?.description?.trim() || null : null,
-      sets: [...kept.values()],
-      weakIds: [...weakIds],
+      sets: [...kept.values()].map((e) => e.set),
+      tiers,
       confirmed,
     },
     degraded,
@@ -1776,7 +2001,7 @@ const AUTO_ROW_TTL_MS = 90 * 24 * 60 * 60 * 1000;
  * single view until the clock caught up. Set it to a moment before the
  * deploy, not a round date after it.
  */
-export const RESOLVER_EPOCH = "2026-11-18T21:00:00Z";
+export const RESOLVER_EPOCH = "2026-11-19T02:37:00Z";
 
 interface ArtistRow {
   ra_artist_id: string;
@@ -2044,10 +2269,9 @@ export async function getArtistLinks(
     // index has seen this artist play.
     const evidence = [
       ...new Map(
-        [...(base.evidence ?? []), ...indexEvidence(name, appearances)].map((term) => [
-          fold(term),
-          term,
-        ]),
+        [...(base.evidence ?? []), ...indexEvidence(name, appearances)]
+          .filter((term) => isDistinctiveTerm(term, normalizeName(name)))
+          .map((term) => [fold(term), term]),
       ).values(),
     ].slice(0, 10);
     const context = { ...base, evidence };
@@ -2075,13 +2299,19 @@ export async function getArtistLinks(
 
     const fallback = buildFallbackLinks(name);
 
-    const weak = new Set(soundcloud?.weakIds ?? []);
-    // Stable: the date order `orderSets` made is kept inside each group.
+    // Ranked by how the set was found, then by date: the artist's own uploads
+    // and their own playlists first, a name beside a known thing next, a
+    // channel's say-so alone last. Stable, so `orderSets`' date order is kept
+    // inside each rank. Mixcloud is the artist's own account; the Archive is
+    // evidence-grade at best.
+    const tiers = soundcloud?.tiers ?? {};
+    const rank = (set: ArtistSet): number =>
+      set.provider === "soundcloud" ? (tiers[set.id] ?? 3) : set.provider === "mixcloud" ? 0 : 3;
     const sets = orderSets([
       ...(soundcloud?.sets ?? []),
       ...(mixcloud?.sets ?? []),
       ...(archiveResult.value ?? []),
-    ]).sort((a, b) => Number(weak.has(a.id)) - Number(weak.has(b.id)));
+    ]).sort((a, b) => rank(a) - rank(b));
 
     // Bio priority: RA is the scene-native source, then the artist's own
     // Mixcloud blurb, then their SoundCloud description. Web addresses come out

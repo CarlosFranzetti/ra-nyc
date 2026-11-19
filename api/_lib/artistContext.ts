@@ -370,7 +370,43 @@ const NOT_EVIDENCE = new Set([
   // Roles and verbs a bio opens a sentence with.
   "founder", "founders", "cofounder", "curator", "promoter", "member", "owner",
   "host", "hosts", "based", "raised", "regular", "resident", "residents",
+  "bookings", "booking", "contact", "management", "releases", "release", "email",
 ]);
+
+/**
+ * Words that name a kind of thing, not a particular one. A title that carries
+ * "the name" and "club" is no more the artist's than one carrying the name and
+ * "house", so these never count as evidence by themselves: a term has to hold
+ * at least one word that is not on this list and not a place.
+ */
+const GENERIC_WORDS = new Set([
+  "house", "techno", "live", "club", "mix", "music", "records", "record",
+  "recordings", "festival", "party", "parties", "radio", "studio", "sound",
+  "sounds", "session", "sessions", "podcast", "series", "show", "warehouse",
+  "lounge", "bar", "hall", "room", "night", "nights", "disco", "electronic",
+  "dance", "bass", "trance", "ambient", "set", "sets", "dj", "djs", "official",
+  "presents", "label", "collective", "crew", "events", "event", "theatre",
+  "theater", "gallery", "space", "garden", "rooftop", "basement", "terrace",
+  "stage", "tour", "vol", "volume", "guest", "mixtape", "the", "and", "with",
+  "world", "city", "underground", "audio", "productions", "entertainment",
+]);
+
+/**
+ * Whether a term is specific enough to tie a title to one artist.
+ *
+ * Not a country or region code ("US", "UK", "NY": all shorter than the floor
+ * below, and the RA suffix is never read as evidence anyway), not a genre or
+ * a generic word, and not a place on its own: "Lisbon" is in half the titles
+ * of every set recorded there. A place may still help *choose an account*; it
+ * does not, alone, make a track the artist's.
+ */
+export function isDistinctiveTerm(term: string, self = ""): boolean {
+  const key = compact(term);
+  if (key.length < 5 || key === self || (self && key.includes(self))) return false;
+  if (PLACE_KEYS.has(key)) return false;
+  const words = term.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  return words.some((w) => w.length >= 3 && !GENERIC_WORDS.has(w) && !PLACE_KEYS.has(compact(w)));
+}
 
 /**
  * The named things a biography ties an artist to, in display form, best first:
@@ -400,6 +436,7 @@ export function bioEvidence(name: string, biography: string | null | undefined):
     const key = compact(text);
     if (key.length < 4 || key === self || seen.has(key)) return;
     if (SENTENCE_WORDS.has(key) || NOT_EVIDENCE.has(key) || PLACE_KEYS.has(key)) return;
+    if (!isDistinctiveTerm(text, self)) return;
     seen.add(key);
     into.push(text);
   };
@@ -421,6 +458,59 @@ export function bioEvidence(name: string, biography: string | null | undefined):
   }
 
   return [...mixed, ...runs, ...singles].slice(0, 8);
+}
+
+/** Mail hosts that say nothing about who owns the address. */
+const MAIL_PROVIDERS = new Set([
+  "gmail", "googlemail", "hotmail", "outlook", "yahoo", "icloud", "me", "live",
+  "msn", "aol", "proton", "protonmail", "gmx", "web", "mail", "yandex", "qq",
+]);
+
+/** `odysearecords` is the label `odysea`: the suffix is what bandcamp subdomains add. */
+const LABEL_SUFFIX = /(?:records|recordings|recs|rec|music|label|audio|sound)$/i;
+
+/**
+ * The named things an account says about itself, for an account we already
+ * believe is the artist's: an `@handle` ("@odysea-lisboa" gives `odysea`), the
+ * domain of an email address ("stijn@headsup.brussels" gives `headsup`), a
+ * bandcamp subdomain ("odysearecords.bandcamp.com" gives `odysea`) and the
+ * capitalised names the description carries. These are the artist's
+ * collective, booking agency and labels, which is exactly what a radio show's
+ * title says next to her name: "Heads Up w/ Penelope".
+ *
+ * Only ever called with a *confirmed* account's description. An unconfirmed one
+ * may be someone else, and its words would then be evidence for the wrong
+ * person.
+ */
+export function accountEvidence(name: string, description: string | null | undefined): string[] {
+  if (!description) return [];
+  const self = normalizeName(name);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string | undefined): void => {
+    const text = raw?.trim();
+    const key = text ? compact(text) : "";
+    if (!text || seen.has(key) || !isDistinctiveTerm(text, self)) return;
+    seen.add(key);
+    out.push(text);
+  };
+
+  // Preceded by neither a word character nor a dot, or it is an email's `@`.
+  for (const m of description.matchAll(/(?<![\w.])@([A-Za-z0-9][A-Za-z0-9_.-]{2,})/g)) {
+    add(m[1]?.split(/[-_.]/)[0]);
+  }
+  for (const m of description.matchAll(/[\w.+-]+@([a-z0-9-]+)\.[a-z.]{2,}/gi)) {
+    const host = m[1]?.toLowerCase();
+    if (host && !MAIL_PROVIDERS.has(host)) add(host);
+  }
+  for (const m of description.matchAll(/https?:\/\/([a-z0-9-]+)\.bandcamp\.com/gi)) {
+    add(m[1]?.replace(LABEL_SUFFIX, ""));
+  }
+  for (const m of description.matchAll(/(?:soundcloud|mixcloud)\.com\/([a-z0-9][a-z0-9_-]{2,})/gi)) {
+    add(m[1]?.split(/[-_]/)[0]);
+  }
+  for (const term of bioEvidence(name, description)) add(term);
+  return out.slice(0, 8);
 }
 
 /**
