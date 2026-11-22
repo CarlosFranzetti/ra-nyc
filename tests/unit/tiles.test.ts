@@ -52,20 +52,19 @@ describe("tileCoords", () => {
 });
 
 describe("tileUrl", () => {
-  it("builds a CARTO Voyager URL", () => {
-    expect(tileUrl(16, 19315, 24647)).toMatch(
-      /^https:\/\/[abcd]\.basemaps\.cartocdn\.com\/rastertiles\/voyager\/16\/19315\/24647\.png$/,
-    );
+  it("builds an OpenStreetMap tile URL, with no key and no subdomain", () => {
+    expect(tileUrl(16, 19315, 24647)).toBe("https://tile.openstreetmap.org/16/19315/24647.png");
   });
 
-  it("asks for the dense variant on a retina screen", () => {
-    expect(tileUrl(16, 19315, 24647, true)).toContain("@2x.png");
+  it("does not ask CARTO for anything", () => {
+    // CARTO's keyless tiles became a 200 with "API KEY REQUIRED" drawn on
+    // them. Nothing failed; the map just showed the stamp.
+    expect(tileUrl(16, 19315, 24647)).not.toContain("cartocdn");
+    expect(tileUrl(16, 19315, 24647, true)).not.toContain("cartocdn");
   });
 
-  it("always sends the same tile to the same host", () => {
-    // Random subdomains would multiply cache misses by four.
-    expect(tileUrl(16, 19315, 24647)).toBe(tileUrl(16, 19315, 24647));
-    expect(tileUrl(16, 19316, 24647)).not.toBe(tileUrl(16, 19315, 24647));
+  it("has no dense variant to ask for, so retina changes nothing", () => {
+    expect(tileUrl(16, 19315, 24647, true)).toBe(tileUrl(16, 19315, 24647));
   });
 });
 

@@ -49,22 +49,28 @@ export function tileCoords(
 }
 
 /**
- * CARTO's Voyager basemap: coloured, high-contrast and flat-shaded — parks
- * green, water blue, buildings picked out against the roads. It is the closest
- * keyless tile set to what a phone's own map app looks like, which is the point.
+ * OpenStreetMap's own tile server.
  *
- * Free for non-commercial use up to 75k map views a month, with attribution.
- * This app opens a map only when someone taps a venue name, so that ceiling is
- * a long way off; if it ever comes close, only this function changes.
+ * This used to be CARTO's Voyager basemap, chosen for looking like a phone's
+ * map app and for needing no key. In 2026 CARTO began answering every keyless
+ * request with a blank tile stamped "API KEY REQUIRED" — as a 200, so nothing
+ * failed and nothing logged; the venue sheet simply drew that stamp where the
+ * street should be. The owner saw it weeks before anyone here understood what
+ * "need the open maps api" meant. A key in the client is against house rules
+ * (anything behind `VITE_` is public), so the answer is the keyless source the
+ * data comes from anyway.
  *
- * The subdomain is derived from the tile rather than picked at random, so the
- * same tile always resolves to the same host and stays in the browser cache.
+ * Their tile usage policy is the limit to respect: light, attributed, cached
+ * use by a real browser is fine; bulk fetching and heavy traffic are not. This
+ * app opens a map when someone taps a venue or the Map chip, which is light.
+ * If that stops being true, the fix is a keyed provider behind a function of
+ * our own, and only this function changes.
+ *
+ * There is no `@2x` variant, so `retina` is accepted and ignored: the mosaic
+ * is a little soft on a dense screen, which beats a watermark.
  */
-export function tileUrl(zoom: number, x: number, y: number, retina = false): string {
-  const host = "abcd"[(x + y) % 4];
-  return `https://${host}.basemaps.cartocdn.com/rastertiles/voyager/${zoom}/${x}/${y}${
-    retina ? "@2x" : ""
-  }.png`;
+export function tileUrl(zoom: number, x: number, y: number, _retina = false): string {
+  return `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
 }
 
 /**
