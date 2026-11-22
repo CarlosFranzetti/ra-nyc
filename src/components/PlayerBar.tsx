@@ -212,7 +212,9 @@ export function PlayerBar() {
       ? "Can\u2019t play this one \u00b7 skipping\u2026"
       : notice?.kind === "blocked"
         ? "Tap play to continue"
-        : null) ??
+        : notice?.kind === "waiting"
+          ? "Slow connection \u00b7 still loading\u2026"
+          : null) ??
     error ??
     [
       artistName,

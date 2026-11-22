@@ -23,7 +23,8 @@
     "test:all": "npm run typecheck && npm run test && npm run test:e2e && npm run test:search && npm run test:layout && npm run test:preview && npm run test:donate && npm run test:settings && npm run test:offline && npm run test:playlist && npm run test:map",
     "test:donate": "node tests/donate.e2e.mjs",
     "test:settings": "node tests/settings.e2e.mjs",
-    "test:map": "node tests/map.e2e.mjs"
+    "test:map": "node tests/map.e2e.mjs",
+    "test:live": "node tests/live-soundcloud.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

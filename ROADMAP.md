@@ -26,6 +26,34 @@ on `/api/artist` (touches the bearer check, so it gets its own reviewed
 change); `load()` on the Mixcloud and Archive adapters; fuzzy-4 matching;
 relevance tiers; non-Latin names; a Skip affordance for an unplayable set.
 
+### From the 2026-11-18 round — what shipped and what was left
+
+Shipped: the resolver that finds sets on other people's channels, the player
+watchdog (corrected on 2026-11-22: slow is not dead), the scrubber, the
+typeface and theme options, the map, the links page. Left, each with its
+reason in `docs/agent-transcript-2026-11-18.md`:
+
+- **Warm the next set — P1.** Start loading the next set in the queue a few
+  seconds before the current one ends, so hand-over is not a second and a
+  half of silence. Needs a second hidden widget, and two SoundCloud widgets
+  in one page pause each other, so it needs care and `test:live`.
+- **Venues on the map, properly — P2.** Cluster at city zoom; place the
+  venues the geocoder missed (Silence Please, Nexo and the rest are in
+  `readthis.md`); move SILO; fill the shops list by hand. Longer term a
+  `venues` table filled by cron rather than a built JSON file.
+- **Tonight near me / neighbourhood filter / open now — P2.** The research
+  round's most-wanted trio; all three need venue coordinates on the event
+  rows, which the map's data now makes possible.
+- **Play the neighbourhood, last-call mode, a now-playing share card — P3.**
+- **Often on bills with…, shops and the DJs who play them — P3.** Both need
+  co-billing data from the index, which is also the best unused evidence for
+  telling two DJs with one name apart.
+- **Start time coloured by how soon it is — awaiting the owner's yes.**
+- **WebKit in the suites — P2.** Everything is tested in Chromium and the
+  owner listens on an iPhone. Playwright's WebKit is not installed in the
+  cloud container; on a laptop it is one install and `test:live` would be the
+  first thing to run under it.
+
 ### Candidates from the 2026-10-28 research — unranked, owner to pick
 
 Two Opus researchers and one Haiku looked for what this app is overlooking

@@ -117,37 +117,53 @@ const FAKE_SC = `
 (function(){
   var Events={READY:'ready',PLAY:'play',PAUSE:'pause',FINISH:'finish',PLAY_PROGRESS:'playProgress',ERROR:'error'};
   var cfg = window.__cfg = window.__cfg || {};
-  window.__built = 0; window.__log = []; window.__seekLog = [];
+  window.__built = 0; window.__log = []; window.__seekLog = []; window.__widgets = [];
+  function idOf(url){ var h=7; for(var i=0;i<url.length;i++){ h=(h*31+url.charCodeAt(i))>>>0; } return h; }
   function Widget(iframe){
     var l={},pos=0,timer=null,activated=false,parsed=false,plays=0;
+    // The live widget names the sound in every event; cfg.noIds is one that does not.
+    var sound=idOf(decodeURIComponent(iframe.src.split('url=')[1]||iframe.src).split('&')[0]);
     function dur(){ return cfg.duration||3600000; }
+    function P(at,id){ var p={currentPosition:at,relativePosition:at/dur()}; if(!cfg.noIds) p.soundId=id===undefined?sound:id; return p; }
     window.__built++;
     function emit(e,p){(l[e]||[]).forEach(function(f){f(p);});}
-    function tick(){ emit(Events.PLAY_PROGRESS,{currentPosition:pos,relativePosition:pos/dur()}); }
+    function tick(){ emit(Events.PLAY_PROGRESS,P(pos)); }
     function run(){ if(timer) return;
       plays++;
+      // The browser will not start without a tap: the widget pauses and that is all.
+      if(cfg.refuseStart){ window.__log.push('REFUSED'); emit(Events.PAUSE,P(pos)); return; }
       if(cfg.errorOnFirstPlay && plays===1){ window.__log.push('ERROR'); emit(Events.ERROR); return; }
-      parsed=true; emit(Events.PLAY);
+      // As measured on the live widget: the first start is PAUSE, then PLAY, in the same instant.
+      if(plays===1) emit(Events.PAUSE,P(pos));
+      parsed=true; emit(Events.PLAY,P(pos));
       timer=setInterval(function(){ pos+=250; tick();
         if(pos>=dur()){clearInterval(timer);timer=null;
           // A widget that reaches the end and never says so.
           if(cfg.noFinish) return;
-          pos=0;window.__log.push('FINISH');emit(Events.FINISH);} },250); }
+          var end=P(pos); pos=0;window.__log.push('FINISH');
+          // The live widget pauses, and only then says it finished.
+          emit(Events.PAUSE,end);emit(Events.FINISH,end);} },250); }
+    // Lets a check raise an error from the widget in the middle of a set.
+    window.__widgets.push({ error:function(){ window.__log.push('ERROR'); emit(Events.ERROR); } });
     return {
-      bind:function(e,cb){(l[e]=l[e]||[]).push(cb); if(e===Events.READY) setTimeout(cb,40);},
+      bind:function(e,cb){(l[e]=l[e]||[]).push(cb); if(e===Events.READY) setTimeout(cb,cfg.readyDelay||40);},
       getDuration:function(cb){cb(parsed?dur():0);},
-      load:function(url,opts){ window.__log.push('load '+url); var stale=pos; pos=0; activated=true;
+      load:function(url,opts){ window.__log.push('load '+url); var stale=pos, old=sound; pos=0; activated=true;
         if(timer){clearInterval(timer);timer=null;}
+        // The live widget answers load() at once with a PLAY for the track it is leaving.
+        setTimeout(function(){ emit(Events.PLAY,P(stale,old)); },3);
         // A swap that never calls back, and one that fails outright.
         if(cfg.neverCallback && url.indexOf(cfg.neverCallback)>-1) return;
         if(cfg.errorOnLoad && url.indexOf(cfg.errorOnLoad)>-1){ setTimeout(function(){emit(Events.ERROR);},30); return; }
-        setTimeout(function(){ emit(Events.PLAY_PROGRESS,{currentPosition:stale,relativePosition:stale/dur()}); },5);
-        if(opts&&opts.callback) setTimeout(opts.callback,cfg.loadDelay||20); },
+        setTimeout(function(){ emit(Events.PLAY_PROGRESS,P(stale,old)); },5);
+        // A swap on a poor connection: it does call back, a long time later.
+        var wait = cfg.slowLoad && url.indexOf(cfg.slowLoad)>-1 ? (cfg.slowLoadMs||25000) : (cfg.loadDelay||20);
+        setTimeout(function(){ sound=idOf(url); if(opts&&opts.callback) opts.callback(); },wait); },
       play:function(){ window.__log.push('play'); run(); },
-      pause:function(){ window.__log.push('pause'); if(timer){clearInterval(timer);timer=null;} emit(Events.PAUSE); },
+      pause:function(){ window.__log.push('pause'); if(timer){clearInterval(timer);timer=null;} emit(Events.PAUSE,P(pos)); },
       seekTo:function(ms){ var old=pos; window.__seekLog.push(ms); pos=ms; tick();
         // A progress tick sent from the old position, landing after the seek.
-        if(cfg.staleOnSeek) setTimeout(function(){ emit(Events.PLAY_PROGRESS,{currentPosition:old,relativePosition:old/dur()}); },100); }
+        if(cfg.staleOnSeek) setTimeout(function(){ emit(Events.PLAY_PROGRESS,P(old)); },100); }
     };
   }
   Widget.Events=Events;
@@ -1016,7 +1032,9 @@ async function panel(page) {
     await waitBar(page);
     await advance(page, 15000);
     check("a Mixcloud set still loading at 15 s is not given up on", (await bar(page)).title === "Dead Mix");
-    await advance(page, 6000);
+    check("but the bar says it is slow", (await noticeOf(page)) === "waiting", `notice ${await noticeOf(page)}`);
+    await advance(page, 25000);
+    check("nor at 40 s", (await bar(page)).title === "Dead Mix" && (await noticeOf(page)) === "waiting", `${(await bar(page)).title} ${await noticeOf(page)}`);
     const skipping = await advanceUntil(page, async () => (await noticeOf(page)) === "skipped", 10000);
     const shown = await bar(page);
     check("a Mixcloud set that never becomes ready is skipped", skipping, `notice ${await noticeOf(page)}`);
@@ -1054,7 +1072,9 @@ async function panel(page) {
     await waitBar(page);
     await advance(page, 2000);
     await nextBtn(page).click();
-    const skipping = await advanceUntil(page, async () => (await noticeOf(page)) === "skipped", 30000);
+    await advance(page, 30000);
+    check("a swap that has not called back at 30 s is still being waited for", (await bar(page)).title === "Stuck" && (await noticeOf(page)) === "waiting", `${(await bar(page)).title} ${await noticeOf(page)}`);
+    const skipping = await advanceUntil(page, async () => (await noticeOf(page)) === "skipped", 20000);
     const stuck = await bar(page);
     check("a SoundCloud load() that never calls back is skipped", skipping && stuck.title === "Stuck", stuck.title);
     check("with a notice", (await noticeOf(page)) === "skipped");
@@ -1081,6 +1101,112 @@ async function panel(page) {
     await sleep(4600);
     check("then it goes", (await noticeOf(page)) === null);
     check("and the next set is the one playing", (await bar(page)).title === "Third" && playing(await bar(page)), (await bar(page)).title);
+    await context.close();
+  }
+  {
+    // Slow is not dead. A widget that takes 25 s to come up on a poor signal
+    // used to be skipped at 20, with "Can't play this one" over a good set.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      clock: true,
+      cfg: { readyDelay: 25000 },
+      artists: { 1: { sets: [scSet("Slow One", "one"), scSet("Second", "two")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await advance(page, 6000);
+    check("a set six seconds into loading says nothing yet", (await noticeOf(page)) === null, `notice ${await noticeOf(page)}`);
+    await advance(page, 6000);
+    const slow = await bar(page);
+    check("at twelve seconds the bar says it is slow", (await noticeOf(page)) === "waiting", `notice ${await noticeOf(page)}`);
+    check("in words", /Slow connection/.test(slow.subtitle ?? ""), slow.subtitle);
+    await advance(page, 10000);
+    check("at 22 s it has not been skipped", (await bar(page)).title === "Slow One" && (await noticeOf(page)) === "waiting", `${(await bar(page)).title} ${await noticeOf(page)}`);
+    await advance(page, 6000);
+    const b = await bar(page);
+    check("and when it arrives it plays", b.title === "Slow One" && playing(b), `${b.title} ${b.playBtn} spinner=${b.spinner}`);
+    check("with the notice gone", (await noticeOf(page)) === null, `notice ${await noticeOf(page)}`);
+    await context.close();
+  }
+  {
+    // The same on a skip: a swap that calls back after 25 s is waited for.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      clock: true,
+      cfg: { slowLoad: "slow" },
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Slow Two", "slow"), scSet("Third", "three")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await advance(page, 3000);
+    await nextBtn(page).click();
+    await advance(page, 2000);
+    const during = await bar(page);
+    // The live widget answers load() with a PLAY for the track it is leaving.
+    // Taken as the new set starting, it lit the pause button and put the old
+    // position under the new title.
+    check("the outgoing track's echo is not the new set starting", during.title === "Slow Two" && !playing(during), `${during.title} ${during.playBtn} spinner=${during.spinner}`);
+    check("and its position is not shown under the new title", Number(during.value) === 0, `value ${during.value}`);
+    await advance(page, 20000);
+    check("a slow swap is not skipped at 22 s", (await bar(page)).title === "Slow Two" && (await noticeOf(page)) !== "skipped", `${(await bar(page)).title} ${await noticeOf(page)}`);
+    await advance(page, 5000);
+    const b = await bar(page);
+    check("and plays when it arrives", b.title === "Slow Two" && playing(b) && (await noticeOf(page)) === null, `${b.title} ${b.playBtn} ${await noticeOf(page)}`);
+    await context.close();
+  }
+  {
+    // An error in the middle of a set that was playing is not a dead set.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Second", "two")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await until(page, (s) => playing(s) && Number(s.value) >= 1, 8000);
+    await page.evaluate(() => window.__widgets.at(-1).error());
+    await sleep(1200);
+    const b = await bar(page);
+    check("an error mid-set does not throw the listener out of it", b.title === "First" && (await noticeOf(page)) === null, `${b.title} ${await noticeOf(page)}`);
+    const later = await until(page, (s) => Number(s.value) > Number(b.value), 4000);
+    check("and the set carries on", later.title === "First" && Number(later.value) > Number(b.value), `${b.value} -> ${later.value}`);
+    await context.close();
+  }
+  {
+    // A browser that will not start without a tap: paused, not skipped, however long it is left.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      clock: true,
+      cfg: { refuseStart: true },
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Second", "two")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await advance(page, 4000);
+    const refused = await bar(page);
+    check("a start the browser refused shows as paused", refused.title === "First" && refused.playBtn === "Play" && !refused.spinner, `${refused.title} ${refused.playBtn} spinner=${refused.spinner}`);
+    await advance(page, 90000, 1000);
+    check("and is never skipped", (await bar(page)).title === "First" && (await noticeOf(page)) === null, `${(await bar(page)).title} ${await noticeOf(page)}`);
+    await page.evaluate(() => {
+      window.__cfg.refuseStart = false;
+    });
+    await page.locator('button[aria-label="Play"]').first().click();
+    await advance(page, 1500, 250);
+    check("a tap then plays it", playing(await bar(page)), (await bar(page)).playBtn);
+    await context.close();
+  }
+  {
+    // A widget that names no sound at all still swaps the way it always did.
+    const { context, page } = await boot({
+      events: [mkEvent("1", "Night One", [1])],
+      cfg: { noIds: true },
+      artists: { 1: { sets: [scSet("First", "one"), scSet("Second", "two")] } },
+    });
+    await openArtist(page, "DJ1");
+    await waitBar(page);
+    await until(page, playing);
+    await nextBtn(page).click();
+    const b = await until(page, (s) => s.title === "Second" && playing(s) && Number(s.value) >= 1, 8000);
+    check("a widget with no sound ids still swaps and plays", b.title === "Second" && playing(b), `${b.title} ${b.playBtn}`);
     await context.close();
   }
   {
@@ -1281,7 +1407,13 @@ async function panel(page) {
     await waitBar(page);
     await advance(page, 1000);
     const quiet = await barNow(page);
-    await advanceUntil(page, async () => (await barNow(page)).notice === "skipped", 30000);
+    await advance(page, 11000);
+    const waiting = await barNow(page);
+    check("a slow set: the bar says so, under the set's own name, and keeps its scrubber",
+      waiting.notice === "waiting" && waiting.title === "Dead Mix" && /Slow connection/.test(waiting.sub ?? "") && waiting.drain === "none",
+      JSON.stringify({ notice: waiting.notice, title: waiting.title, sub: waiting.sub, drain: waiting.drain }));
+    check("and the bar is the same height while it waits", waiting.height === quiet.height, `${quiet.height} -> ${waiting.height}`);
+    await advanceUntil(page, async () => (await barNow(page)).notice === "skipped", 60000);
     const skipped = await barNow(page);
     check("a skipped set: the bar says skipping, under the skipped set's own name",
       skipped.notice === "skipped" && skipped.title === "Dead Mix" && /skipping/.test(skipped.sub ?? ""),
