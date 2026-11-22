@@ -52,13 +52,21 @@ export function withParams(
  * feature cannot tolerate. So it stays in the viewport at effectively zero
  * size, with pointer events off so it can never steal a tap.
  */
-export function createHiddenIframe(src: string, title: string): HTMLIFrameElement {
+export function createHiddenIframe(
+  src: string,
+  title: string,
+  /**
+   * Its own box, for a widget that misbehaves when it has none. The host that
+   * holds it is 1×1 with its overflow hidden, so nothing more is ever drawn.
+   */
+  size: { width: number; height: number } = { width: 1, height: 1 },
+): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
   iframe.src = src;
   iframe.title = title;
   iframe.allow = "autoplay; encrypted-media";
   iframe.setAttribute("frameborder", "0");
   iframe.style.cssText =
-    "width:1px;height:1px;border:0;opacity:0;pointer-events:none;";
+    `width:${size.width}px;height:${size.height}px;border:0;opacity:0;pointer-events:none;`;
   return iframe;
 }

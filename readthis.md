@@ -4,12 +4,51 @@ Everything outstanding that needs a human.
 
 ---
 
-## 0 · Open now — 2026-10-26
+## 0 · Open now — 2026-11-22
 
-- **"Need the open maps api."** Your words, not yet acted on. One line needed:
-  do you mean moving the venue map to an OpenStreetMap-based API, or adding a
-  keyed maps provider? The venue sheet currently draws OSM-style tiles and
-  geocodes through Nominatim with the `ra-nyc/1.0` user agent.
+- **SoundCloud streaming: one real fault fixed, and one thing only your phone
+  can tell me.** You wrote that there are issues streaming SoundCloud mixes.
+  What I found and fixed: on a slow connection the player gave up on a set
+  after twenty seconds and said "Can't play this one · skipping…", then did
+  the same to the next. Nothing was wrong with those sets. It now waits,
+  says "Slow connection · still loading…" after eight seconds, and only
+  passes a set over after forty-five. I also played 150 real sets from this
+  week's DJs through the real widget and every one streams, so it is not the
+  sets. What I could not do is run it on an iPhone: the tests use Chromium,
+  and Safari's rules for starting audio are stricter. **If it still goes
+  wrong after this deploy, tell me what the bar says when it does** — one of
+  these is enough: it sits silent at 0:00 with a play button; it says
+  "skipping"; it says "Slow connection"; it stops in the middle of a mix; it
+  plays the wrong set. Each points somewhere different.
+- **Four things to try on the iPhone, from the player rebuild.** (1) With the
+  phone locked, let one set end: does the next start by itself? (2) Tap a set
+  on a weak signal: you should see "Slow connection · still loading…", not
+  "skipping". (3) Tap an Internet Archive set: it may need a second tap on
+  play, and should say so rather than skip. (4) Drag the scrubber to the far
+  right: it should stop three seconds short of the end, not jump to the next
+  set.
+- **"Need the open maps api" — understood, and fixed.** CARTO stopped serving
+  map tiles without a key, and answered every request with a blank square
+  reading "API KEY REQUIRED". That is what the venue sheet has been showing.
+  Both maps now use OpenStreetMap's own tiles. Nothing for you to do. If the
+  app ever gets real traffic, OpenStreetMap's tile policy asks heavy users to
+  use a paid provider; that would be a keyed provider behind a function of
+  our own, and only `src/lib/tiles.ts` and one line in `MapCanvas.tsx` change.
+- **The map is real but two lists are thin.** 370 venues are placed and 45
+  record shops, five boroughs. Not placed: Silence Please (88 events), Nexo
+  (51), Viva Toro, Delirium, Open Air Club, Brooklyn Pacha, Out Of Ordinary,
+  Red Eye NY, The Apollo Theater, and anything listed as TBA. **SILO is in the
+  wrong place** (it landed on "Nike Silo" in Queens). The shops came from one
+  OpenStreetMap query and about one in seven is a music shop of another kind.
+  If you send addresses for the missing venues, or a list of shops you would
+  expect to see, they go into `public/places/*.json` by hand in minutes.
+- **Instagram.** Three story frames, a feed post and a link-in-bio page at
+  `ra-nyc.vercel.app/links` are made. Text inside a story image cannot be
+  tapped, so the story needs Instagram's own link sticker pointed at
+  `https://ra-nyc.vercel.app`. I read "the game" in your message as the app.
+- **A yes or no on one design proposal.** The designer proposed colouring an
+  event card's start time by how soon it is (on now, tonight, later). It is
+  not built. Say yes and it is a small change.
 - **Cosmo (NY) still shows the Florida Cosmo, and will until one row goes.**
   Checked in production right after the repair deployed: `/api/artist` for
   RA **103962** answers from the database with the `auto` row written before

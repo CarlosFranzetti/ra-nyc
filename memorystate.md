@@ -2798,6 +2798,98 @@ no agent lost to a limit. Two Opus agents were the owner's explicit ask
 and were the most expensive and the most useful per token: R2's "things
 that look wrong" list found the flyer bug by reading.
 
+### 3.x · Round three: real sets, a player that copes, a map, and more ways to make it yours
+
+2026-11-18. The owner's brief was a paragraph: the player and its timeline
+have bugs, no YouTube links anywhere, a map of every venue and record shop
+with a legend that switches them on and off, research into features, better
+fonts and options, smoother playback, and search that "finds the right DJ"
+with fuzzy matching ("aergio is Sergio. Holo is h0l0"), for SoundCloud as
+well. Mid-task: "find actual sets" for Penelope and Hugo, "check their
+bios". Eight agents; the whole conversation is
+`docs/agent-transcript-2026-11-18.md`.
+
+**What was true before anyone wrote code.** Event search already found
+"aergio" and "holo", so it was left alone; the fuzzy matcher
+(`api/_lib/fuzzy.ts`) went into the account and title tests, where the misses
+were. YouTube could only reach the page through old stored rows and bare URLs
+in RA bios; both are shut.
+
+**The resolver's real lesson (PRs #89, #90).** The first build fixed finding
+and broke choosing: Penelope went from no sets to forty-nine, most of them
+other Penelopes and a nightclub in Benidorm. The cause was not the search. It
+was an assumption: that a DJ's sets are on the DJ's account. Penelope's
+account has zero uploads and three playlists; Hugo's has zero and a bio that
+is an Instagram link. Their sets are on radio stations' and festivals'
+channels. So: the name must be in the title; a longer name containing it is
+another person; a common name needs a trusted channel or evidence from RA's
+bio, the index, or the account's own description; the account's playlists and
+reposts are read. Forty-nine became twelve, all hers. `RESOLVER_EPOCH`
+retires rows cached before the rules changed, and must be a date in the past
+at deploy — it shipped once set to the coming midnight, which made every
+fresh row stale for an evening.
+
+**The player** got a watchdog (see the next entry for what was wrong with
+it), a 44px scrubber with a bubble, a seek that stops short of the end, and a
+Previous that restarts. **The look** got a typeface axis, three themes, glow
+and corner controls. **The map** is Leaflet as a lazy chunk over static JSON
+in `public/places/`, built by `scripts/build-places.mjs`; it opens from a
+chip in the filter row because a fourth header icon collided with the date.
+
+**CARTO.** Its keyless tiles became a 200 with "API KEY REQUIRED" drawn on
+them, so nothing failed. The owner had said "need the open maps api" three
+weeks earlier and it was filed as a question. Both maps use OpenStreetMap's
+tiles now. A report that makes no sense is a report about something nobody
+has looked at yet.
+
+### 3.x · Slow is not dead
+
+2026-11-22. "There are some issues with streaming SoundCloud mixes." No set,
+no symptom.
+
+**What made it findable.** The sandbox browser can now reach SoundCloud
+through the session proxy (`chromium.launch({ proxy: { server:
+process.env.HTTPS_PROXY } })`; the proxy's CA is already in the browser's
+store). For the first time a test played a real set. 150 of this week's sets
+from production: all stream, all the right length, median 1.8 s from tap to
+sound. So not the data, and the playability filter that was half-designed was
+not written.
+
+**What the real widget does that the fake did not.**
+
+- `load()` is answered within ten milliseconds by a PLAY *for the outgoing
+  track*. The adapter took it as the new set starting: the old position sat
+  under the new title for a second, and the player was told the set had made
+  sound, which stood the watchdog down for every set reached by a skip.
+- An ordinary first start is PAUSE then PLAY in one millisecond. Forwarded,
+  the PAUSE read as the listener pausing. Watchdog down again.
+- A deleted track answers ERROR within two seconds, first load or swap.
+  **Silence is never a dead set. Silence is a slow connection.**
+- At 1×1 the widget's waveform code throws on every play, pause, seek and
+  swap. Harmless in Chromium; gone with a real box inside the 1×1 host.
+- Every event carries `soundId`, so "whose event is this" has an exact
+  answer, and the adapter now uses it.
+- Two widgets in one browser pause each other. Five test tabs at once looked
+  like a quarter of all sets being broken; one at a time, none were.
+
+**The fault.** `LOAD_FUSE_MS` was 20 s. With SoundCloud held back 12 s (a
+weak signal, which is a club or a platform, which is where this is used) the
+widget was not ready at twenty and the bar said "Can't play this one ·
+skipping…" over a good set, then moved to the next on the same connection.
+Reproduced on production, fixed on the branch, same script.
+
+**The rule.** An error before any sound: skip at once. Silence: nothing for
+8 s, then "Slow connection · still loading…" and one more `play()` if the
+widget is ready; skip only at 45 s unready or 30 s ready-and-silent; never
+while `navigator.onLine` is false. An error after sound has started does not
+skip. The fake in `tests/playlist.e2e.mjs` now does what the widget does,
+with ten checks on it; `npm run test:live` is the real thing, outside
+`test:all`.
+
+**Not known.** Whether this is what the owner meant. It was tested in
+Chromium; the owner listens in WebKit. `readthis.md` §0 asks for what the bar
+says if it happens again.
+
 ## 4 · Map of the code
 
 ```

@@ -53,9 +53,12 @@ export interface QueueEntry {
  * `blocked`: two sets in a row failed and the third did too, so the queue has
  * stopped on `title`, paused, rather than run through the rest. Clears when
  * playback starts.
+ * `waiting`: the set is taking a long time to arrive and the player is still
+ * waiting for it. Nothing has gone wrong yet; it says so, so that a slow
+ * connection does not look like a broken app. Clears when playback starts.
  */
 export interface PlayerNotice {
-  kind: "skipped" | "blocked";
+  kind: "skipped" | "blocked" | "waiting";
   title: string;
   reason: "timeout" | "error" | "stalled";
 }
@@ -346,17 +349,30 @@ const BUILD_FAILED = "Couldn't load the player. Tap play to try again.";
 // widget that errors. Two fuses, because the two silences mean different things.
 
 /**
- * Load to ready. Long, because a bad connection really can take this long to
- * bring a widget up, and skipping a set that was merely slow is worse than
- * waiting for it.
+ * How long silence is unremarkable. After this the bar says the set is slow,
+ * and a widget that is ready is asked once more to play — a `play()` that was
+ * swallowed is the cheapest thing to rule out.
  */
-const LOAD_FUSE_MS = 20_000;
+const SLOW_MS = 8_000;
 /**
- * Ready, and meant to be playing, to the first play or progress event. Short:
- * once the widget says it is ready, silence this long is a dead set rather than
- * a slow one.
+ * Load to ready, before the set is given up on.
+ *
+ * This was 20 s, and on 2026-11-22 it was shown skipping sets that would have
+ * played: with SoundCloud's media held back twelve seconds — a poor signal in a
+ * club or on a platform, which is where this app is used — the widget was not
+ * ready at twenty, and the bar said "Can't play this one · skipping…" over a
+ * set with nothing wrong with it. Then it did the same to the next one.
+ *
+ * Silence is not what a dead set looks like. Measured against the live widget,
+ * a track that has been deleted answers with ERROR inside two seconds, on a
+ * first load and on a swap alike; that is skipped at once, below. What silence
+ * means is a slow connection, and skipping does not make a connection faster.
+ * So this fuse is only for the widget that never answers at all, and it is
+ * long enough that a listener standing there would have acted first.
  */
-const START_FUSE_MS = 8_000;
+const LOAD_FUSE_MS = 45_000;
+/** Ready, and meant to be playing, to the first play or progress event. */
+const START_FUSE_MS = 30_000;
 /**
  * Automatic skips in a row, with nothing played between. An iPhone that refuses
  * to start anything without a tap looks exactly like a dead set, and a watchdog
@@ -429,6 +445,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const blockedRef = useRef(false);
   const skipsRef = useRef(0);
   const giveUpRef = useRef<(reason: PlayerNotice["reason"]) => void>(() => undefined);
+  /** `arm`, for the one caller that outlives the render it was made in. */
+  const armRef = useRef<() => void>(() => undefined);
+  /**
+   * The set the live handle was last told to play. Between a track change and
+   * the handle hearing about it, the outgoing track is still reporting; those
+   * ticks belong to it and not to the title now on the bar.
+   */
+  const loadedIdRef = useRef<string | null>(null);
 
   // The queue as it is *now*, not as of the last render. Every dispatch also
   // runs the (pure) reducer on this copy, so a second call in the same tick —
@@ -468,21 +492,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     endRef.current = undefined;
   }, []);
 
-  /** Starts whichever fuse applies right now; a no-op once sound is heard or the listener has paused. */
-  const arm = useCallback(() => {
-    clearFuse();
-    if (startedRef.current || idleRef.current) return;
-    const live = stateRef.current;
-    const uid = live.entries[live.index]?.uid;
-    const ready = readyRef.current;
-    fuseRef.current = window.setTimeout(() => {
-      fuseRef.current = undefined;
-      const now = stateRef.current;
-      if (now.entries[now.index]?.uid !== uid) return;
-      giveUpRef.current(ready ? "stalled" : "timeout");
-    }, ready ? START_FUSE_MS : LOAD_FUSE_MS);
-  }, [clearFuse]);
-
   const showNotice = useCallback((next: PlayerNotice | null) => {
     window.clearTimeout(noticeTimerRef.current);
     noticeTimerRef.current = undefined;
@@ -491,6 +500,53 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       noticeTimerRef.current = window.setTimeout(() => setNotice(null), NOTICE_MS);
     }
   }, []);
+
+  /**
+   * Starts the watch on a set that has not made a sound yet; a no-op once it
+   * has, or once the listener has paused.
+   *
+   * Two stages. At `SLOW_MS` nothing is given up: the bar says the set is slow
+   * and a ready widget is asked again. Only at the full fuse is the set passed
+   * over — and not even then with the network down, because every other set is
+   * behind the same dead connection and skipping through them helps nobody.
+   */
+  const arm = useCallback(() => {
+    clearFuse();
+    if (startedRef.current || idleRef.current) return;
+    const live = stateRef.current;
+    const entry = live.entries[live.index];
+    const uid = entry?.uid;
+    if (!entry) return;
+    const ready = readyRef.current;
+    const reason = ready ? "stalled" : "timeout";
+    const still = () => {
+      const now = stateRef.current;
+      return now.entries[now.index]?.uid === uid && !startedRef.current && !idleRef.current;
+    };
+    fuseRef.current = window.setTimeout(() => {
+      fuseRef.current = undefined;
+      if (!still()) return;
+      showNotice({ kind: "waiting", title: entry.set.title, reason });
+      if (ready) {
+        try {
+          handleRef.current?.play();
+        } catch {
+          /* a widget that is not there cannot be asked */
+        }
+      }
+      fuseRef.current = window.setTimeout(() => {
+        fuseRef.current = undefined;
+        if (!still()) return;
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          // Come back to it when there is a connection to try it on.
+          window.addEventListener("online", () => armRef.current(), { once: true });
+          return;
+        }
+        giveUpRef.current(reason);
+      }, (ready ? START_FUSE_MS : LOAD_FUSE_MS) - SLOW_MS);
+    }, SLOW_MS);
+  }, [clearFuse, showNotice]);
+  armRef.current = arm;
 
   /** A tap: the count of automatic skips starts again and any notice is stale. */
   const listenerActed = useCallback(() => {
@@ -506,7 +562,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     clearFuse();
     skipsRef.current = 0;
     // Not gated on `blockedRef`: the retry tap clears that before the set plays.
-    setNotice((n) => (n?.kind === "blocked" ? null : n));
+    // "Skipped" stays: it is about the set before this one.
+    setNotice((n) => (n?.kind === "blocked" || n?.kind === "waiting" ? null : n));
   }, [clearFuse]);
 
   // `stop` is declared below, and `removeAt` needs it when the last set is taken
@@ -546,6 +603,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
     if (live.index >= live.entries.length - 1) {
       // Nothing to skip to. Say so where the bar already says things.
+      showNotice(null);
       setError((previous) => previous ?? "Couldn't play this set.");
       setLoading(false);
       setPlaying(false);
@@ -595,6 +653,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     startedRef.current = false;
     idleRef.current = false;
     clearEnd();
+    setNotice((n) => (n?.kind === "waiting" ? null : n));
     arm();
     setLoading(true);
     setError(null);
@@ -619,6 +678,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const host = hostRef.current;
     if (!current || !host) return undefined;
 
+    loadedIdRef.current = current.id;
     const existing = handleRef.current;
     if (existing && existing.provider === current.provider && existing.load) {
       existing.load(current);
@@ -663,6 +723,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             clearFuse();
           }),
           onProgress: live((at, length) => {
+            if (loadedIdRef.current !== currentIdRef.current) return;
             setPosition(at);
             if (length) setDuration(length);
             // The synthetic zero an adapter sends at a swap is not sound.
@@ -704,6 +765,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           onEnded: live(() => advanceRef.current()),
           onError: live((message) => {
             setError(message);
+            if (startedRef.current) {
+              // It was playing a moment ago, so it is not a set that cannot be
+              // played, and an hour into a mix is no time to be thrown out of
+              // it. The message shows; the next progress tick clears it; and if
+              // the sound really has stopped, play is one tap away.
+              return;
+            }
             setLoading(false);
             setPlaying(false);
             giveUpRef.current("error");

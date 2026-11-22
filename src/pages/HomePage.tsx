@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { format, isSameDay } from "date-fns";
@@ -12,6 +12,9 @@ import { EventDetailsSheet } from "@/components/EventDetailsSheet";
 import { EventSkeleton } from "@/components/EventSkeleton";
 import { FilterChips } from "@/components/FilterChips";
 import { Header } from "@/components/Header";
+// Drawer chrome only; Leaflet itself loads a level further down, on first open.
+const MapSheet = lazy(() => import("@/components/MapSheet").then((m) => ({ default: m.MapSheet })));
+import type { MapFocus } from "@/components/MapSheet";
 import { PlayerBar } from "@/components/PlayerBar";
 import { SearchSheet } from "@/components/SearchSheet";
 import { VenueSheet } from "@/components/VenueSheet";
@@ -42,6 +45,10 @@ export default function HomePage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedVenue, setSelectedVenue] = useState<string | null>(null);
   const [venueOpen, setVenueOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [mapEverOpened, setMapEverOpened] = useState(false);
+  const [mapFocus, setMapFocus] = useState<MapFocus | null>(null);
+  const openMap = (focus: MapFocus | null) => { setMapFocus(focus); setMapEverOpened(true); setMapOpen(true); };
   const [filters, setFilters] = useState<FilterKey[]>([]);
 
   const { layoutDensity } = useTheme();
@@ -220,13 +227,17 @@ export default function HomePage() {
           </div>
         </div>
 
-        {(hasEvents || data?.stale) && (
+        {/* Always drawn: the Map chip is the door to the map and must not
+            depend on the night having events. */}
+        {(
           <div className={cn("shell flex items-center justify-between gap-2 py-1.5", padX)}>
-            {hasEvents ? (
-              <FilterChips active={filters} counts={counts} onToggle={toggleFilter} />
-            ) : (
-              <span />
-            )}
+            <FilterChips
+              active={filters}
+              counts={counts}
+              onToggle={toggleFilter}
+              showFilters={hasEvents}
+              onMap={() => openMap(null)}
+            />
 
             {/* Saying so matters more than it looks: without it, listings that
                 are hours old are indistinguishable from listings that are
@@ -300,6 +311,17 @@ export default function HomePage() {
 
         {/* Stacked over the event, like the artist sheet — dismissing returns
             to the event rather than to the listings. */}
+        {mapEverOpened && (
+          <Suspense fallback={null}>
+            <MapSheet
+              open={mapOpen}
+              onOpenChange={setMapOpen}
+              tonight={data?.events ?? []}
+              focus={mapFocus}
+              onShowEvent={(e) => { setSelectedEvent(e); setSheetOpen(true); }}
+            />
+          </Suspense>
+        )}
         <VenueSheet
           venue={selectedVenue}
           // Taken from the event rather than threaded through onSelectVenue:
@@ -310,6 +332,7 @@ export default function HomePage() {
           ticketsUrl={selectedEvent?.url ?? null}
           open={venueOpen}
           onOpenChange={setVenueOpen}
+          onSeeOnMap={(v) => { setVenueOpen(false); openMap(v); }}
         />
 
         {/* Stacked above the event sheet, which stays open underneath so

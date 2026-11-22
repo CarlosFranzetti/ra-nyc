@@ -1,0 +1,17 @@
+/* Map chrome. Every colour is a theme token, so all seven themes carry over. */
+.leaflet-container { background: hsl(var(--background)); font: inherit; outline: none; }
+.leaflet-container .leaflet-control-attribution {
+  background: hsl(var(--background) / 0.78); color: hsl(var(--muted-foreground));
+  font-size: 10px; padding: 1px 5px; border-top-left-radius: 6px;
+}
+.leaflet-container .leaflet-control-attribution a { color: hsl(var(--foreground)); }
+.map-hit { display: grid; place-items: center; background: none; border: 0; }
+.map-hit:focus-visible { outline: 2px solid hsl(var(--ring)); outline-radius: 9999px; }
+.map-pin { display: block; overflow: visible; transition: transform 120ms ease-out; }
+.map-pin--selected { transform: scale(1.4); }
+/* Tonight carries the theme glow, same recipe as the rest of the app. */
+.map-pin--tonight { filter: drop-shadow(0 0 5px hsl(var(--glow-color) / var(--glow-intensity))); }
+.map-me { width: 14px; height: 14px; border-radius: 9999px; background: hsl(var(--foreground));
+  border: 3px solid hsl(var(--background)); box-shadow: 0 0 0 2px hsl(var(--foreground) / 0.5); }
+/* OSM's tiles are pale; invert and tone them to a dark base the theme's markers read on. */
+.map-tiles { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.45); }

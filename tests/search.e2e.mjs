@@ -498,13 +498,18 @@ await page.route("**/api/venue*", (route) =>
   }),
 );
 // A 1x1 transparent PNG stands in for every tile, so the mosaic's geometry is
-// exercised without reaching CARTO.
+// exercised without reaching the tile server.
 const PIXEL = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
 );
 let tileRequests = 0;
+let cartoRequests = 0;
 await page.route("**/basemaps.cartocdn.com/**", (route) => {
+  cartoRequests += 1;
+  route.abort();
+});
+await page.route("**/tile.openstreetmap.org/**", (route) => {
   tileRequests += 1;
   route.fulfill({ contentType: "image/png", body: PIXEL });
 });
@@ -670,9 +675,10 @@ check("and is not the same colour as the venue name above it",
   }),
 );
 
-check("both tile sources are credited",
-  (await page.locator("text=OpenStreetMap contributors").count()) > 0 &&
-    (await page.locator("text=CARTO").count()) > 0);
+check("the map's source is credited",
+  (await page.locator("text=OpenStreetMap contributors").count()) > 0);
+// CARTO's keyless tiles turned into a watermark; nothing here may ask for one.
+check("no tile is requested from CARTO", cartoRequests === 0, `${cartoRequests} requests`);
 
 await browser.close();
 shutdown();

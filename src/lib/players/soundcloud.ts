@@ -3,7 +3,13 @@ import { createHiddenIframe, loadScript, withParams } from "./util";
 
 const API = "https://w.soundcloud.com/player/api.js";
 
+/**
+ * What the widget hands every event, not only progress: which sound it is
+ * talking about, and where that sound is.
+ */
 interface ScProgress {
+  /** SoundCloud's own track id. Present on every event the live widget sends. */
+  soundId?: number;
   currentPosition?: number;
   relativePosition?: number;
 }
@@ -50,9 +56,14 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
   const SC = window.SC;
   if (!SC) throw new Error("SoundCloud player unavailable");
 
+  // A real size, clipped by the 1×1 host. At 1×1 the widget's own waveform
+  // code throws on every play, pause, seek and swap ("createPattern … a canvas
+  // element with a width or height of 0") — an uncaught exception inside their
+  // frame, in the middle of the handlers this adapter depends on.
   const iframe = createHiddenIframe(
     withParams(set.embedUrl, { auto_play: "true" }),
     set.title,
+    { width: 320, height: 166 },
   );
   mount.appendChild(iframe);
 
@@ -128,6 +139,53 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
   let swapping = false;
 
   /**
+   * Whose event this is.
+   *
+   * Measured against the live widget, 2026-11-22: `load()` is answered within
+   * ten milliseconds by a PLAY *for the outgoing track*, and only then, most
+   * of a second later, by the callback and the new track's own events. This
+   * adapter used to take that first PLAY as the new set starting. It ended the
+   * swap early — so the outgoing track's position landed on the new title for
+   * a second — and it told the player the new set had made sound before a
+   * byte of it had arrived, which switched the watchdog off for every set
+   * reached by a skip.
+   *
+   * Every event carries `soundId`, so the question has an exact answer: while
+   * a swap is in flight, anything about the outgoing sound is dropped, and the
+   * first event about a different sound is the swap having happened. A widget
+   * that sends no id (the suites' fake, or a future widget) falls back to what
+   * was true before: nothing counts until `load()` calls back.
+   */
+  let lastSound: number | undefined;
+  let outgoing: number | undefined;
+  const accept = (payload?: ScProgress): boolean => {
+    const id = payload?.soundId;
+    if (swapping) {
+      if (id === undefined || id === outgoing) return false;
+      swapping = false;
+    }
+    if (id !== undefined) lastSound = id;
+    return true;
+  };
+
+  /**
+   * A PAUSE before the first PLAY is not the listener's.
+   *
+   * With `auto_play` in the URL and a `play()` on READY — both are needed, see
+   * above — the live widget sends PAUSE and then PLAY in the same millisecond
+   * on every ordinary start. Forwarded as it came, that PAUSE told the player
+   * the listener had paused, which stood the watchdog down before the set had
+   * begun. So it is held: if PLAY follows, it was nothing; if nothing follows,
+   * the browser refused to start without a tap, and *then* it is a pause.
+   */
+  let held: number | undefined;
+  const PAUSE_GRACE_MS = 2_000;
+  const dropHeld = () => {
+    if (held !== undefined) window.clearTimeout(held);
+    held = undefined;
+  };
+
+  /**
    * Where the listener just seeked to, and until when ticks from before it may
    * still be in flight. postMessage means a progress tick sent from the old
    * position can land after `seekTo`, and it would drag the playhead back for a
@@ -149,9 +207,10 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
       }, 700);
     }
   });
-  widget.bind(SC.Widget.Events.PLAY, () => {
+  widget.bind(SC.Widget.Events.PLAY, (payload) => {
+    if (!accept(payload)) return;
     started = true;
-    swapping = false;
+    dropHeld();
     // Ask again, now that there is something to ask about. PLAY is the first
     // moment the widget has definitely parsed the track, whereas READY only
     // means it will accept commands — that gap is why asking once was never
@@ -165,18 +224,29 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
     });
     events.onPlay();
   });
-  widget.bind(SC.Widget.Events.PAUSE, () => events.onPause());
-  widget.bind(SC.Widget.Events.FINISH, () => {
+  widget.bind(SC.Widget.Events.PAUSE, (payload) => {
+    if (!accept(payload)) return;
+    if (wantPlay && !started) {
+      dropHeld();
+      held = window.setTimeout(() => {
+        held = undefined;
+        if (wantPlay && !started) events.onPause();
+      }, PAUSE_GRACE_MS);
+      return;
+    }
+    events.onPause();
+  });
+  widget.bind(SC.Widget.Events.FINISH, (payload) => {
     // The outgoing track can FINISH after load() has already been called; that
     // would advance the queue past the set the listener just chose.
-    if (swapping) return;
+    if (!accept(payload)) return;
     events.onEnded();
   });
   widget.bind(SC.Widget.Events.ERROR, () =>
     events.onError("SoundCloud couldn't play this set."),
   );
   widget.bind(SC.Widget.Events.PLAY_PROGRESS, (payload) => {
-    if (swapping || !payload || payload.currentPosition == null) return;
+    if (!payload || payload.currentPosition == null || !accept(payload)) return;
     if (seekedTo) {
       if (performance.now() > seekedTo.until) {
         seekedTo = null;
@@ -196,15 +266,18 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
     events.onProgress(payload.currentPosition / 1000, duration);
   });
 
-  /** Kick playback and re-arm the retry. Shared by first load and every swap. */
+  /** `load()` has called back: the swapped-in track is there to be played. */
   const start = () => {
-    started = false;
+    // Its own first events can beat this callback. If they have, it is already
+    // playing and already past zero; only the length is still worth asking for.
+    const already = !swapping && started;
     swapping = false;
     if (retry !== undefined) window.clearTimeout(retry);
     widget.getDuration((ms) => {
       useDuration(ms / 1000);
       events.onReady(duration);
     });
+    if (already) return;
     // The swapped-in track begins at zero, and nothing else says so: the first
     // PLAY_PROGRESS can be hundreds of milliseconds away, and until it lands
     // the bar would still be showing the outgoing track's position.
@@ -231,6 +304,9 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
       duration = next.duration;
       confirmed = false;
       swapping = true;
+      started = false;
+      outgoing = lastSound;
+      dropHeld();
       // A skip is a request to play, whatever was asked before it.
       wantPlay = true;
       // The permalink, not the embed URL — load() takes the track's own page.
@@ -247,6 +323,7 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
     },
     pause: () => {
       wantPlay = false;
+      dropHeld();
       // Cancel the pending start-retry. Without this a pause within 700ms of
       // loading a track gets undone by the retry firing underneath it, and the
       // set resumes on its own.
@@ -259,6 +336,7 @@ export const createSoundcloudPlayer: CreatePlayer = async (mount, set, events) =
     },
     destroy: () => {
       if (retry !== undefined) window.clearTimeout(retry);
+      dropHeld();
       // The iframe may already be detached; pausing a dead widget throws.
       try {
         widget.pause();

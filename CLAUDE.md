@@ -61,9 +61,9 @@ through `tail`; a full untruncated dump of all eight suites is thousands of
 tokens of PASS lines nobody reads.
 
 ```
-npm run test          # 402 Vitest units
+npm run test          # 416 Vitest units
 npm run test:all      # typecheck, then units + player, search, layout, preview,
-                      # donate, settings, offline and playlist e2e (~4 minutes;
+                      # donate, settings, offline, playlist and map e2e (~5 minutes;
                       # on the cloud container it can exceed a 10-minute command
                       # limit because offline builds first — run it in the
                       # background, or run offline and playlist on their own)
@@ -88,6 +88,21 @@ reach changes: in November 2026 it could suddenly load Vercel's analytics
 script, which replaced the stand-in `window.va` the search suite listens
 through, and four checks went red with nothing wrong in the app. Stub or
 block every outside host a suite could touch.
+
+**`npm run test:live` plays real SoundCloud streams, and is not in
+`test:all`.** It is the one exception to the rule above and it is an exception
+on purpose. Every suite fakes the SoundCloud widget, and for weeks the fake
+behaved better than the real thing: the real widget answers `load()` with a
+PLAY for the track it is *leaving*, sends PAUSE-then-PLAY on every ordinary
+start, and can be slow, which a fake that is either instant or dead never is.
+That is how a watchdog shipped that skipped any set slower than twenty seconds
+to come up ("Can't play this one · skipping…" over a set with nothing wrong
+with it) and passed 99 checks doing it. Run `test:live` by hand after touching
+`src/lib/players/` or the watchdog in `PlayerContext`; `BASE=https://ra-nyc.vercel.app`
+points it at what is deployed. It needs the session proxy to reach SoundCloud
+(it reads `HTTPS_PROXY`), production for its data, and five minutes. When it
+teaches you something about the widget, put that behaviour into the fake in
+`tests/playlist.e2e.mjs` so the offline suite learns it too.
 
 The e2e suites each spawn their own Vite server on a fixed port. If one fails
 with `EADDRINUSE`, a previous run left a server behind — pass `E2E_PORT=<free

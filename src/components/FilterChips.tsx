@@ -1,3 +1,4 @@
+import { MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FILTER_LABELS, type FilterKey } from "@/lib/filters";
 
@@ -5,6 +6,10 @@ interface FilterChipsProps {
   active: readonly FilterKey[];
   counts: Record<FilterKey, number>;
   onToggle: (key: FilterKey) => void;
+  /** Opens the map. Present whether or not the night has events. */
+  onMap?: () => void;
+  /** False on an empty night: the map chip stays, the filters (all zero) go. */
+  showFilters?: boolean;
 }
 
 /**
@@ -38,12 +43,23 @@ const FIRST_RIGHT: FilterKey = "lowkey";
  * alternating with the date — it was the only thing here that was not a
  * control, and a bare number beside three chips reads like a fourth one.
  */
-export function FilterChips({ active, counts, onToggle }: FilterChipsProps) {
+export function FilterChips({ active, counts, onToggle, onMap, showFilters = true }: FilterChipsProps) {
   return (
     // `flex-1` so the row owns the width and `ml-auto` has something to push
     // against — without it all three chips huddle at the left.
     <div className="flex flex-1 flex-wrap items-center gap-1.5">
-      {LAYOUT.map((key) => {
+      {onMap && (
+        <button
+          type="button"
+          onClick={onMap}
+          data-testid="map-chip"
+          className="flex min-h-[34px] flex-shrink-0 items-center gap-1 rounded-full border border-border/70 px-3 text-[0.6875rem] leading-tight text-muted-foreground transition-colors duration-150 hover:border-border hover:text-foreground"
+        >
+          <MapPin className="h-3 w-3" aria-hidden="true" />
+          Map
+        </button>
+      )}
+      {showFilters && LAYOUT.map((key) => {
         const on = active.includes(key);
         const count = counts[key];
         const empty = count === 0 && !on;
